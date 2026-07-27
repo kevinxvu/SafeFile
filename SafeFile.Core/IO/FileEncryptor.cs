@@ -34,7 +34,6 @@ public sealed class FileEncryptor
 
         if (passwordBytes.Length == 0)
             throw new ArgumentException("Password cannot be empty.", nameof(passwordBytes));
-            throw new ArgumentException("Password cannot be empty.", nameof(passwordBytes));
 
         if (!Directory.Exists(sourceFolderPath))
             throw new DirectoryNotFoundException($"Source folder not found: {sourceFolderPath}");
@@ -68,56 +67,62 @@ public sealed class FileEncryptor
 
             header.WriteTo(destStream);
 
-            var aesGcm = new AesGcmEngine();
-
-            var encryptedFileNameChunk = aesGcm.EncryptChunk(
+            var encryptedFileNameChunk = new AesGcmEngine().EncryptChunk(
                 encryptedFileName,
                 masterKey,
                 noncePrefix,
-                0,  // Filename is special chunk 0 (before data chunks)
+                0,  // Filename is chunk 0
                 true);
 
             WriteEncryptedFileNameChunk(destStream, encryptedFileNameChunk);
 
             var zipSize = zipStream.Length;
             var totalRead = 0L;
-            var chunkIndex = 0L;
 
             // Calculate total chunks for accurate progress reporting
-            var totalChunks = (zipSize + chunkSizeBytes - 1) / chunkSizeBytes + 1; // +1 for filename chunk
-            var pipelineWithProgress = new CryptoPipeline(
-                Math.Max(1, Environment.ProcessorCount - 1),
-                _progress,
-                totalChunks);
+            var totalChunks = (zipSize + chunkSizeBytes - 1) / chunkSizeBytes;
 
-            var zipBuffer = ArrayPool<byte>.Shared.Rent(chunkSizeBytes);
-            try
-            {
-                while (totalRead < zipSize && !cancellationToken.IsCancellationRequested)
+            // Lock for thread-safe stream writes
+            var streamLock = new object();
+
+            // Use pipeline for efficient parallel encryption
+            await _pipeline.EncryptAsync(
+                async (chunkIndex) =>
                 {
-                    var bytesRead = zipStream.Read(zipBuffer, 0, chunkSizeBytes);
-                    if (bytesRead == 0)
-                        break;
+                    var zipBuffer = ArrayPool<byte>.Shared.Rent(chunkSizeBytes);
+                    try
+                    {
+                        int bytesRead = await Task.Run(() => zipStream.Read(zipBuffer, 0, chunkSizeBytes), cancellationToken).ConfigureAwait(false);
+                        if (bytesRead == 0)
+                            return null;
 
-                    var isLast = totalRead + bytesRead >= zipSize;
-                    var encryptedChunk = aesGcm.EncryptChunk(
-                        zipBuffer.AsSpan(0, bytesRead),
-                        masterKey,
-                        noncePrefix,
-                        chunkIndex,
-                        isLast);
+                        var isLast = totalRead + bytesRead >= zipSize;
+                        totalRead += bytesRead;
 
-                    WriteEncryptedChunk(destStream, encryptedChunk);
-
-                    totalRead += bytesRead;
-                    chunkIndex++;
-                }
-            }
-            finally
-            {
-                ArrayPool<byte>.Shared.Return(zipBuffer);
-                zipStream.Dispose();
-            }
+                        return new UnencryptedChunk(
+                            Index: chunkIndex,
+                            Data: zipBuffer.AsSpan(0, bytesRead).ToArray(),
+                            IsLastChunk: isLast);
+                    }
+                    finally
+                    {
+                        ArrayPool<byte>.Shared.Return(zipBuffer);
+                    }
+                },
+                async (encryptedChunk) =>
+                {
+                    await Task.Run(() =>
+                    {
+                        lock (streamLock)
+                        {
+                            WriteEncryptedChunk(destStream, encryptedChunk);
+                        }
+                    }, cancellationToken).ConfigureAwait(false);
+                },
+                masterKey,
+                noncePrefix,
+                totalChunks: totalChunks,
+                cancellationToken: cancellationToken);
 
             CryptographicOperations.ZeroMemory(masterKey);
         }
@@ -247,7 +252,9 @@ public sealed class FileEncryptor
             throw new FileNotFoundException($"Source file not found: {sourcePath}");
 
         if (passwordBytes.Length == 0)
-            throw new ArgumentException("Password cannot be empty.", nameof(passwordBytes));        if (chunkSizeBytes <= 0)
+            throw new ArgumentException("Password cannot be empty.", nameof(passwordBytes));
+
+        if (chunkSizeBytes <= 0)
             throw new ArgumentOutOfRangeException(nameof(chunkSizeBytes), "Chunk size must be greater than zero.");
 
         var fileInfo = new FileInfo(sourcePath);
@@ -276,14 +283,13 @@ public sealed class FileEncryptor
 
             header.WriteTo(destStream);
 
-            var pipeline = new CryptoPipeline(-1, null);
             var aesGcm = new AesGcmEngine();
 
             var encryptedFileNameChunk = aesGcm.EncryptChunk(
                 encryptedFileName,
                 masterKey,
                 noncePrefix,
-                -1,
+                0,  // Filename chunk always has index 0
                 true);
 
             WriteEncryptedFileNameChunk(destStream, encryptedFileNameChunk);
@@ -291,38 +297,51 @@ public sealed class FileEncryptor
             using var sourceStream = new FileStream(sourcePath, FileMode.Open, FileAccess.Read, FileShare.Read);
             var fileSize = sourceStream.Length;
             var totalRead = 0L;
-            var chunkIndex = 0L;
 
-            var sourceBuffer = ArrayPool<byte>.Shared.Rent(chunkSizeBytes);
-            try
-            {
-                while (totalRead < fileSize && !cancellationToken.IsCancellationRequested)
+            // Calculate total number of chunks for progress tracking
+            var totalChunks = (fileSize + chunkSizeBytes - 1) / chunkSizeBytes;
+
+            // Lock for thread-safe stream writes
+            var streamLock = new object();
+
+            // Use pipeline for efficient parallel encryption
+            await _pipeline.EncryptAsync(
+                async (chunkIndex) =>
                 {
-                    var bytesRead = sourceStream.Read(sourceBuffer, 0, chunkSizeBytes);
-                    if (bytesRead == 0)
-                        break;
+                    var sourceBuffer = ArrayPool<byte>.Shared.Rent(chunkSizeBytes);
+                    try
+                    {
+                        int bytesRead = await Task.Run(() => sourceStream.Read(sourceBuffer, 0, chunkSizeBytes), cancellationToken).ConfigureAwait(false);
+                        if (bytesRead == 0)
+                            return null;
 
-                    var isLast = totalRead + bytesRead >= fileSize;
-                    var encryptedChunk = aesGcm.EncryptChunk(
-                        sourceBuffer.AsSpan(0, bytesRead),
-                        masterKey,
-                        noncePrefix,
-                        chunkIndex,
-                        isLast);
+                        var isLast = totalRead + bytesRead >= fileSize;
+                        totalRead += bytesRead;
 
-                    WriteEncryptedChunk(destStream, encryptedChunk);
-
-                    totalRead += bytesRead;
-                    chunkIndex++;
-
-                    var progress = (double)totalRead / fileSize;
-                    ((IProgress<double>?)null)?.Report(progress);
-                }
-            }
-            finally
-            {
-                ArrayPool<byte>.Shared.Return(sourceBuffer);
-            }
+                        return new UnencryptedChunk(
+                            Index: chunkIndex,
+                            Data: sourceBuffer.AsSpan(0, bytesRead).ToArray(),
+                            IsLastChunk: isLast);
+                    }
+                    finally
+                    {
+                        ArrayPool<byte>.Shared.Return(sourceBuffer);
+                    }
+                },
+                async (encryptedChunk) =>
+                {
+                    await Task.Run(() =>
+                    {
+                        lock (streamLock)
+                        {
+                            WriteEncryptedChunk(destStream, encryptedChunk);
+                        }
+                    }, cancellationToken).ConfigureAwait(false);
+                },
+                masterKey,
+                noncePrefix,
+                totalChunks: totalChunks,
+                cancellationToken: cancellationToken);
 
             if (totalRead != fileSize)
                 throw new InvalidOperationException($"File read incomplete: expected {fileSize} bytes, got {totalRead}.");
