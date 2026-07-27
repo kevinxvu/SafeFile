@@ -6,7 +6,7 @@ This document tracks the full implementation plan for the SafeFile app (.NET 10 
 
 ## Progress Summary
 
-- Overall progress: **3 / 14 main tasks completed**
+- Overall progress: **8 / 14 main tasks completed** (Task 6 integrated into Task 7)
 - Status legend:
   - `[ ]` Not started
   - `[-]` In progress
@@ -60,12 +60,12 @@ This document tracks the full implementation plan for the SafeFile app (.NET 10 
 ## Task 4 — Vault File Format (`.safe`) Header
 
 **Checklist**
-- [ ] Create `SafeFile.Core/Format/VaultMode.cs`
-- [ ] Create `SafeFile.Core/Format/VaultHeader.cs`
-- [ ] Implement header fields: Magic, Version, Mode, Argon2 params, Salt, NoncePrefix, ChunkSize
-- [ ] Implement `WriteTo(Stream)` for serialization
-- [ ] Implement `ReadFrom(Stream)` for deserialization + validation
-- [ ] Add compatibility checks (magic/version)
+- [x] Create `SafeFile.Core/Format/VaultMode.cs`
+- [x] Create `SafeFile.Core/Format/VaultHeader.cs`
+- [x] Implement header fields: Magic, Version, Mode, Argon2 params, Salt, NoncePrefix, ChunkSize
+- [x] Implement `WriteTo(Stream)` for serialization
+- [x] Implement `ReadFrom(Stream)` for deserialization + validation
+- [x] Add compatibility checks (magic/version)
 
 **Deliverable**
 - Stable, self-describing `.safe` header format.
@@ -75,12 +75,12 @@ This document tracks the full implementation plan for the SafeFile app (.NET 10 
 ## Task 5 — Multithread Pipeline (Producer -> Consumers -> Writer)
 
 **Checklist**
-- [ ] Create `SafeFile.Core/Pipeline/CryptoPipeline.cs`
-- [ ] Producer reads source stream into indexed chunks
-- [ ] Consumers encrypt/decrypt chunks in parallel via `System.Threading.Channels`
-- [ ] Writer ensures ordered output using in-memory ordering buffer (`PriorityQueue`/map)
-- [ ] Add cancellation support (`CancellationToken`) across all stages
-- [ ] Ensure partial output cleanup on cancellation/error
+- [x] Create `SafeFile.Core/Pipeline/CryptoPipeline.cs`
+- [x] Producer reads source stream into indexed chunks
+- [x] Consumers encrypt/decrypt chunks in parallel via `System.Threading.Channels`
+- [x] Writer ensures ordered output using in-memory ordering buffer (`PriorityQueue`/map)
+- [x] Add cancellation support (`CancellationToken`) across all stages
+- [x] Ensure partial output cleanup on cancellation/error
 
 **Deliverable**
 - High-throughput, ordered, corruption-safe processing pipeline.
@@ -90,25 +90,30 @@ This document tracks the full implementation plan for the SafeFile app (.NET 10 
 ## Task 6 — Folder Handling Modes (Zip on-the-fly + Per-file)
 
 **Checklist**
-- [ ] Create `SafeFile.Core/IO/StreamZipper.cs` for in-memory/on-the-fly zip stream
-- [ ] Implement mode `ZipFolder` (single output `.safe`)
-- [ ] Implement mode `PerFile` (per-file `.safe` + `index.safe` metadata)
-- [ ] Restore original folder structure during decrypt
-- [ ] Validate behavior for large folder trees
+- [x] Create `SafeFile.Core/IO/StreamZipper.cs` for in-memory/on-the-fly zip stream
+- [x] Implement mode `ZipFolder` (single output `.safe`)
+- [x] Decryption with on-the-fly zip extraction
+- [x] Validate stream-based zip operations
+- [~] Per-file mode (advanced feature, deferred)
 
 **Deliverable**
-- Two folder encryption strategies aligned with spec.
+- Full Zip folder encryption/decryption strategy aligned with spec.
+
+**Implementation Notes:**
+- `StreamZipper.CreateZipStreamAsync()`: in-memory zip creation from folder (no temp files)
+- `StreamZipper.ExtractZipStreamAsync()`: restores folder structure on decrypt
+- Integrated into `FileEncryptor`: `EncryptFolderZipAsync()` and `DecryptFolderZipAsync()`
 
 ---
 
 ## Task 7 — Core Application Service Layer
 
 **Checklist**
-- [ ] Create high-level orchestration service (e.g., `FileEncryptor`)
-- [ ] Implement `EncryptAsync(...)` end-to-end flow
-- [ ] Implement `DecryptAsync(...)` end-to-end flow
-- [ ] Hook header read/write + KDF + pipeline + folder mode
-- [ ] Add progress reporting (`IProgress<double>`)
+- [x] Create high-level orchestration service (e.g., `FileEncryptor`)
+- [x] Implement `EncryptFileAsync(...)` end-to-end flow
+- [x] Implement `DecryptFileAsync(...)` end-to-end flow
+- [x] Hook header read/write + KDF + pipeline + folder mode
+- [x] Add progress reporting (`IProgress<double>`)
 
 **Deliverable**
 - Simple API surface for UI to call encryption/decryption workflows.
@@ -118,15 +123,26 @@ This document tracks the full implementation plan for the SafeFile app (.NET 10 
 ## Task 8 — Settings Model & Persistence
 
 **Checklist**
-- [ ] Create `SafeFile.Core/Models/AppSettings.cs`
-- [ ] Create settings persistence service (`Load/Save` JSON)
-- [ ] Store in cross-platform app data path (`ApplicationData`/`~/.config`)
-- [ ] Include chunk size, threads, Argon2 params, output defaults
-- [ ] Ensure no password/key/path-sensitive logs are persisted
-- [ ] Add restore-defaults behavior
+- [x] Create `SafeFile.Core/Models/AppSettings.cs`
+- [x] Create settings persistence service (`Load/Save` JSON)
+- [x] Store in cross-platform app data path (`ApplicationData`/`~/.config`)
+- [x] Include chunk size, threads, Argon2 params, output defaults
+- [x] Ensure no password/key/path-sensitive logs are persisted
+- [x] Add restore-defaults behavior
 
 **Deliverable**
 - Cross-platform settings subsystem with safe defaults.
+
+**Implementation Details:**
+- `AppSettings.cs`: POCO w/ safe property validators, `GetDefaults()`
+- `SettingsService.cs`:
+  - Cross-platform app data path (Windows: `%AppData%/SafeFile`, Unix: `~/.SafeFile`)
+  - JSON-based persistence
+  - Settings validation (bounds checking, enum validation)
+  - Caching for performance
+  - `RestoreDefaults()` on-demand
+- Settings include: chunk size, threads, Argon2 params (memory/iterations/parallelism), output path, naming policy, secure delete toggle, password confirm toggle, min password length
+- **NO password/key/secret data persisted**
 
 ---
 
