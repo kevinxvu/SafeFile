@@ -7,6 +7,65 @@
 
 ## SafeFile Core Architecture
 
+## SafeFile Core Architecture
+
+### Architecture Diagram
+
+```
+┌─────────────────────────────────────────────────┐
+│          SafeFile UI (Avalonia)                  │
+│  ┌──────────────────────────────────────────┐   │
+│  │  ViewModels (MVVM CommunityToolkit)      │   │
+│  │  • MainViewModel                         │   │
+│  │  • EncryptViewModel                      │   │
+│  │  • DecryptViewModel                      │   │
+│  └──────────────────────┬────────────────────┘   │
+└─────────────────────────┼────────────────────────┘
+                          │
+                    Uses via Delegates
+                          │
+          ┌───────────────┴────────────────┐
+          │                                 │
+┌─────────▼────────────────────────────────▼───────┐
+│       SafeFile.Core (Reusable Crypto Layer)       │
+│                                                   │
+│  ┌─────────────────────────────────────────┐     │
+│  │ Cryptography Layer (Crypto/)             │     │
+│  │  • Argon2Kdf: Password → Master Key     │     │
+│  │  • AesGcmEngine: Authenticated Encrypt  │     │
+│  └─────────────────────────────────────────┘     │
+│                       ▲                          │
+│                       │                          │
+│  ┌─────────────────────────────────────────┐     │
+│  │ Format Layer (Format/)                   │     │
+│  │  • VaultHeader: Metadata Structure      │     │
+│  │  • VaultMode: File/Zip/PerFile Modes   │     │
+│  └─────────────────────────────────────────┘     │
+│                       ▲                          │
+│                       │                          │
+│  ┌─────────────────────────────────────────┐     │
+│  │ Pipeline Layer (Pipeline/)               │     │
+│  │  • CryptoPipeline: Parallel Processing  │     │
+│  │  • Producer → Consumers → Writer        │     │
+│  │  • Handles Out-of-Order with Buffering  │     │
+│  └─────────────────────────────────────────┘     │
+│                       ▲                          │
+│                       │                          │
+│  ┌─────────────────────────────────────────┐     │
+│  │ I/O Layer (IO/)                          │     │
+│  │  • FileEncryptor: High-Level API        │     │
+│  │  • PasswordValidator: Checksum Engine   │     │
+│  │  • StreamZipper: Folder → Zip           │     │
+│  └─────────────────────────────────────────┘     │
+│                                                   │
+│  ┌─────────────────────────────────────────┐     │
+│  │ Models & Services                        │     │
+│  │  • AppSettings: Config Model            │     │
+│  │  • SettingsService: JSON Persistence    │     │
+│  └─────────────────────────────────────────┘     │
+└───────────────────────────────────────────────────┘
+```
+
 ### Overview
 SafeFile is a .NET 10 file/folder encryption application with a two-layer architecture:
 - **SafeFile.Core**: Crypto and I/O layer (reusable, no UI dependencies)
@@ -38,6 +97,78 @@ SafeFile is a .NET 10 file/folder encryption application with a two-layer archit
   - DecryptAsync: Similar pattern for decryption
 - **UnencryptedChunk.cs**: Record (Index, Data, IsLastChunk)
 
+#### Pipeline Flow Diagram (Encrypt)
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                      SEQUENTIAL READING                              │
+│                                                                       │
+│  ┌─────────┐  ┌─────────┐  ┌─────────┐         ┌─────────────┐     │
+│  │ Chunk 0 │→ │ Chunk 1 │→ │ Chunk 2 │→ ... → │ Producer    │     │
+│  │ (5MB)   │  │ (5MB)   │  │ (5MB)   │        │ (1 thread)  │     │
+│  └─────────┘  └─────────┘  └─────────┘        └──────┬──────┘     │
+│                                                        │              │
+│                                   ┌────────────────────┘              │
+│                                   │ (Ordered)                         │
+│                                   ↓                                   │
+│                        ┌──────────────────────┐                      │
+│                        │ Unencrypted Channel  │                      │
+│                        │ (capacity: 100)      │                      │
+│                        └──────┬───────────────┘                      │
+└─────────────────────────────────┼──────────────────────────────────┘
+                                  │
+┌─────────────────────────────────┼──────────────────────────────────┐
+│                   PARALLEL ENCRYPTION                              │
+│                                  │                                 │
+│                       ┌──────────┴─────────┬──────────┐            │
+│                       │                    │          │            │
+│                  ┌────▼────┐          ┌────▼────┐ ┌──▼────┐       │
+│                  │Consumer1│          │Consumer2│ │Consum.│       │
+│                  │Thread   │          │Thread   │ │Thread │       │
+│                  │         │          │         │ │       │       │
+│          ┌─────┐ │         │  ┌─────┐│         │ │       │       │
+│          │Chunk│→│Encrypt0 │  │Chunk│→Encrypt1│ │Encrypt│       │
+│          │(0)  │ │(3ms)    │  │(1)  │ (2ms)   │ │(2)    │       │
+│          └─────┘ │         │  └─────┘│         │ │(4ms)  │       │
+│                  │  ⬇      │         │  ⬇      │ │ ⬇     │       │
+│                  └─────────┘         └────┬────┘ └───────┘       │
+│                       █                   ║         █             │
+│                       ║ Out-of-order!    ║         ║             │
+│                       ╚═══════╤═══════════╬═════════╝             │
+│                               │           │                      │
+│                        ┌──────▼───────────▼──────┐               │
+│                        │ Encrypted Channel      │               │
+│                        │ (capacity: 100)        │               │
+│                        │ [1][0][2]... (buffered)│               │
+│                        └───────────┬────────────┘               │
+└─────────────────────────────────────┼──────────────────────────────┘
+                                      │
+┌─────────────────────────────────────┼──────────────────────────────┐
+│                   WRITER REORDERING                                 │
+│                                      │                              │
+│                        ┌─────────────▼──────────┐                  │
+│                        │ WriterAsync (1 thread)′│                  │
+│                        │                        │                  │
+│                        │ Buffer: {1:enc_chunk} │                  │
+│           Chunk 1 ─────→ Remove from buffer    │                  │
+│           Chunk 0 ─────→ nextIndex=1, Ready!  │                  │
+│           Chunk 2 ─────→ nextIndex=2, Ready!  │                  │
+│                        └──────────┬────────────┘                   │
+│                                   │ (Guaranteed Sequential!)        │
+│                        ┌──────────▼──────────┐                    │
+│                        │ Output Writer      │                     │
+│                        │ Lock + Sequential  │                     │
+│                        │ [0][1][2][3]...    │                     │
+│                        └──────────┬──────────┘                     │
+│                                   │                               │
+│                        ┌──────────▼──────────┐                    │
+│                        │  Vault File        │                     │
+│                        │  (.safe format)    │                     │
+│                        │  Chunks in order!  │                     │
+│                        └────────────────────┘                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
 #### 4. I/O Layer (`IO/`)
 - **FileEncryptor.cs**: High-level orchestration
   - EncryptFileAsync: Source file → Pipeline → Vault file (.safe)
@@ -53,6 +184,77 @@ SafeFile is a .NET 10 file/folder encryption application with a two-layer archit
   - MinPasswordLength = 8
   - ComputeChecksum & ValidateChecksum (constant-time)
 - **StreamZipper.cs**: On-the-fly zip creation/extraction (no temp files)
+
+#### Vault File Format (.safe binary)
+
+```
+┌───────────────────────────────────────────────────────────────┐
+│  VAULT FILE FORMAT (.safe)                                    │
+├───────────────────────────────────────────────────────────────┤
+│                                                               │
+│  ┌─────────────────────────────────────────────────────────┐  │
+│  │ HEADER (104 bytes)                                      │  │
+│  ├─────────────────────────────────────────────────────────┤  │
+│  │ Magic: "SAFE" (4 bytes)                                 │  │
+│  │ Version: 1 (1 byte)                                     │  │
+│  │ Mode: File/Zip/PerFile (1 byte)                         │  │
+│  │ Salt: random 16 bytes                                   │  │
+│  │ NoncePrefix: random 4 bytes                             │  │
+│  │ Argon2MemorySizeKb (4 bytes)                            │  │
+│  │ Argon2Iterations (4 bytes)                              │  │
+│  │ Argon2Parallelism (4 bytes)                             │  │
+│  │ ChunkSize (4 bytes)                                     │  │
+│  │ PasswordChecksum: HMAC-SHA256[0:4] (4 bytes)           │  │
+│  └─────────────────────────────────────────────────────────┘  │
+│                                                               │
+│  ┌─────────────────────────────────────────────────────────┐  │
+│  │ FILENAME CHUNK (Index=0)                                │  │
+│  ├─────────────────────────────────────────────────────────┤  │
+│  │ NonceSize: 12 (4 bytes)                                 │  │
+│  │ Nonce: [prefix(4B) + index(8B)] (12 bytes)             │  │
+│  │ CiphertextSize: N (4 bytes)                             │  │
+│  │ Ciphertext: encrypted filename (N bytes)                │  │
+│  │ Tag: AES-GCM auth tag (16 bytes)                        │  │
+│  │ IsLastChunk: 1 (1 byte)                                 │  │
+│  └─────────────────────────────────────────────────────────┘  │
+│                                                               │
+│  ┌─────────────────────────────────────────────────────────┐  │
+│  │ DATA CHUNK 0 (Index=1)                                  │  │
+│  ├─────────────────────────────────────────────────────────┤  │
+│  │ NonceSize: 12 (4 bytes)                                 │  │
+│  │ Nonce: [prefix(4B) + index=1(8B)] (12 bytes)           │  │
+│  │ CiphertextSize: N (4 bytes)                             │  │
+│  │ Ciphertext: encrypted data (N bytes)                    │  │
+│  │ Tag: AES-GCM auth tag (16 bytes)                        │  │
+│  │ IsLastChunk: 0 (1 byte)                                 │  │
+│  └─────────────────────────────────────────────────────────┘  │
+│                                                               │
+│  ┌─────────────────────────────────────────────────────────┐  │
+│  │ DATA CHUNK 1 (Index=2)                                  │  │
+│  ├─────────────────────────────────────────────────────────┤  │
+│  │ NonceSize: 12 (4 bytes)                                 │  │
+│  │ Nonce: [prefix(4B) + index=2(8B)] (12 bytes)           │  │
+│  │ CiphertextSize: N (4 bytes)                             │  │
+│  │ Ciphertext: encrypted data (N bytes)                    │  │
+│  │ Tag: AES-GCM auth tag (16 bytes)                        │  │
+│  │ IsLastChunk: 0 (1 byte)                                 │  │
+│  └─────────────────────────────────────────────────────────┘  │
+│                                                               │
+│  ... more data chunks ...                                    │
+│                                                               │
+│  ┌─────────────────────────────────────────────────────────┐  │
+│  │ DATA CHUNK N (Index=N)                                  │  │
+│  ├─────────────────────────────────────────────────────────┤  │
+│  │ NonceSize: 12 (4 bytes)                                 │  │
+│  │ Nonce: [prefix(4B) + index=N(8B)] (12 bytes)           │  │
+│  │ CiphertextSize: N (4 bytes)                             │  │
+│  │ Ciphertext: encrypted data (N bytes)                    │  │
+│  │ Tag: AES-GCM auth tag (16 bytes)                        │  │
+│  │ IsLastChunk: 1 (1 byte)  ⬅️ LAST CHUNK FLAG             │  │
+│  └─────────────────────────────────────────────────────────┘  │
+│                                                               │
+└───────────────────────────────────────────────────────────────┘
+```
 
 #### 5. Models & Settings (`Models/`, `Services/`)
 - **AppSettings.cs**: Persisted config (chunk size, threads, Argon2 params, output path, etc.)
