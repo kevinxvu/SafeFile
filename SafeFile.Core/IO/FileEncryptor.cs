@@ -77,13 +77,12 @@ public sealed class FileEncryptor
             WriteEncryptedFileNameChunk(destStream, encryptedFileNameChunk);
 
             var zipSize = zipStream.Length;
-            var totalRead = 0L;
 
             // Calculate total chunks for accurate progress reporting
             var totalChunks = (zipSize + chunkSizeBytes - 1) / chunkSizeBytes;
 
-            // Lock for thread-safe stream writes
-            var streamLock = new object();
+            // Lock for thread-safe dest stream writes (multiple consumer threads)
+            var destLock = new object();
 
             // Use pipeline for efficient parallel encryption
             await _pipeline.EncryptAsync(
@@ -92,12 +91,15 @@ public sealed class FileEncryptor
                     var zipBuffer = ArrayPool<byte>.Shared.Rent(chunkSizeBytes);
                     try
                     {
-                        int bytesRead = await Task.Run(() => zipStream.Read(zipBuffer, 0, chunkSizeBytes), cancellationToken).ConfigureAwait(false);
+                        // ProducerAsync calls this sequentially with chunkIndex = 0, 1, 2...
+                        // So zipStream.Read is never called in parallel
+                        int bytesRead = zipStream.Read(zipBuffer, 0, chunkSizeBytes);
                         if (bytesRead == 0)
                             return null;
 
-                        var isLast = totalRead + bytesRead >= zipSize;
-                        totalRead += bytesRead;
+                        // Calculate isLastChunk based on whether we've reached stream end
+                        var remainingInZip = zipSize - (chunkIndex * (long)chunkSizeBytes + bytesRead);
+                        var isLast = remainingInZip <= 0;
 
                         return new UnencryptedChunk(
                             Index: chunkIndex,
@@ -111,9 +113,11 @@ public sealed class FileEncryptor
                 },
                 async (encryptedChunk) =>
                 {
+                    // Multiple consumer threads may call this at same time
+                    // Lock protects destStream.Write from concurrent access
                     await Task.Run(() =>
                     {
-                        lock (streamLock)
+                        lock (destLock)
                         {
                             WriteEncryptedChunk(destStream, encryptedChunk);
                         }
@@ -296,13 +300,12 @@ public sealed class FileEncryptor
 
             using var sourceStream = new FileStream(sourcePath, FileMode.Open, FileAccess.Read, FileShare.Read);
             var fileSize = sourceStream.Length;
-            var totalRead = 0L;
 
             // Calculate total number of chunks for progress tracking
             var totalChunks = (fileSize + chunkSizeBytes - 1) / chunkSizeBytes;
 
-            // Lock for thread-safe stream writes
-            var streamLock = new object();
+            // Lock for thread-safe dest stream writes (multiple consumer threads)
+            var destLock = new object();
 
             // Use pipeline for efficient parallel encryption
             await _pipeline.EncryptAsync(
@@ -311,12 +314,15 @@ public sealed class FileEncryptor
                     var sourceBuffer = ArrayPool<byte>.Shared.Rent(chunkSizeBytes);
                     try
                     {
-                        int bytesRead = await Task.Run(() => sourceStream.Read(sourceBuffer, 0, chunkSizeBytes), cancellationToken).ConfigureAwait(false);
+                        // ProducerAsync calls this sequentially with chunkIndex = 0, 1, 2...
+                        // So sourceStream.Read is never called in parallel
+                        int bytesRead = sourceStream.Read(sourceBuffer, 0, chunkSizeBytes);
                         if (bytesRead == 0)
                             return null;
 
-                        var isLast = totalRead + bytesRead >= fileSize;
-                        totalRead += bytesRead;
+                        // Calculate isLastChunk based on whether we've reached file end
+                        var remainingInFile = fileSize - (chunkIndex * (long)chunkSizeBytes + bytesRead);
+                        var isLast = remainingInFile <= 0;
 
                         return new UnencryptedChunk(
                             Index: chunkIndex,
@@ -330,9 +336,12 @@ public sealed class FileEncryptor
                 },
                 async (encryptedChunk) =>
                 {
+                    // Multiple consumer threads may call this at same time
+                    // Writer also calls this, and it buffers/reorders
+                    // Lock protects destStream.Write from concurrent access
                     await Task.Run(() =>
                     {
-                        lock (streamLock)
+                        lock (destLock)
                         {
                             WriteEncryptedChunk(destStream, encryptedChunk);
                         }
@@ -342,9 +351,6 @@ public sealed class FileEncryptor
                 noncePrefix,
                 totalChunks: totalChunks,
                 cancellationToken: cancellationToken);
-
-            if (totalRead != fileSize)
-                throw new InvalidOperationException($"File read incomplete: expected {fileSize} bytes, got {totalRead}.");
 
             CryptographicOperations.ZeroMemory(masterKey);
         }
