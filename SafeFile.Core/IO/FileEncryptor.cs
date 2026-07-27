@@ -31,6 +31,9 @@ public sealed class FileEncryptor
         ArgumentNullException.ThrowIfNull(destinationPath);
         ArgumentNullException.ThrowIfNull(passwordBytes);
 
+        if (passwordBytes.Length == 0)
+            throw new ArgumentException("Password cannot be empty.", nameof(passwordBytes));
+
         if (!Directory.Exists(sourceFolderPath))
             throw new DirectoryNotFoundException($"Source folder not found: {sourceFolderPath}");
 
@@ -69,7 +72,7 @@ public sealed class FileEncryptor
                 encryptedFileName,
                 masterKey,
                 noncePrefix,
-                -1,
+                0,  // Filename is special chunk 0 (before data chunks)
                 true);
 
             WriteEncryptedFileNameChunk(destStream, encryptedFileNameChunk);
@@ -142,6 +145,9 @@ public sealed class FileEncryptor
         ArgumentNullException.ThrowIfNull(sourcePath);
         ArgumentNullException.ThrowIfNull(destinationFolder);
         ArgumentNullException.ThrowIfNull(passwordBytes);
+
+        if (passwordBytes.Length == 0)
+            throw new ArgumentException("Password cannot be empty.", nameof(passwordBytes));
 
         if (!File.Exists(sourcePath))
             throw new FileNotFoundException($"Source file not found: {sourcePath}");
@@ -337,6 +343,9 @@ public sealed class FileEncryptor
         ArgumentNullException.ThrowIfNull(destinationPath);
         ArgumentNullException.ThrowIfNull(passwordBytes);
 
+        if (passwordBytes.Length == 0)
+            throw new ArgumentException("Password cannot be empty.", nameof(passwordBytes));
+
         if (!File.Exists(sourcePath))
             throw new FileNotFoundException($"Source file not found: {sourcePath}");
 
@@ -416,13 +425,11 @@ public sealed class FileEncryptor
     }
 
     /// <summary>
-    /// Writes encrypted filename chunk with 2-byte length prefix for safe parsing.
-    /// Format: [length:2B][nonceSize:4B][nonce:nonceSize][ciphertextSize:4B][ciphertext:ciphertextSize][tag:16B]
+    /// Writes encrypted filename chunk using standard encrypted chunk format.
+    /// No special prefix - uses the same format as WriteEncryptedChunk for consistency.
     /// </summary>
     private static void WriteEncryptedFileNameChunk(Stream stream, EncryptedChunk chunk)
     {
-        var ciphertextSize = (ushort)chunk.Ciphertext.Length;
-        stream.Write(BitConverter.GetBytes(ciphertextSize));
         WriteEncryptedChunk(stream, chunk);
     }
 
@@ -461,25 +468,10 @@ public sealed class FileEncryptor
     }
 
     /// <summary>
-    /// Reads encrypted filename chunk with 2-byte length prefix validation.
+    /// Reads encrypted filename chunk using standard encrypted chunk format.
     /// </summary>
     private static EncryptedChunk? ReadEncryptedFileNameChunk(Stream stream)
     {
-        Span<byte> lengthBuffer = stackalloc byte[2];
-        if (stream.Read(lengthBuffer) < 2)
-            return null;
-
-        var ciphertextSize = BitConverter.ToUInt16(lengthBuffer);
-        if (ciphertextSize == 0)
-            throw new InvalidDataException($"Invalid encrypted filename size: {ciphertextSize}");
-
-        var chunk = ReadEncryptedChunk(stream);
-        if (chunk is null)
-            throw new InvalidDataException("Unexpected end of stream while reading encrypted filename chunk.");
-
-        if (chunk.Ciphertext.Length != ciphertextSize)
-            throw new InvalidDataException($"Encrypted filename size mismatch: expected {ciphertextSize}, got {chunk.Ciphertext.Length}");
-
-        return chunk;
+        return ReadEncryptedChunk(stream);
     }
 }

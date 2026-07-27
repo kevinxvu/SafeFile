@@ -23,6 +23,7 @@ public sealed class CryptoPipeline
         Func<EncryptedChunk, Task> outputWriter,
         byte[] masterKey,
         byte[] noncePrefix,
+        long? totalChunks = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(sourceReader);
@@ -36,8 +37,24 @@ public sealed class CryptoPipeline
         if (noncePrefix.Length != 4)
             throw new ArgumentException("Nonce prefix must be 4 bytes.", nameof(noncePrefix));
 
-        var unencryptedChannel = Channel.CreateUnbounded<UnencryptedChunk>();
-        var encryptedChannel = Channel.CreateUnbounded<EncryptedChunk>();
+        // Update total chunks for progress tracking
+        if (totalChunks.HasValue && totalChunks.Value > 0)
+        {
+            _totalChunksExpected = totalChunks.Value;
+        }
+
+        // Use bounded channels to prevent unbounded buffer growth (OOM prevention)
+        var unencryptedChannelOptions = new BoundedChannelOptions(capacity: 100)
+        {
+            FullMode = BoundedChannelFullMode.Wait
+        };
+        var unencryptedChannel = Channel.CreateBounded<UnencryptedChunk>(unencryptedChannelOptions);
+
+        var encryptedChannelOptions = new BoundedChannelOptions(capacity: 100)
+        {
+            FullMode = BoundedChannelFullMode.Wait
+        };
+        var encryptedChannel = Channel.CreateBounded<EncryptedChunk>(encryptedChannelOptions);
 
         try
         {
@@ -62,6 +79,7 @@ public sealed class CryptoPipeline
         Func<long, Task<EncryptedChunk?>> sourceReader,
         Func<byte[], Task> outputWriter,
         byte[] masterKey,
+        long? totalChunks = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(sourceReader);
@@ -71,7 +89,18 @@ public sealed class CryptoPipeline
         if (masterKey.Length != 32)
             throw new ArgumentException("Master key must be 32 bytes.", nameof(masterKey));
 
-        var decryptedChannel = Channel.CreateUnbounded<DecryptedChunk>();
+        // Update total chunks for progress tracking
+        if (totalChunks.HasValue && totalChunks.Value > 0)
+        {
+            _totalChunksExpected = totalChunks.Value;
+        }
+
+        // Use bounded channel to prevent unbounded buffer growth (OOM prevention)
+        var decryptedChannelOptions = new BoundedChannelOptions(capacity: 100)
+        {
+            FullMode = BoundedChannelFullMode.Wait
+        };
+        var decryptedChannel = Channel.CreateBounded<DecryptedChunk>(decryptedChannelOptions);
 
         try
         {
@@ -177,6 +206,13 @@ public sealed class CryptoPipeline
                 {
                     buffer[chunk.Index] = chunk;
                 }
+                else if (chunk.Index < nextIndexToWrite)
+                {
+                    // Duplicate or out-of-order chunk that arrived after it should have been written
+                    throw new InvalidOperationException(
+                        $"Out-of-order chunk received: chunk index {chunk.Index} is less than next expected index {nextIndexToWrite}. " +
+                        $"This indicates data corruption or a timing error in the encryption pipeline.");
+                }
             }
 
             if (buffer.Count > 0)
@@ -247,6 +283,13 @@ public sealed class CryptoPipeline
                 else if (item.Index > nextIndexToWrite)
                 {
                     buffer[item.Index] = item;
+                }
+                else if (item.Index < nextIndexToWrite)
+                {
+                    // Duplicate or out-of-order chunk that arrived after it should have been written
+                    throw new InvalidOperationException(
+                        $"Out-of-order chunk received: chunk index {item.Index} is less than next expected index {nextIndexToWrite}. " +
+                        $"This indicates data corruption or a timing error in the decryption pipeline.");
                 }
             }
         }
