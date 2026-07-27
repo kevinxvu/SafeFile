@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Buffers.Binary;
 using System.Security.Cryptography;
 using SafeFile.Core.Crypto;
 using SafeFile.Core.Format;
@@ -32,6 +33,7 @@ public sealed class FileEncryptor
         ArgumentNullException.ThrowIfNull(passwordBytes);
 
         if (passwordBytes.Length == 0)
+            throw new ArgumentException("Password cannot be empty.", nameof(passwordBytes));
             throw new ArgumentException("Password cannot be empty.", nameof(passwordBytes));
 
         if (!Directory.Exists(sourceFolderPath))
@@ -173,10 +175,14 @@ public sealed class FileEncryptor
                 if (encryptedFileNameChunk is null)
                     throw new InvalidDataException("Missing encrypted filename chunk in vault file.");
 
+                // Validate filename chunk index
+                if (encryptedFileNameChunk.Index != 0)
+                    throw new InvalidDataException($"Expected filename chunk index 0, got {encryptedFileNameChunk.Index}.");
+
                 var decryptedFileName = aesGcm.DecryptChunk(encryptedFileNameChunk, masterKey);
 
                 var memoryStream = new MemoryStream();
-                long chunkIndex = 0;
+                long expectedChunkIndex = 1;  // Data chunks start at index 1
 
                 while (true)
                 {
@@ -184,10 +190,16 @@ public sealed class FileEncryptor
                     if (encryptedChunk is null)
                         break;
 
+                    // Validate chunk index matches expected order
+                    if (encryptedChunk.Index != expectedChunkIndex)
+                        throw new InvalidDataException(
+                            $"Chunk index mismatch: expected {expectedChunkIndex}, got {encryptedChunk.Index}. " +
+                            $"This indicates file corruption or tampering.");
+
                     var plaintext = aesGcm.DecryptChunk(encryptedChunk, masterKey);
                     memoryStream.Write(plaintext);
 
-                    chunkIndex++;
+                    expectedChunkIndex++;
 
                     if (cancellationToken.IsCancellationRequested)
                         throw new OperationCanceledException();
@@ -234,7 +246,8 @@ public sealed class FileEncryptor
         if (!File.Exists(sourcePath))
             throw new FileNotFoundException($"Source file not found: {sourcePath}");
 
-        if (chunkSizeBytes <= 0)
+        if (passwordBytes.Length == 0)
+            throw new ArgumentException("Password cannot be empty.", nameof(passwordBytes));        if (chunkSizeBytes <= 0)
             throw new ArgumentOutOfRangeException(nameof(chunkSizeBytes), "Chunk size must be greater than zero.");
 
         var fileInfo = new FileInfo(sourcePath);
@@ -368,22 +381,32 @@ public sealed class FileEncryptor
                 if (encryptedFileNameChunk is null)
                     throw new InvalidDataException("Missing encrypted filename chunk in vault file.");
 
+                // Validate filename chunk index
+                if (encryptedFileNameChunk.Index != 0)
+                    throw new InvalidDataException($"Expected filename chunk index 0, got {encryptedFileNameChunk.Index}.");
+
                 var decryptedFileName = aesGcm.DecryptChunk(encryptedFileNameChunk, masterKey);
                 var originalFileName = System.Text.Encoding.UTF8.GetString(decryptedFileName);
 
                 using var destStream = new FileStream(destinationPath, FileMode.Create, FileAccess.Write, FileShare.None);
 
-                long chunkIndex = 0;
+                long expectedChunkIndex = 1;  // Data chunks start at index 1
                 while (true)
                 {
                     var encryptedChunk = ReadEncryptedChunk(sourceStream);
                     if (encryptedChunk is null)
                         break;
 
+                    // Validate chunk index matches expected order
+                    if (encryptedChunk.Index != expectedChunkIndex)
+                        throw new InvalidDataException(
+                            $"Chunk index mismatch: expected {expectedChunkIndex}, got {encryptedChunk.Index}. " +
+                            $"This indicates file corruption or tampering.");
+
                     var plaintext = aesGcm.DecryptChunk(encryptedChunk, masterKey);
                     destStream.Write(plaintext);
 
-                    chunkIndex++;
+                    expectedChunkIndex++;
 
                     if (cancellationToken.IsCancellationRequested)
                         throw new OperationCanceledException();
@@ -413,15 +436,19 @@ public sealed class FileEncryptor
 
     private static void WriteEncryptedChunk(Stream stream, EncryptedChunk chunk)
     {
-        var nonceSize = chunk.NoncePrefix.Length;
-        var ciphertextSize = chunk.Ciphertext.Length;
-        var tagSize = chunk.Tag.Length;
+        // Write full nonce (4-byte prefix + 8-byte chunk index = 12 bytes)
+        var fullNonce = new byte[12];
+        chunk.NoncePrefix.CopyTo(fullNonce, 0);
+        BinaryPrimitives.WriteUInt64LittleEndian(fullNonce.AsSpan(4, 8), (ulong)chunk.Index);
 
-        stream.Write(BitConverter.GetBytes(nonceSize));
-        stream.Write(chunk.NoncePrefix);
+        var ciphertextSize = chunk.Ciphertext.Length;
+
+        stream.Write(BitConverter.GetBytes(12));  // Full nonce size is always 12
+        stream.Write(fullNonce);
         stream.Write(BitConverter.GetBytes(ciphertextSize));
         stream.Write(chunk.Ciphertext);
         stream.Write(chunk.Tag);
+        stream.WriteByte(chunk.IsLastChunk ? (byte)1 : (byte)0);  // Write isLastChunk flag
     }
 
     /// <summary>
@@ -459,12 +486,28 @@ public sealed class FileEncryptor
         if (stream.Read(tag) < 16)
             throw new InvalidDataException("Unexpected end of stream while reading authentication tag.");
 
+        // Read isLastChunk flag (1 byte)
+        int isLastChunkByte = stream.ReadByte();
+        if (isLastChunkByte == -1)
+            throw new InvalidDataException("Unexpected end of stream while reading isLastChunk flag.");
+        var isLastChunk = isLastChunkByte == 1;
+
+        // Extract chunk index from nonce (bytes 4-11 contain the chunk index as uint64)
+        if (nonceSize < 12)
+            throw new InvalidDataException($"Nonce must be at least 12 bytes, got {nonceSize}.");
+
+        var noncePrefix = new byte[4];
+        Array.Copy(nonce, 0, noncePrefix, 0, 4);
+
+        var chunkIndexBytes = nonce.AsSpan(4, 8);
+        var chunkIndex = (long)BinaryPrimitives.ReadUInt64LittleEndian(chunkIndexBytes);
+
         return new EncryptedChunk(
-            Index: 0,
-            NoncePrefix: nonce,
+            Index: chunkIndex,
+            NoncePrefix: noncePrefix,
             Ciphertext: ciphertext,
             Tag: tag,
-            IsLastChunk: false);
+            IsLastChunk: isLastChunk);
     }
 
     /// <summary>

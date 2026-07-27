@@ -9,6 +9,16 @@ namespace SafeFile.Core.IO;
 public sealed class PasswordValidator
 {
     public const int ChecksumSize = 4; // First 4 bytes of HMAC-SHA256 hash
+    public const int MinPasswordLength = 8;
+
+    /// <summary>
+    /// Validate that a password string meets the minimum length requirement.
+    /// </summary>
+    public static bool IsPasswordLengthValid(string password)
+    {
+        ArgumentNullException.ThrowIfNull(password);
+        return password.Length >= MinPasswordLength;
+    }
 
     /// <summary>
     /// Compute a password checksum using HMAC-SHA256(password, salt).
