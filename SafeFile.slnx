@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="SafeFile.Core/SafeFile.Core.csproj" />
+  <Project Path="SafeFile/SafeFile.csproj" />
+</Solution>
