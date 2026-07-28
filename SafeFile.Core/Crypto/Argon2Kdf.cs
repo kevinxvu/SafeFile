@@ -8,6 +8,10 @@ public sealed class Argon2Kdf
 {
     public const int SaltSize = 16;
     public const int KeySize = 32;
+    public const int MinimumMemorySizeKb = 16_384;
+    public const int MaximumMemorySizeKb = 262_144;
+    public const int MaximumIterations = 20;
+    public const int MaximumParallelism = 16;
 
     public static readonly Argon2Parameters DefaultParameters = new(
         MemorySizeKb: 65_536,
@@ -27,13 +31,14 @@ public sealed class Argon2Kdf
         var effectiveParameters = parameters ?? DefaultParameters;
         effectiveParameters.Validate();
 
+        var passwordCopy = passwordBytes.ToArray();
         GCHandle passwordHandle = default;
 
         try
         {
-            passwordHandle = GCHandle.Alloc(passwordBytes, GCHandleType.Pinned);
+            passwordHandle = GCHandle.Alloc(passwordCopy, GCHandleType.Pinned);
 
-            var argon2 = new Argon2id(passwordBytes)
+            var argon2 = new Argon2id(passwordCopy)
             {
                 Salt = salt,
                 MemorySize = effectiveParameters.MemorySizeKb,
@@ -50,7 +55,7 @@ public sealed class Argon2Kdf
                 passwordHandle.Free();
             }
 
-            CryptographicOperations.ZeroMemory(passwordBytes);
+            CryptographicOperations.ZeroMemory(passwordCopy);
         }
     }
 
@@ -66,19 +71,26 @@ public sealed record Argon2Parameters(int MemorySizeKb, int Iterations, int Para
 {
     public void Validate()
     {
-        if (MemorySizeKb <= 0)
+        if (MemorySizeKb < Argon2Kdf.MinimumMemorySizeKb ||
+            MemorySizeKb > Argon2Kdf.MaximumMemorySizeKb)
         {
-            throw new ArgumentOutOfRangeException(nameof(MemorySizeKb), "Memory size must be greater than zero.");
+            throw new ArgumentOutOfRangeException(
+                nameof(MemorySizeKb),
+                "Memory size must be between 16 MiB and 256 MiB.");
         }
 
-        if (Iterations <= 0)
+        if (Iterations < 1 || Iterations > Argon2Kdf.MaximumIterations)
         {
-            throw new ArgumentOutOfRangeException(nameof(Iterations), "Iterations must be greater than zero.");
+            throw new ArgumentOutOfRangeException(
+                nameof(Iterations),
+                $"Iterations must be between 1 and {Argon2Kdf.MaximumIterations}.");
         }
 
-        if (Parallelism <= 0)
+        if (Parallelism < 1 || Parallelism > Argon2Kdf.MaximumParallelism)
         {
-            throw new ArgumentOutOfRangeException(nameof(Parallelism), "Parallelism must be greater than zero.");
+            throw new ArgumentOutOfRangeException(
+                nameof(Parallelism),
+                $"Parallelism must be between 1 and {Argon2Kdf.MaximumParallelism}.");
         }
     }
 }

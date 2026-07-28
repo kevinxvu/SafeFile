@@ -1,4 +1,5 @@
 using System.Text.Json;
+using SafeFile.Core.Crypto;
 using SafeFile.Core.Models;
 
 namespace SafeFile.Core.Services;
@@ -74,7 +75,7 @@ public sealed class SettingsService
 
     private static void ValidateSettings(AppSettings settings)
     {
-        if (settings.DefaultChunkSizeMb < 1 || settings.DefaultChunkSizeMb > 1024)
+        if (settings.DefaultChunkSizeMb < 1 || settings.DefaultChunkSizeMb > 16)
             settings.DefaultChunkSizeMb = 1;
 
         if (settings.MaxThreads < 1)
@@ -86,17 +87,20 @@ public sealed class SettingsService
         if (settings.Argon2MemorySizeKb < 16_384)
             settings.Argon2MemorySizeKb = 16_384;
 
+        if (settings.Argon2MemorySizeKb > Argon2Kdf.MaximumMemorySizeKb)
+            settings.Argon2MemorySizeKb = Argon2Kdf.MaximumMemorySizeKb;
+
         if (settings.Argon2Iterations < 1)
             settings.Argon2Iterations = 1;
 
-        if (settings.Argon2Iterations > 256)
-            settings.Argon2Iterations = 256;
+        if (settings.Argon2Iterations > Argon2Kdf.MaximumIterations)
+            settings.Argon2Iterations = Argon2Kdf.MaximumIterations;
 
         if (settings.Argon2Parallelism < 1)
             settings.Argon2Parallelism = 1;
 
-        if (settings.Argon2Parallelism > Environment.ProcessorCount * 4)
-            settings.Argon2Parallelism = Environment.ProcessorCount;
+        if (settings.Argon2Parallelism > Argon2Kdf.MaximumParallelism)
+            settings.Argon2Parallelism = Argon2Kdf.MaximumParallelism;
 
         if (settings.MinPasswordLength < 6)
             settings.MinPasswordLength = 6;

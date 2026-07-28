@@ -1,9 +1,11 @@
 using System.Buffers;
 using System.Buffers.Binary;
+using System.IO.Pipelines;
 using System.Security.Cryptography;
 using SafeFile.Core.Crypto;
 using SafeFile.Core.Format;
 using SafeFile.Core.IO;
+using SafeFile.Core.Models;
 using SafeFile.Core.Pipeline;
 
 namespace SafeFile.Core.IO;
@@ -13,51 +15,89 @@ public sealed class FileEncryptor
     private readonly Argon2Kdf _kdf = new();
     private readonly CryptoPipeline _pipeline;
     private readonly IProgress<double>? _progress;
+    private readonly IProgress<PerFileProgress>? _perFileProgress;
+    private readonly int _minimumPasswordLength;
+    private readonly bool _encryptFileNames;
 
-    public FileEncryptor(int consumerThreads = -1, IProgress<double>? progress = null)
+    public FileEncryptor(
+        int consumerThreads = -1,
+        IProgress<double>? progress = null,
+        AppSettings? settings = null,
+        IProgress<PerFileProgress>? perFileProgress = null)
     {
         _progress = progress;
+        _perFileProgress = perFileProgress;
+        var effectiveSettings = settings ?? AppSettings.GetDefaults();
+        _minimumPasswordLength = effectiveSettings.MinPasswordLength;
+        _encryptFileNames = effectiveSettings.EncryptFileNames;
+        if (_minimumPasswordLength < 1 || _minimumPasswordLength > 128)
+            throw new ArgumentOutOfRangeException(nameof(settings), "Minimum password length must be between 1 and 128.");
         _pipeline = new CryptoPipeline(consumerThreads, progress);
     }
 
-    public async Task EncryptFolderZipAsync(
+    public async Task<string> EncryptFolderZipAsync(
         string sourceFolderPath,
         string destinationPath,
         byte[] passwordBytes,
         int chunkSizeBytes = 1_048_576,
         Argon2Parameters? kdfParams = null,
+        bool? encryptFileName = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(sourceFolderPath);
         ArgumentNullException.ThrowIfNull(destinationPath);
         ArgumentNullException.ThrowIfNull(passwordBytes);
 
-        if (passwordBytes.Length == 0)
-            throw new ArgumentException("Password cannot be empty.", nameof(passwordBytes));
+        ValidatePasswordForEncryption(passwordBytes);
 
         if (!Directory.Exists(sourceFolderPath))
             throw new DirectoryNotFoundException($"Source folder not found: {sourceFolderPath}");
+        ValidateChunkSize(chunkSizeBytes);
+        _pipeline.ValidateMemoryBudget(chunkSizeBytes);
+        EnsureDestinationOutsideSourceFolder(sourceFolderPath, destinationPath);
+        var shouldEncryptFileName = encryptFileName ?? _encryptFileNames;
+        var actualDestinationPath = destinationPath;
 
-        var folderName = Path.GetFileName(sourceFolderPath);
+        var folderName = Path.GetFileName(Path.TrimEndingDirectorySeparator(sourceFolderPath));
         var encryptedFileName = System.Text.Encoding.UTF8.GetBytes(folderName + ".zip");
+        var estimatedInputBytes = StreamZipper.GetInputSize(sourceFolderPath);
+        long sourceBytesRead = 0;
+        _progress?.Report(0);
+        var masterKey = Array.Empty<byte>();
 
         try
         {
-            var zipStream = await StreamZipper.CreateZipStreamAsync(sourceFolderPath).ConfigureAwait(false);
-
-            using var destStream = new FileStream(destinationPath, FileMode.Create, FileAccess.Write, FileShare.None);
-
             var salt = Argon2Kdf.GenerateSalt();
             var noncePrefix = new byte[4];
             RandomNumberGenerator.Fill(noncePrefix);
 
             var effectiveKdfParams = kdfParams ?? Argon2Kdf.DefaultParameters;
-            var masterKey = _kdf.DeriveKey(passwordBytes, salt, effectiveKdfParams);
-            var passwordChecksum = PasswordValidator.ComputeChecksum(passwordBytes, salt);
+            masterKey = await DeriveKeyAsync(
+                passwordBytes,
+                salt,
+                effectiveKdfParams,
+                cancellationToken).ConfigureAwait(false);
+            var encryptedFileNameChunk = new AesGcmEngine().EncryptChunk(
+                encryptedFileName,
+                masterKey,
+                noncePrefix,
+                0,
+                true);
+            if (shouldEncryptFileName)
+                actualDestinationPath = GetEncryptedVaultPath(
+                    destinationPath,
+                    encryptedFileName,
+                    masterKey,
+                    salt,
+                    effectiveKdfParams);
 
+            using var destStream = new FileStream(
+                actualDestinationPath, FileMode.Create, FileAccess.Write, FileShare.None);
+            var passwordChecksum = PasswordValidator.ComputeChecksum(masterKey, salt);
             var header = new VaultHeader
             {
                 Mode = VaultMode.Zip,
+                EncryptFileNames = shouldEncryptFileName,
                 KdfParameters = effectiveKdfParams,
                 Salt = salt,
                 NoncePrefix = noncePrefix,
@@ -67,76 +107,117 @@ public sealed class FileEncryptor
 
             header.WriteTo(destStream);
 
-            var encryptedFileNameChunk = new AesGcmEngine().EncryptChunk(
-                encryptedFileName,
-                masterKey,
-                noncePrefix,
-                0,  // Filename is chunk 0
-                true);
-
             WriteEncryptedFileNameChunk(destStream, encryptedFileNameChunk);
 
-            var zipSize = zipStream.Length;
+                var pauseWriterThreshold = Math.Clamp(
+                    (long)chunkSizeBytes * 4,
+                    1_048_576,
+                    67_108_864);
+                var pipe = new Pipe(new PipeOptions(
+                    pauseWriterThreshold: pauseWriterThreshold,
+                    resumeWriterThreshold: pauseWriterThreshold / 2,
+                    useSynchronizationContext: false));
+                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                var pipeToken = linkedCts.Token;
+                var zipProducerTask = ProduceZipToPipeAsync(
+                    sourceFolderPath,
+                    pipe.Writer,
+                    bytesRead =>
+                    {
+                        var processedBytes = Interlocked.Add(ref sourceBytesRead, bytesRead);
+                        if (estimatedInputBytes > 0)
+                        {
+                            var progress = Math.Min(
+                                0.99,
+                                (double)processedBytes / estimatedInputBytes * 0.99);
+                            _progress?.Report(progress);
+                        }
+                    },
+                    pipeToken);
+                await using var zipReadStream = pipe.Reader.AsStream(leaveOpen: true);
+                int? prefetchedByte = null;
 
-            // Calculate total chunks for accurate progress reporting
-            var totalChunks = (zipSize + chunkSizeBytes - 1) / chunkSizeBytes;
-
-            // Lock for thread-safe dest stream writes (multiple consumer threads)
-            var destLock = new object();
-
-            // Use pipeline for efficient parallel encryption
-            await _pipeline.EncryptAsync(
-                async (chunkIndex) =>
+                try
                 {
-                    var zipBuffer = ArrayPool<byte>.Shared.Rent(chunkSizeBytes);
-                    try
-                    {
-                        // ProducerAsync calls this sequentially with chunkIndex = 0, 1, 2...
-                        // So zipStream.Read is never called in parallel
-                        int bytesRead = zipStream.Read(zipBuffer, 0, chunkSizeBytes);
-                        if (bytesRead == 0)
-                            return null;
+                    await _pipeline.EncryptAsync(
+                        async (chunkIndex) =>
+                        {
+                            var zipBuffer = ArrayPool<byte>.Shared.Rent(chunkSizeBytes);
+                            try
+                            {
+                                var bytesRead = 0;
+                                if (prefetchedByte.HasValue)
+                                {
+                                    zipBuffer[bytesRead++] = (byte)prefetchedByte.Value;
+                                    prefetchedByte = null;
+                                }
 
-                        // Calculate isLastChunk based on whether we've reached stream end
-                        var remainingInZip = zipSize - (chunkIndex * (long)chunkSizeBytes + bytesRead);
-                        var isLast = remainingInZip <= 0;
+                                bytesRead += await ReadUpToChunkAsync(
+                                    zipReadStream,
+                                    zipBuffer.AsMemory(bytesRead, chunkSizeBytes - bytesRead),
+                                    pipeToken).ConfigureAwait(false);
 
-                        return new UnencryptedChunk(
-                            Index: chunkIndex,
-                            Data: zipBuffer.AsSpan(0, bytesRead).ToArray(),
-                            IsLastChunk: isLast);
-                    }
-                    finally
-                    {
-                        ArrayPool<byte>.Shared.Return(zipBuffer);
-                    }
-                },
-                async (encryptedChunk) =>
-                {
-                    // Multiple consumer threads may call this at same time
-                    // Lock protects destStream.Write from concurrent access
-                    await Task.Run(() =>
-                    {
-                        lock (destLock)
+                                if (bytesRead == 0)
+                                    return null;
+
+                                var lookAhead = new byte[1];
+                                var lookAheadRead = await zipReadStream.ReadAsync(
+                                    lookAhead, pipeToken).ConfigureAwait(false);
+                                var isLastChunk = lookAheadRead == 0;
+                                if (!isLastChunk)
+                                    prefetchedByte = lookAhead[0];
+
+                                return new UnencryptedChunk(
+                                    chunkIndex,
+                                    zipBuffer.AsSpan(0, bytesRead).ToArray(),
+                                    isLastChunk);
+                            }
+                            finally
+                            {
+                                ArrayPool<byte>.Shared.Return(zipBuffer);
+                            }
+                        },
+                        encryptedChunk =>
                         {
                             WriteEncryptedChunk(destStream, encryptedChunk);
-                        }
-                    }, cancellationToken).ConfigureAwait(false);
-                },
-                masterKey,
-                noncePrefix,
-                totalChunks: totalChunks,
-                cancellationToken: cancellationToken);
+                            return Task.CompletedTask;
+                        },
+                        masterKey,
+                        noncePrefix,
+                        startingIndex: 1,
+                        reportProgress: false,
+                        cancellationToken: pipeToken).ConfigureAwait(false);
 
-            CryptographicOperations.ZeroMemory(masterKey);
+                    await zipProducerTask.ConfigureAwait(false);
+                    _progress?.Report(1);
+                }
+                catch
+                {
+                    linkedCts.Cancel();
+                    pipe.Reader.CancelPendingRead();
+                    pipe.Writer.CancelPendingFlush();
+                    try
+                    {
+                        await zipProducerTask.ConfigureAwait(false);
+                    }
+                    catch
+                    {
+                    }
+
+                    throw;
+                }
+                finally
+                {
+                    await pipe.Reader.CompleteAsync().ConfigureAwait(false);
+                }
         }
         catch
         {
-            if (File.Exists(destinationPath))
+            if (File.Exists(actualDestinationPath))
             {
                 try
                 {
-                    File.Delete(destinationPath);
+                    File.Delete(actualDestinationPath);
                 }
                 catch
                 {
@@ -145,6 +226,13 @@ public sealed class FileEncryptor
 
             throw;
         }
+        finally
+        {
+            if (masterKey.Length > 0)
+                CryptographicOperations.ZeroMemory(masterKey);
+        }
+
+        return actualDestinationPath;
     }
 
     public async Task DecryptFolderZipAsync(
@@ -162,6 +250,7 @@ public sealed class FileEncryptor
 
         if (!File.Exists(sourcePath))
             throw new FileNotFoundException($"Source file not found: {sourcePath}");
+        EnsureDistinctPaths(sourcePath, destinationFolder);
 
         try
         {
@@ -171,16 +260,19 @@ public sealed class FileEncryptor
             if (header.Mode != VaultMode.Zip)
                 throw new InvalidDataException("Vault is not in Zip mode.");
 
-            // Validate password checksum early to fail fast on wrong password
-            if (!PasswordValidator.ValidateChecksum(header.PasswordChecksum, passwordBytes, header.Salt))
-                throw new InvalidOperationException("Invalid password or corrupted vault file (checksum mismatch).");
-
-            var masterKey = _kdf.DeriveKey(passwordBytes, header.Salt, header.KdfParameters);
+            var masterKey = await DeriveKeyAsync(
+                passwordBytes,
+                header.Salt,
+                header.KdfParameters,
+                cancellationToken).ConfigureAwait(false);
             var aesGcm = new AesGcmEngine();
 
             try
             {
-                var encryptedFileNameChunk = ReadEncryptedFileNameChunk(sourceStream);
+                if (!PasswordValidator.ValidateChecksum(header.PasswordChecksum, masterKey, header.Salt))
+                    throw new InvalidOperationException("Invalid password or corrupted vault file (key verifier mismatch).");
+
+                var encryptedFileNameChunk = ReadEncryptedFileNameChunk(sourceStream, header);
                 if (encryptedFileNameChunk is null)
                     throw new InvalidDataException("Missing encrypted filename chunk in vault file.");
 
@@ -190,33 +282,45 @@ public sealed class FileEncryptor
 
                 var decryptedFileName = aesGcm.DecryptChunk(encryptedFileNameChunk, masterKey);
 
-                var memoryStream = new MemoryStream();
+                var tempZipPath = Path.Combine(Path.GetTempPath(), $"SafeFile-{Guid.NewGuid():N}.zip");
                 long expectedChunkIndex = 1;  // Data chunks start at index 1
+                var sawLastChunk = false;
 
-                while (true)
+                try
                 {
-                    var encryptedChunk = ReadEncryptedChunk(sourceStream);
-                    if (encryptedChunk is null)
-                        break;
+                    await using (var tempZipStream = new FileStream(
+                        tempZipPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None,
+                        81_920, FileOptions.Asynchronous | FileOptions.DeleteOnClose))
+                    {
+                        while (true)
+                        {
+                            var encryptedChunk = ReadEncryptedChunk(sourceStream, header);
+                            if (encryptedChunk is null)
+                                break;
+                            if (sawLastChunk)
+                                throw new InvalidDataException("Vault contains data after the final chunk.");
+                            if (encryptedChunk.Index != expectedChunkIndex)
+                                throw new InvalidDataException(
+                                    $"Chunk index mismatch: expected {expectedChunkIndex}, got {encryptedChunk.Index}.");
 
-                    // Validate chunk index matches expected order
-                    if (encryptedChunk.Index != expectedChunkIndex)
-                        throw new InvalidDataException(
-                            $"Chunk index mismatch: expected {expectedChunkIndex}, got {encryptedChunk.Index}. " +
-                            $"This indicates file corruption or tampering.");
+                            var plaintext = aesGcm.DecryptChunk(encryptedChunk, masterKey);
+                            await tempZipStream.WriteAsync(plaintext, cancellationToken).ConfigureAwait(false);
+                            sawLastChunk = encryptedChunk.IsLastChunk;
+                            expectedChunkIndex++;
+                        }
 
-                    var plaintext = aesGcm.DecryptChunk(encryptedChunk, masterKey);
-                    memoryStream.Write(plaintext);
+                        if (!sawLastChunk)
+                            throw new InvalidDataException("Vault is truncated or has no final data chunk.");
 
-                    expectedChunkIndex++;
-
-                    if (cancellationToken.IsCancellationRequested)
-                        throw new OperationCanceledException();
+                        tempZipStream.Position = 0;
+                        await ExtractFolderAtomicallyAsync(
+                            tempZipStream, destinationFolder, cancellationToken).ConfigureAwait(false);
+                    }
                 }
-
-                memoryStream.Position = 0;
-                await StreamZipper.ExtractZipStreamAsync(memoryStream, destinationFolder).ConfigureAwait(false);
-                memoryStream.Dispose();
+                finally
+                {
+                    TryDeleteFile(tempZipPath);
+                }
             }
             finally
             {
@@ -225,28 +329,242 @@ public sealed class FileEncryptor
         }
         catch
         {
-            if (Directory.Exists(destinationFolder))
-            {
-                try
-                {
-                    Directory.Delete(destinationFolder, recursive: true);
-                }
-                catch
-                {
-                }
-            }
-
             throw;
         }
     }
 
-    public async Task EncryptFileAsync(
+    public Task<string> EncryptFileAsync(
         string sourcePath,
         string destinationPath,
         byte[] passwordBytes,
         int chunkSizeBytes = 1_048_576,
         Argon2Parameters? kdfParams = null,
+        bool? encryptFileName = null,
+        CancellationToken cancellationToken = default) =>
+        EncryptFileCoreAsync(
+            sourcePath,
+            destinationPath,
+            passwordBytes,
+            VaultMode.File,
+            chunkSizeBytes,
+            kdfParams,
+            cancellationToken,
+            progressCallback: null,
+            encryptFileNames: encryptFileName ?? _encryptFileNames);
+
+    public async Task<string> DecryptOutputFileNameAsync(
+        string encryptedOutputFileName,
+        byte[] passwordBytes,
         CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(encryptedOutputFileName);
+        ArgumentNullException.ThrowIfNull(passwordBytes);
+        if (passwordBytes.Length == 0)
+            throw new ArgumentException("Password cannot be empty.", nameof(passwordBytes));
+
+        var fileName = Path.GetFileName(encryptedOutputFileName);
+        if (!fileName.EndsWith(".safe", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("Encrypted output filename must end with .safe.");
+
+        var base64Url = fileName[..^".safe".Length]
+            .Replace('-', '+')
+            .Replace('_', '/');
+        var paddingLength = (4 - base64Url.Length % 4) % 4;
+        byte[] payload;
+        try
+        {
+            payload = Convert.FromBase64String(base64Url + new string('=', paddingLength));
+        }
+        catch (FormatException ex)
+        {
+            throw new InvalidDataException("Encrypted output filename is not valid Base64URL.", ex);
+        }
+
+        if (payload.Length is < 47 or > 187 ||
+            payload[0] != (byte)'S' ||
+            payload[1] != (byte)'F' ||
+            payload[2] != 1)
+        {
+            throw new InvalidDataException("Encrypted output filename has an invalid format.");
+        }
+
+        var kdfParameters = new Argon2Parameters(
+            BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(3, 4)),
+            BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(7, 4)),
+            BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(11, 4)));
+        try
+        {
+            kdfParameters.Validate();
+        }
+        catch (ArgumentOutOfRangeException ex)
+        {
+            throw new InvalidDataException(
+                "Encrypted output filename contains unsafe Argon2 parameters.", ex);
+        }
+
+        var salt = payload.AsSpan(15, Argon2Kdf.SaltSize).ToArray();
+        var ciphertextLength = payload.Length - 47;
+        var ciphertext = payload.AsSpan(31, ciphertextLength).ToArray();
+        var tag = payload.AsSpan(31 + ciphertextLength, AesGcmEngine.TagSize).ToArray();
+        var masterKey = await DeriveKeyAsync(
+            passwordBytes,
+            salt,
+            kdfParameters,
+            cancellationToken).ConfigureAwait(false);
+        var fileNameKey = DeriveOutputFileNameKey(masterKey);
+        try
+        {
+            var plaintext = new AesGcmEngine().DecryptChunk(
+                new EncryptedChunk(
+                    0,
+                    new byte[AesGcmEngine.NoncePrefixSize],
+                    ciphertext,
+                    tag,
+                    true),
+                fileNameKey);
+            try
+            {
+                var decryptedName =
+                    new System.Text.UTF8Encoding(false, true).GetString(plaintext);
+                ValidateStoredFileName(decryptedName);
+                return decryptedName;
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(plaintext);
+            }
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(fileNameKey);
+            CryptographicOperations.ZeroMemory(masterKey);
+        }
+    }
+
+    public async Task EncryptFolderPerFileAsync(
+        string sourceFolderPath,
+        string destinationFolderPath,
+        byte[] passwordBytes,
+        int chunkSizeBytes = 1_048_576,
+        Argon2Parameters? kdfParams = null,
+        bool? encryptFileNames = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(sourceFolderPath);
+        ArgumentNullException.ThrowIfNull(destinationFolderPath);
+        ArgumentNullException.ThrowIfNull(passwordBytes);
+
+        if (!Directory.Exists(sourceFolderPath))
+            throw new DirectoryNotFoundException($"Source folder not found: {sourceFolderPath}");
+        if (Directory.Exists(destinationFolderPath) || File.Exists(destinationFolderPath))
+            throw new IOException($"Destination already exists: {destinationFolderPath}");
+        ValidatePasswordForEncryption(passwordBytes);
+
+        ValidateChunkSize(chunkSizeBytes);
+        _pipeline.ValidateMemoryBudget(chunkSizeBytes);
+        EnsureDestinationOutsideSourceFolder(sourceFolderPath, destinationFolderPath);
+
+        var sourceRoot = Path.GetFullPath(sourceFolderPath);
+        var shouldEncryptFileNames = encryptFileNames ?? _encryptFileNames;
+        Directory.CreateDirectory(destinationFolderPath);
+
+        try
+        {
+            foreach (var sourceFile in EnumerateRegularFiles(new DirectoryInfo(sourceRoot)))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var relativePath = Path.GetRelativePath(sourceRoot, sourceFile.FullName);
+                var encryptedFileName = sourceFile.Name + ".safe";
+                var encryptedRelativePath = Path.Combine(
+                    Path.GetDirectoryName(relativePath) ?? string.Empty,
+                    encryptedFileName);
+                var encryptedPath = Path.Combine(destinationFolderPath, encryptedRelativePath);
+                Directory.CreateDirectory(
+                    Path.GetDirectoryName(encryptedPath)
+                    ?? throw new InvalidOperationException("Encrypted file has no parent directory."));
+
+                await EncryptFileCoreAsync(
+                    sourceFile.FullName,
+                    encryptedPath,
+                    passwordBytes,
+                    VaultMode.PerFile,
+                    chunkSizeBytes,
+                    kdfParams,
+                    cancellationToken,
+                    progress => _perFileProgress?.Report(
+                        new PerFileProgress(sourceFile.FullName, progress)),
+                    shouldEncryptFileNames).ConfigureAwait(false);
+            }
+        }
+        catch
+        {
+            TryDeleteDirectory(destinationFolderPath);
+            throw;
+        }
+    }
+
+    public async Task DecryptFolderPerFileAsync(
+        string sourceFolderPath,
+        string destinationFolderPath,
+        byte[] passwordBytes,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(sourceFolderPath);
+        ArgumentNullException.ThrowIfNull(destinationFolderPath);
+        ArgumentNullException.ThrowIfNull(passwordBytes);
+
+        if (!Directory.Exists(sourceFolderPath))
+            throw new DirectoryNotFoundException($"Source folder not found: {sourceFolderPath}");
+        if (Directory.Exists(destinationFolderPath) || File.Exists(destinationFolderPath))
+            throw new IOException($"Destination already exists: {destinationFolderPath}");
+        if (passwordBytes.Length == 0)
+            throw new ArgumentException("Password cannot be empty.", nameof(passwordBytes));
+
+        EnsureDestinationOutsideSourceFolder(sourceFolderPath, destinationFolderPath);
+
+        var sourceRoot = Path.GetFullPath(sourceFolderPath);
+        Directory.CreateDirectory(destinationFolderPath);
+
+        try
+        {
+            foreach (var encryptedFile in EnumerateRegularFiles(new DirectoryInfo(sourceRoot)))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!encryptedFile.Name.EndsWith(".safe", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var relativePath = Path.GetRelativePath(sourceRoot, encryptedFile.FullName);
+                var decryptedRelativePath = relativePath[..^".safe".Length];
+                var decryptedPath = Path.Combine(destinationFolderPath, decryptedRelativePath);
+                Directory.CreateDirectory(
+                    Path.GetDirectoryName(decryptedPath)
+                    ?? throw new InvalidOperationException("Decrypted file has no parent directory."));
+
+                await DecryptFileCoreAsync(
+                    encryptedFile.FullName,
+                    decryptedPath,
+                    passwordBytes,
+                    VaultMode.PerFile,
+                    cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch
+        {
+            TryDeleteDirectory(destinationFolderPath);
+            throw;
+        }
+    }
+
+    private async Task<string> EncryptFileCoreAsync(
+        string sourcePath,
+        string destinationPath,
+        byte[] passwordBytes,
+        VaultMode vaultMode,
+        int chunkSizeBytes,
+        Argon2Parameters? kdfParams,
+        CancellationToken cancellationToken,
+        Action<double>? progressCallback,
+        bool encryptFileNames)
     {
         ArgumentNullException.ThrowIfNull(sourcePath);
         ArgumentNullException.ThrowIfNull(destinationPath);
@@ -254,113 +572,119 @@ public sealed class FileEncryptor
 
         if (!File.Exists(sourcePath))
             throw new FileNotFoundException($"Source file not found: {sourcePath}");
+        EnsureDistinctPaths(sourcePath, destinationPath);
 
-        if (passwordBytes.Length == 0)
-            throw new ArgumentException("Password cannot be empty.", nameof(passwordBytes));
+        ValidatePasswordForEncryption(passwordBytes);
 
-        if (chunkSizeBytes <= 0)
-            throw new ArgumentOutOfRangeException(nameof(chunkSizeBytes), "Chunk size must be greater than zero.");
+        ValidateChunkSize(chunkSizeBytes);
+        _pipeline.ValidateMemoryBudget(chunkSizeBytes);
 
         var fileInfo = new FileInfo(sourcePath);
         var originalFileName = fileInfo.Name;
         var encryptedFileName = System.Text.Encoding.UTF8.GetBytes(originalFileName);
+        using var sourceStream = new FileStream(
+            sourcePath,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read);
+        var fileSize = sourceStream.Length;
+        var actualDestinationPath = destinationPath;
+        var masterKey = Array.Empty<byte>();
 
         try
         {
-            using var destStream = new FileStream(destinationPath, FileMode.Create, FileAccess.Write, FileShare.None);
-
             var salt = Argon2Kdf.GenerateSalt();
             var noncePrefix = new byte[4];
             RandomNumberGenerator.Fill(noncePrefix);
 
             var effectiveKdfParams = kdfParams ?? Argon2Kdf.DefaultParameters;
-            var masterKey = _kdf.DeriveKey(passwordBytes, salt, effectiveKdfParams);
+            masterKey = await DeriveKeyAsync(
+                passwordBytes,
+                salt,
+                effectiveKdfParams,
+                cancellationToken).ConfigureAwait(false);
+            var aesGcm = new AesGcmEngine();
+            var encryptedFileNameChunk = aesGcm.EncryptChunk(
+                encryptedFileName, masterKey, noncePrefix, 0, true);
+            if (encryptFileNames)
+                actualDestinationPath = GetEncryptedVaultPath(
+                    destinationPath,
+                    encryptedFileName,
+                    masterKey,
+                    salt,
+                    effectiveKdfParams);
 
+            EnsureDistinctPaths(sourcePath, actualDestinationPath);
+            using var destStream = new FileStream(
+                actualDestinationPath, FileMode.Create, FileAccess.Write, FileShare.None);
+            var passwordChecksum = PasswordValidator.ComputeChecksum(masterKey, salt);
             var header = new VaultHeader
             {
-                Mode = VaultMode.File,
+                Mode = vaultMode,
+                EncryptFileNames = encryptFileNames,
                 KdfParameters = effectiveKdfParams,
                 Salt = salt,
                 NoncePrefix = noncePrefix,
-                ChunkSize = chunkSizeBytes
+                ChunkSize = chunkSizeBytes,
+                PasswordChecksum = passwordChecksum
             };
 
             header.WriteTo(destStream);
 
-            var aesGcm = new AesGcmEngine();
-
-            var encryptedFileNameChunk = aesGcm.EncryptChunk(
-                encryptedFileName,
-                masterKey,
-                noncePrefix,
-                0,  // Filename chunk always has index 0
-                true);
-
             WriteEncryptedFileNameChunk(destStream, encryptedFileNameChunk);
 
-            using var sourceStream = new FileStream(sourcePath, FileMode.Open, FileAccess.Read, FileShare.Read);
-            var fileSize = sourceStream.Length;
-
-            // Calculate total number of chunks for progress tracking
             var totalChunks = (fileSize + chunkSizeBytes - 1) / chunkSizeBytes;
 
-            // Lock for thread-safe dest stream writes (multiple consumer threads)
-            var destLock = new object();
-
-            // Use pipeline for efficient parallel encryption
             await _pipeline.EncryptAsync(
-                async (chunkIndex) =>
-                {
-                    var sourceBuffer = ArrayPool<byte>.Shared.Rent(chunkSizeBytes);
-                    try
+                    async (chunkIndex) =>
                     {
-                        // ProducerAsync calls this sequentially with chunkIndex = 0, 1, 2...
-                        // So sourceStream.Read is never called in parallel
-                        int bytesRead = sourceStream.Read(sourceBuffer, 0, chunkSizeBytes);
-                        if (bytesRead == 0)
-                            return null;
-
-                        // Calculate isLastChunk based on whether we've reached file end
-                        var remainingInFile = fileSize - (chunkIndex * (long)chunkSizeBytes + bytesRead);
-                        var isLast = remainingInFile <= 0;
-
-                        return new UnencryptedChunk(
-                            Index: chunkIndex,
-                            Data: sourceBuffer.AsSpan(0, bytesRead).ToArray(),
-                            IsLastChunk: isLast);
-                    }
-                    finally
-                    {
-                        ArrayPool<byte>.Shared.Return(sourceBuffer);
-                    }
-                },
-                async (encryptedChunk) =>
-                {
-                    // Multiple consumer threads may call this at same time
-                    // Writer also calls this, and it buffers/reorders
-                    // Lock protects destStream.Write from concurrent access
-                    await Task.Run(() =>
-                    {
-                        lock (destLock)
+                        var sourceBuffer = ArrayPool<byte>.Shared.Rent(chunkSizeBytes);
+                        try
                         {
-                            WriteEncryptedChunk(destStream, encryptedChunk);
-                        }
-                    }, cancellationToken).ConfigureAwait(false);
-                },
-                masterKey,
-                noncePrefix,
-                totalChunks: totalChunks,
-                cancellationToken: cancellationToken);
+                            var dataChunkIndex = chunkIndex - 1;
+                            var remainingBytes = fileSize - sourceStream.Position;
+                            if (remainingBytes == 0 && fileSize == 0 && dataChunkIndex == 0)
+                                return new UnencryptedChunk(chunkIndex, Array.Empty<byte>(), true);
+                            if (remainingBytes <= 0)
+                                return null;
 
-            CryptographicOperations.ZeroMemory(masterKey);
+                            var requestedBytes = (int)Math.Min(chunkSizeBytes, remainingBytes);
+                            int bytesRead = ReadUpToChunk(sourceStream, sourceBuffer, requestedBytes);
+                            if (bytesRead == 0)
+                                throw new IOException("Source file was truncated while it was being encrypted.");
+
+                            return new UnencryptedChunk(
+                                chunkIndex,
+                                sourceBuffer.AsSpan(0, bytesRead).ToArray(),
+                                sourceStream.Position == fileSize);
+                        }
+                        finally
+                        {
+                            ArrayPool<byte>.Shared.Return(sourceBuffer);
+                        }
+                    },
+                    encryptedChunk =>
+                    {
+                        WriteEncryptedChunk(destStream, encryptedChunk);
+                        return Task.CompletedTask;
+                    },
+                    masterKey,
+                    noncePrefix,
+                    totalChunks: Math.Max(1, totalChunks),
+                    startingIndex: 1,
+                    cancellationToken: cancellationToken,
+                progressCallback: progressCallback).ConfigureAwait(false);
+
+            if (sourceStream.Length != fileSize)
+                throw new IOException("Source file size changed while it was being encrypted.");
         }
         catch
         {
-            if (File.Exists(destinationPath))
+            if (File.Exists(actualDestinationPath))
             {
                 try
                 {
-                    File.Delete(destinationPath);
+                    File.Delete(actualDestinationPath);
                 }
                 catch
                 {
@@ -369,13 +693,33 @@ public sealed class FileEncryptor
 
             throw;
         }
+        finally
+        {
+            if (masterKey.Length > 0)
+                CryptographicOperations.ZeroMemory(masterKey);
+        }
+
+        return actualDestinationPath;
     }
 
-    public async Task DecryptFileAsync(
+    public Task<string> DecryptFileAsync(
         string sourcePath,
         string destinationPath,
         byte[] passwordBytes,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        DecryptFileCoreAsync(
+            sourcePath,
+            destinationPath,
+            passwordBytes,
+            VaultMode.File,
+            cancellationToken);
+
+    private async Task<string> DecryptFileCoreAsync(
+        string sourcePath,
+        string destinationPath,
+        byte[] passwordBytes,
+        VaultMode expectedMode,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(sourcePath);
         ArgumentNullException.ThrowIfNull(destinationPath);
@@ -386,23 +730,32 @@ public sealed class FileEncryptor
 
         if (!File.Exists(sourcePath))
             throw new FileNotFoundException($"Source file not found: {sourcePath}");
+        EnsureDistinctPaths(sourcePath, destinationPath);
 
+        var actualDestinationPath = destinationPath;
         try
         {
             using var sourceStream = new FileStream(sourcePath, FileMode.Open, FileAccess.Read, FileShare.Read);
 
             var header = VaultHeader.ReadFrom(sourceStream);
+            if (header.Mode != expectedMode)
+                throw new InvalidDataException(
+                    $"Vault mode mismatch: expected {expectedMode}, got {header.Mode}.");
+            var restoreStoredFileName = header.EncryptFileNames;
 
-            // Validate password checksum early to fail fast on wrong password
-            if (!PasswordValidator.ValidateChecksum(header.PasswordChecksum, passwordBytes, header.Salt))
-                throw new InvalidOperationException("Invalid password or corrupted vault file (checksum mismatch).");
-
-            var masterKey = _kdf.DeriveKey(passwordBytes, header.Salt, header.KdfParameters);
+            var masterKey = await DeriveKeyAsync(
+                passwordBytes,
+                header.Salt,
+                header.KdfParameters,
+                cancellationToken).ConfigureAwait(false);
             var aesGcm = new AesGcmEngine();
 
             try
             {
-                var encryptedFileNameChunk = ReadEncryptedFileNameChunk(sourceStream);
+                if (!PasswordValidator.ValidateChecksum(header.PasswordChecksum, masterKey, header.Salt))
+                    throw new InvalidOperationException("Invalid password or corrupted vault file (key verifier mismatch).");
+
+                var encryptedFileNameChunk = ReadEncryptedFileNameChunk(sourceStream, header);
                 if (encryptedFileNameChunk is null)
                     throw new InvalidDataException("Missing encrypted filename chunk in vault file.");
 
@@ -412,15 +765,28 @@ public sealed class FileEncryptor
 
                 var decryptedFileName = aesGcm.DecryptChunk(encryptedFileNameChunk, masterKey);
                 var originalFileName = System.Text.Encoding.UTF8.GetString(decryptedFileName);
+                if (restoreStoredFileName)
+                {
+                    ValidateStoredFileName(originalFileName);
+                    actualDestinationPath = Path.Combine(
+                        Path.GetDirectoryName(destinationPath)
+                        ?? throw new InvalidOperationException("Destination file has no parent directory."),
+                        originalFileName);
+                }
 
-                using var destStream = new FileStream(destinationPath, FileMode.Create, FileAccess.Write, FileShare.None);
+                var destinationMode = restoreStoredFileName ? FileMode.CreateNew : FileMode.Create;
+                using var destStream = new FileStream(
+                    actualDestinationPath, destinationMode, FileAccess.Write, FileShare.None);
 
                 long expectedChunkIndex = 1;  // Data chunks start at index 1
+                var sawLastChunk = false;
                 while (true)
                 {
-                    var encryptedChunk = ReadEncryptedChunk(sourceStream);
+                    var encryptedChunk = ReadEncryptedChunk(sourceStream, header);
                     if (encryptedChunk is null)
                         break;
+                    if (sawLastChunk)
+                        throw new InvalidDataException("Vault contains data after the final chunk.");
 
                     // Validate chunk index matches expected order
                     if (encryptedChunk.Index != expectedChunkIndex)
@@ -431,11 +797,15 @@ public sealed class FileEncryptor
                     var plaintext = aesGcm.DecryptChunk(encryptedChunk, masterKey);
                     destStream.Write(plaintext);
 
+                    sawLastChunk = encryptedChunk.IsLastChunk;
                     expectedChunkIndex++;
 
                     if (cancellationToken.IsCancellationRequested)
                         throw new OperationCanceledException();
                 }
+
+                if (!sawLastChunk)
+                    throw new InvalidDataException("Vault is truncated or has no final data chunk.");
             }
             finally
             {
@@ -444,11 +814,11 @@ public sealed class FileEncryptor
         }
         catch
         {
-            if (File.Exists(destinationPath))
+            if (File.Exists(actualDestinationPath))
             {
                 try
                 {
-                    File.Delete(destinationPath);
+                    File.Delete(actualDestinationPath);
                 }
                 catch
                 {
@@ -457,6 +827,8 @@ public sealed class FileEncryptor
 
             throw;
         }
+
+        return actualDestinationPath;
     }
 
     private static void WriteEncryptedChunk(Stream stream, EncryptedChunk chunk)
@@ -468,9 +840,12 @@ public sealed class FileEncryptor
 
         var ciphertextSize = chunk.Ciphertext.Length;
 
-        stream.Write(BitConverter.GetBytes(12));  // Full nonce size is always 12
+        Span<byte> sizeBuffer = stackalloc byte[4];
+        BinaryPrimitives.WriteInt32LittleEndian(sizeBuffer, AesGcmEngine.NonceSize);
+        stream.Write(sizeBuffer);
         stream.Write(fullNonce);
-        stream.Write(BitConverter.GetBytes(ciphertextSize));
+        BinaryPrimitives.WriteInt32LittleEndian(sizeBuffer, ciphertextSize);
+        stream.Write(sizeBuffer);
         stream.Write(chunk.Ciphertext);
         stream.Write(chunk.Tag);
         stream.WriteByte(chunk.IsLastChunk ? (byte)1 : (byte)0);  // Write isLastChunk flag
@@ -485,47 +860,55 @@ public sealed class FileEncryptor
         WriteEncryptedChunk(stream, chunk);
     }
 
-    private static EncryptedChunk? ReadEncryptedChunk(Stream stream)
+    private static EncryptedChunk? ReadEncryptedChunk(
+        Stream stream,
+        VaultHeader header,
+        bool isFileNameChunk = false)
     {
         Span<byte> sizeBuffer = stackalloc byte[4];
 
-        if (stream.Read(sizeBuffer) < 4)
+        var firstRead = stream.Read(sizeBuffer);
+        if (firstRead == 0)
             return null;
+        ReadExactly(stream, sizeBuffer[firstRead..], "nonce size");
 
-        var nonceSize = BitConverter.ToInt32(sizeBuffer);
+        var nonceSize = BinaryPrimitives.ReadInt32LittleEndian(sizeBuffer);
+        if (nonceSize != AesGcmEngine.NonceSize)
+            throw new InvalidDataException($"Nonce must be exactly {AesGcmEngine.NonceSize} bytes, got {nonceSize}.");
+
         var nonce = new byte[nonceSize];
+        ReadExactly(stream, nonce, "nonce");
+        ReadExactly(stream, sizeBuffer, "ciphertext size");
 
-        if (stream.Read(nonce) < nonceSize)
-            throw new InvalidDataException("Unexpected end of stream while reading nonce.");
+        var ciphertextSize = BinaryPrimitives.ReadInt32LittleEndian(sizeBuffer);
+        var maximumCiphertextSize = isFileNameChunk ? 4_096 : header.ChunkSize;
+        if (ciphertextSize < 0 || ciphertextSize > maximumCiphertextSize)
+            throw new InvalidDataException(
+                $"Ciphertext size {ciphertextSize} is outside the allowed range 0..{maximumCiphertextSize}.");
 
-        if (stream.Read(sizeBuffer) < 4)
-            return null;
-
-        var ciphertextSize = BitConverter.ToInt32(sizeBuffer);
         var ciphertext = new byte[ciphertextSize];
+        ReadExactly(stream, ciphertext, "ciphertext");
 
-        if (stream.Read(ciphertext) < ciphertextSize)
-            throw new InvalidDataException("Unexpected end of stream while reading ciphertext.");
+        var tag = new byte[AesGcmEngine.TagSize];
+        ReadExactly(stream, tag, "authentication tag");
 
-        var tag = new byte[16];
-        if (stream.Read(tag) < 16)
-            throw new InvalidDataException("Unexpected end of stream while reading authentication tag.");
-
-        // Read isLastChunk flag (1 byte)
         int isLastChunkByte = stream.ReadByte();
         if (isLastChunkByte == -1)
             throw new InvalidDataException("Unexpected end of stream while reading isLastChunk flag.");
+        if (isLastChunkByte is not 0 and not 1)
+            throw new InvalidDataException($"Invalid isLastChunk flag: {isLastChunkByte}.");
         var isLastChunk = isLastChunkByte == 1;
-
-        // Extract chunk index from nonce (bytes 4-11 contain the chunk index as uint64)
-        if (nonceSize < 12)
-            throw new InvalidDataException($"Nonce must be at least 12 bytes, got {nonceSize}.");
 
         var noncePrefix = new byte[4];
         Array.Copy(nonce, 0, noncePrefix, 0, 4);
+        if (!noncePrefix.AsSpan().SequenceEqual(header.NoncePrefix))
+            throw new InvalidDataException("Chunk nonce prefix does not match the vault header.");
 
         var chunkIndexBytes = nonce.AsSpan(4, 8);
-        var chunkIndex = (long)BinaryPrimitives.ReadUInt64LittleEndian(chunkIndexBytes);
+        var unsignedChunkIndex = BinaryPrimitives.ReadUInt64LittleEndian(chunkIndexBytes);
+        if (unsignedChunkIndex > long.MaxValue)
+            throw new InvalidDataException("Chunk index is outside the supported range.");
+        var chunkIndex = (long)unsignedChunkIndex;
 
         return new EncryptedChunk(
             Index: chunkIndex,
@@ -538,8 +921,299 @@ public sealed class FileEncryptor
     /// <summary>
     /// Reads encrypted filename chunk using standard encrypted chunk format.
     /// </summary>
-    private static EncryptedChunk? ReadEncryptedFileNameChunk(Stream stream)
+    private static EncryptedChunk? ReadEncryptedFileNameChunk(Stream stream, VaultHeader header)
     {
-        return ReadEncryptedChunk(stream);
+        return ReadEncryptedChunk(stream, header, isFileNameChunk: true);
+    }
+
+    private static void ValidateStoredFileName(string fileName)
+    {
+        if (string.IsNullOrWhiteSpace(fileName) ||
+            fileName is "." or ".." ||
+            !string.Equals(fileName, Path.GetFileName(fileName), StringComparison.Ordinal) ||
+            fileName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+        {
+            throw new InvalidDataException("Vault contains an invalid stored filename.");
+        }
+    }
+
+    private static string GetEncryptedVaultPath(
+        string requestedPath,
+        byte[] fullFileName,
+        byte[] masterKey,
+        byte[] salt,
+        Argon2Parameters kdfParameters)
+    {
+        var parent = Path.GetDirectoryName(requestedPath) ?? string.Empty;
+        var fullName = System.Text.Encoding.UTF8.GetString(fullFileName);
+        var shortenedName = ShortenFileNameForStandaloneEncryption(fullName);
+        var shortenedBytes = System.Text.Encoding.UTF8.GetBytes(shortenedName);
+        var fileNameKey = DeriveOutputFileNameKey(masterKey);
+        try
+        {
+            var encrypted = new AesGcmEngine().EncryptChunk(
+                shortenedBytes,
+                fileNameKey,
+                new byte[AesGcmEngine.NoncePrefixSize],
+                chunkIndex: 0,
+                isLastChunk: true);
+            var payload = new byte[47 + encrypted.Ciphertext.Length];
+            payload[0] = (byte)'S';
+            payload[1] = (byte)'F';
+            payload[2] = 1;
+            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(3, 4), kdfParameters.MemorySizeKb);
+            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(7, 4), kdfParameters.Iterations);
+            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(11, 4), kdfParameters.Parallelism);
+            salt.CopyTo(payload, 15);
+            encrypted.Ciphertext.CopyTo(payload, 31);
+            encrypted.Tag.CopyTo(payload, 31 + encrypted.Ciphertext.Length);
+
+            var encodedName = Convert.ToBase64String(payload)
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
+            return Path.Combine(parent, encodedName + ".safe");
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(fileNameKey);
+            CryptographicOperations.ZeroMemory(shortenedBytes);
+        }
+    }
+
+    private static string ShortenFileNameForStandaloneEncryption(string fullName)
+    {
+        const int maximumPlaintextBytes = 140;
+        var extension = Path.GetExtension(fullName);
+        var extensionBytes = System.Text.Encoding.UTF8.GetByteCount(extension);
+        if (extensionBytes > maximumPlaintextBytes)
+        {
+            throw new PathTooLongException(
+                "The file extension is too long to encrypt as an output filename. " +
+                "Rename the file with a shorter extension and try again.");
+        }
+
+        var stem = Path.GetFileNameWithoutExtension(fullName);
+        var remainingBytes = maximumPlaintextBytes - extensionBytes;
+        var builder = new System.Text.StringBuilder();
+        foreach (var rune in stem.EnumerateRunes())
+        {
+            if (rune.Utf8SequenceLength > remainingBytes)
+                break;
+            builder.Append(rune.ToString());
+            remainingBytes -= rune.Utf8SequenceLength;
+        }
+
+        return builder + extension;
+    }
+
+    private static byte[] DeriveOutputFileNameKey(byte[] masterKey)
+    {
+        using var hmac = new HMACSHA256(masterKey);
+        return hmac.ComputeHash(
+            System.Text.Encoding.ASCII.GetBytes("SafeFile.OutputFilename.v1"));
+    }
+
+    private async Task<byte[]> DeriveKeyAsync(
+        byte[] passwordBytes,
+        byte[] salt,
+        Argon2Parameters parameters,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return await Task.Run(
+            () => _kdf.DeriveKey(passwordBytes, salt, parameters),
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private static void ReadExactly(Stream stream, Span<byte> buffer, string fieldName)
+    {
+        while (!buffer.IsEmpty)
+        {
+            var read = stream.Read(buffer);
+            if (read == 0)
+                throw new InvalidDataException($"Unexpected end of stream while reading {fieldName}.");
+            buffer = buffer[read..];
+        }
+    }
+
+    private static int ReadUpToChunk(Stream stream, byte[] buffer, int count)
+    {
+        var totalRead = 0;
+        while (totalRead < count)
+        {
+            var read = stream.Read(buffer, totalRead, count - totalRead);
+            if (read == 0)
+                break;
+            totalRead += read;
+        }
+
+        return totalRead;
+    }
+
+    private static async Task<int> ReadUpToChunkAsync(
+        Stream stream,
+        Memory<byte> buffer,
+        CancellationToken cancellationToken)
+    {
+        var totalRead = 0;
+        while (totalRead < buffer.Length)
+        {
+            var read = await stream.ReadAsync(
+                buffer[totalRead..], cancellationToken).ConfigureAwait(false);
+            if (read == 0)
+                break;
+            totalRead += read;
+        }
+
+        return totalRead;
+    }
+
+    private static async Task ProduceZipToPipeAsync(
+        string sourceFolderPath,
+        PipeWriter writer,
+        Action<int> bytesRead,
+        CancellationToken cancellationToken)
+    {
+        Exception? completionException = null;
+        try
+        {
+            await using var pipeStream = writer.AsStream(leaveOpen: true);
+            await StreamZipper.WriteZipStreamAsync(
+                sourceFolderPath,
+                pipeStream,
+                cancellationToken,
+                bytesRead).ConfigureAwait(false);
+            await pipeStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            completionException = ex;
+            throw;
+        }
+        finally
+        {
+            await writer.CompleteAsync(completionException).ConfigureAwait(false);
+        }
+    }
+
+    private static void EnsureDistinctPaths(string sourcePath, string destinationPath)
+    {
+        var sourceFullPath = Path.GetFullPath(sourcePath);
+        var destinationFullPath = Path.GetFullPath(destinationPath);
+        if (string.Equals(sourceFullPath, destinationFullPath, StringComparison.OrdinalIgnoreCase))
+            throw new IOException("Source and destination paths must be different.");
+    }
+
+    private static void EnsureDestinationOutsideSourceFolder(
+        string sourceFolderPath,
+        string destinationPath)
+    {
+        var sourceRoot = Path.GetFullPath(sourceFolderPath);
+        var destinationFullPath = Path.GetFullPath(destinationPath);
+        var relativePath = Path.GetRelativePath(sourceRoot, destinationFullPath);
+
+        var isOutside = relativePath == ".." ||
+            relativePath.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal) ||
+            relativePath.StartsWith($"..{Path.AltDirectorySeparatorChar}", StringComparison.Ordinal) ||
+            Path.IsPathRooted(relativePath);
+
+        if (!isOutside)
+            throw new IOException("Folder vault destination must be outside the source folder.");
+    }
+
+    private static void ValidateChunkSize(int chunkSizeBytes)
+    {
+        if (chunkSizeBytes < VaultHeader.MinimumChunkSize ||
+            chunkSizeBytes > VaultHeader.MaximumChunkSize)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(chunkSizeBytes),
+                "Chunk size must be between 1 MiB and 16 MiB.");
+        }
+    }
+
+    private void ValidatePasswordForEncryption(byte[] passwordBytes)
+    {
+        if (passwordBytes.Length < _minimumPasswordLength)
+        {
+            throw new ArgumentException(
+                $"Password must be at least {_minimumPasswordLength} bytes.",
+                nameof(passwordBytes));
+        }
+    }
+
+    private static IEnumerable<FileInfo> EnumerateRegularFiles(DirectoryInfo directory)
+    {
+        foreach (var file in directory.GetFiles())
+        {
+            if (!IsReparsePoint(file))
+                yield return file;
+        }
+
+        foreach (var subDirectory in directory.GetDirectories())
+        {
+            if (IsReparsePoint(subDirectory))
+                continue;
+
+            foreach (var file in EnumerateRegularFiles(subDirectory))
+                yield return file;
+        }
+    }
+
+    private static bool IsReparsePoint(FileSystemInfo item) =>
+        (item.Attributes & FileAttributes.ReparsePoint) != 0;
+
+    private static async Task ExtractFolderAtomicallyAsync(
+        Stream zipStream,
+        string destinationFolder,
+        CancellationToken cancellationToken)
+    {
+        if (Directory.Exists(destinationFolder) || File.Exists(destinationFolder))
+            throw new IOException($"Destination already exists: {destinationFolder}");
+
+        var parent = Path.GetDirectoryName(Path.GetFullPath(destinationFolder))
+            ?? throw new InvalidOperationException("Destination folder has no parent directory.");
+        Directory.CreateDirectory(parent);
+        var stagingFolder = Path.Combine(parent, $".safefile-extract-{Guid.NewGuid():N}");
+
+        try
+        {
+            Directory.CreateDirectory(stagingFolder);
+            await StreamZipper.ExtractZipStreamAsync(
+                zipStream, stagingFolder, cancellationToken).ConfigureAwait(false);
+            Directory.Move(stagingFolder, destinationFolder);
+        }
+        catch
+        {
+            TryDeleteDirectory(stagingFolder);
+            throw;
+        }
+    }
+
+    private static void TryDeleteFile(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+                File.Delete(path);
+        }
+        catch
+        {
+        }
+    }
+
+    private static void TryDeleteDirectory(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path))
+                Directory.Delete(path, recursive: true);
+        }
+        catch
+        {
+        }
     }
 }
+
+public sealed record PerFileProgress(string SourceFilePath, double Progress);

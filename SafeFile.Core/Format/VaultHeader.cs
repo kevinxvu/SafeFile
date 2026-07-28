@@ -6,16 +6,20 @@ namespace SafeFile.Core.Format;
 
 public sealed class VaultHeader
 {
-    public static readonly byte[] MagicBytes = Encoding.ASCII.GetBytes("SAFE");
+    private static readonly byte[] Magic = Encoding.ASCII.GetBytes("SAFE");
+    public static ReadOnlySpan<byte> MagicBytes => Magic;
     public const byte CurrentVersion = 1;
     public const int SaltSize = 16;
     public const int NoncePrefixSize = 4;
     public const int KdfParamsSize = 12;
     public const int PasswordChecksumSize = 4;
-    public const int HeaderSize = 4 + 1 + 1 + KdfParamsSize + SaltSize + NoncePrefixSize + 4 + PasswordChecksumSize;
+    public const int MinimumChunkSize = 1_048_576;
+    public const int MaximumChunkSize = 16_777_216;
+    public const int HeaderSize = 4 + 1 + 1 + 1 + KdfParamsSize + SaltSize + NoncePrefixSize + 4 + PasswordChecksumSize;
 
     public byte Version { get; init; } = CurrentVersion;
     public VaultMode Mode { get; init; }
+    public bool EncryptFileNames { get; init; }
     public Argon2Parameters KdfParameters { get; init; } = Argon2Kdf.DefaultParameters;
     public byte[] Salt { get; init; } = Array.Empty<byte>();
     public byte[] NoncePrefix { get; init; } = Array.Empty<byte>();
@@ -36,6 +40,7 @@ public sealed class VaultHeader
 
         fixedBuffer[offset++] = Version;
         fixedBuffer[offset++] = (byte)Mode;
+        fixedBuffer[offset++] = EncryptFileNames ? (byte)1 : (byte)0;
 
         BinaryPrimitives.WriteInt32LittleEndian(fixedBuffer[offset..], KdfParameters.MemorySizeKb);
         offset += 4;
@@ -62,8 +67,19 @@ public sealed class VaultHeader
     {
         ArgumentNullException.ThrowIfNull(stream);
 
+        var prefix = new byte[MagicBytes.Length + 1];
+        ReadExactly(stream, prefix);
+
+        if (!prefix.AsSpan(0, MagicBytes.Length).SequenceEqual(MagicBytes))
+            throw new InvalidDataException("Invalid vault file: magic bytes mismatch.");
+
+        var version = prefix[MagicBytes.Length];
+        if (version != CurrentVersion)
+            throw new InvalidDataException($"Unsupported vault version: {version}.");
+
         var headerBytes = new byte[HeaderSize];
-        ReadExactly(stream, headerBytes);
+        prefix.CopyTo(headerBytes, 0);
+        ReadExactly(stream, headerBytes.AsSpan(prefix.Length));
 
         var offset = 0;
         var actualMagic = headerBytes.AsSpan(offset, MagicBytes.Length);
@@ -75,17 +91,18 @@ public sealed class VaultHeader
 
         offset += MagicBytes.Length;
 
-        var version = headerBytes[offset++];
-        if (version != CurrentVersion)
-        {
-            throw new InvalidDataException($"Unsupported vault version: {version}.");
-        }
+        offset++;
 
         var mode = (VaultMode)headerBytes[offset++];
         if (!Enum.IsDefined(mode))
         {
             throw new InvalidDataException($"Invalid vault mode: {mode}.");
         }
+
+        var flags = headerBytes[offset++];
+        if ((flags & ~1) != 0)
+            throw new InvalidDataException($"Invalid vault flags: {flags}.");
+        var encryptFileNames = (flags & 1) != 0;
 
         var memorySizeKb = BinaryPrimitives.ReadInt32LittleEndian(headerBytes.AsSpan(offset, 4));
         offset += 4;
@@ -106,17 +123,25 @@ public sealed class VaultHeader
         var passwordChecksum = headerBytes.AsSpan(offset, PasswordChecksumSize).ToArray();
 
         var kdfParameters = new Argon2Parameters(memorySizeKb, iterations, parallelism);
-        kdfParameters.Validate();
-
-        if (chunkSize <= 0)
+        try
         {
-            throw new InvalidDataException("Invalid vault header: chunk size must be greater than zero.");
+            kdfParameters.Validate();
+        }
+        catch (ArgumentOutOfRangeException ex)
+        {
+            throw new InvalidDataException("Invalid or unsafe Argon2 parameters in vault header.", ex);
+        }
+
+        if (chunkSize < MinimumChunkSize || chunkSize > MaximumChunkSize)
+        {
+            throw new InvalidDataException("Invalid vault header: chunk size must be between 1 MiB and 16 MiB.");
         }
 
         return new VaultHeader
         {
             Version = version,
             Mode = mode,
+            EncryptFileNames = encryptFileNames,
             KdfParameters = kdfParameters,
             Salt = salt,
             NoncePrefix = noncePrefix,
@@ -149,9 +174,9 @@ public sealed class VaultHeader
             throw new InvalidOperationException($"Nonce prefix must be {NoncePrefixSize} bytes.");
         }
 
-        if (ChunkSize <= 0)
+        if (ChunkSize < MinimumChunkSize || ChunkSize > MaximumChunkSize)
         {
-            throw new InvalidOperationException("Chunk size must be greater than zero.");
+            throw new InvalidOperationException("Chunk size must be between 1 MiB and 16 MiB.");
         }
 
         if (PasswordChecksum.Length != PasswordChecksumSize)
@@ -160,18 +185,14 @@ public sealed class VaultHeader
         }
     }
 
-    private static void ReadExactly(Stream stream, byte[] buffer)
+    private static void ReadExactly(Stream stream, Span<byte> buffer)
     {
-        var totalRead = 0;
-        while (totalRead < buffer.Length)
+        while (!buffer.IsEmpty)
         {
-            var read = stream.Read(buffer, totalRead, buffer.Length - totalRead);
+            var read = stream.Read(buffer);
             if (read == 0)
-            {
                 throw new EndOfStreamException("Unexpected end of stream while reading vault header.");
-            }
-
-            totalRead += read;
+            buffer = buffer[read..];
         }
     }
 }

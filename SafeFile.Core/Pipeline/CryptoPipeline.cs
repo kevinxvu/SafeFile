@@ -1,11 +1,11 @@
-using System.Collections.Concurrent;
 using System.Threading.Channels;
 using SafeFile.Core.Crypto;
 
 namespace SafeFile.Core.Pipeline;
 
-public sealed class CryptoPipeline
+internal sealed class CryptoPipeline
 {
+    private const int ChannelCapacity = 100;
     private readonly AesGcmEngine _aesGcm = new();
     private readonly int _consumerCount;
     private readonly IProgress<double>? _progress;
@@ -24,55 +24,47 @@ public sealed class CryptoPipeline
         byte[] masterKey,
         byte[] noncePrefix,
         long? totalChunks = null,
-        CancellationToken cancellationToken = default)
+        long startingIndex = 0,
+        CancellationToken cancellationToken = default,
+        bool reportProgress = true,
+        Action<double>? progressCallback = null)
     {
         ArgumentNullException.ThrowIfNull(sourceReader);
         ArgumentNullException.ThrowIfNull(outputWriter);
-        ArgumentNullException.ThrowIfNull(masterKey);
+        ValidateKey(masterKey);
         ArgumentNullException.ThrowIfNull(noncePrefix);
 
-        if (masterKey.Length != 32)
-            throw new ArgumentException("Master key must be 32 bytes.", nameof(masterKey));
-
-        if (noncePrefix.Length != 4)
+        if (noncePrefix.Length != AesGcmEngine.NoncePrefixSize)
             throw new ArgumentException("Nonce prefix must be 4 bytes.", nameof(noncePrefix));
+        if (startingIndex < 0)
+            throw new ArgumentOutOfRangeException(nameof(startingIndex));
 
-        // Update total chunks for progress tracking
-        if (totalChunks.HasValue && totalChunks.Value > 0)
-        {
-            _totalChunksExpected = totalChunks.Value;
-        }
+        SetTotalChunks(totalChunks);
 
-        // Use bounded channels to prevent unbounded buffer growth (OOM prevention)
-        var unencryptedChannelOptions = new BoundedChannelOptions(capacity: 100)
-        {
-            FullMode = BoundedChannelFullMode.Wait
-        };
-        var unencryptedChannel = Channel.CreateBounded<UnencryptedChunk>(unencryptedChannelOptions);
+        var input = CreateChannel<UnencryptedChunk>();
+        var output = CreateChannel<EncryptedChunk>();
+        using var inFlight = new SemaphoreSlim(ChannelCapacity, ChannelCapacity);
+        using var failureCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var token = failureCts.Token;
 
-        var encryptedChannelOptions = new BoundedChannelOptions(capacity: 100)
-        {
-            FullMode = BoundedChannelFullMode.Wait
-        };
-        var encryptedChannel = Channel.CreateBounded<EncryptedChunk>(encryptedChannelOptions);
+        var producer = RunStageAsync(
+            () => ProduceAsync(sourceReader, input.Writer, startingIndex, inFlight, token),
+            input.Writer,
+            failureCts);
+        var consumers = RunConsumersAsync(input.Reader, output.Writer, masterKey, noncePrefix, token, failureCts);
+        var writer = RunStageAsync<EncryptedChunk>(
+            () => WriteOrderedAsync(
+                output.Reader,
+                outputWriter,
+                startingIndex,
+                reportProgress,
+                progressCallback,
+                inFlight,
+                token),
+            writerToComplete: null,
+            failureCts);
 
-        try
-        {
-            var producerTask = ProducerAsync(sourceReader, unencryptedChannel, cancellationToken);
-            var consumersTask = ConsumersAsync(unencryptedChannel, encryptedChannel, masterKey, noncePrefix, cancellationToken);
-            var writerTask = WriterAsync(encryptedChannel, outputWriter, cancellationToken);
-
-            await Task.WhenAll(producerTask, consumersTask, writerTask).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        finally
-        {
-            unencryptedChannel.Writer.TryComplete();
-            encryptedChannel.Writer.TryComplete();
-        }
+        await AwaitPipelineAsync([producer, consumers, writer], cancellationToken).ConfigureAwait(false);
     }
 
     public async Task DecryptAsync(
@@ -80,233 +72,294 @@ public sealed class CryptoPipeline
         Func<byte[], Task> outputWriter,
         byte[] masterKey,
         long? totalChunks = null,
+        long startingIndex = 0,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(sourceReader);
         ArgumentNullException.ThrowIfNull(outputWriter);
-        ArgumentNullException.ThrowIfNull(masterKey);
+        ValidateKey(masterKey);
+        if (startingIndex < 0)
+            throw new ArgumentOutOfRangeException(nameof(startingIndex));
 
-        if (masterKey.Length != 32)
-            throw new ArgumentException("Master key must be 32 bytes.", nameof(masterKey));
+        SetTotalChunks(totalChunks);
 
-        // Update total chunks for progress tracking
-        if (totalChunks.HasValue && totalChunks.Value > 0)
-        {
-            _totalChunksExpected = totalChunks.Value;
-        }
+        var input = CreateChannel<EncryptedChunk>();
+        using var failureCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var token = failureCts.Token;
 
-        // Use bounded channel to prevent unbounded buffer growth (OOM prevention)
-        var decryptedChannelOptions = new BoundedChannelOptions(capacity: 100)
-        {
-            FullMode = BoundedChannelFullMode.Wait
-        };
-        var decryptedChannel = Channel.CreateBounded<DecryptedChunk>(decryptedChannelOptions);
+        var producer = RunStageAsync(
+            () => ProduceEncryptedAsync(sourceReader, input.Writer, startingIndex, token),
+            input.Writer,
+            failureCts);
+        var consumer = RunStageAsync<EncryptedChunk>(
+            () => DecryptOrderedAsync(input.Reader, outputWriter, masterKey, startingIndex, token),
+            writerToComplete: null,
+            failureCts);
 
-        try
-        {
-            var producerTask = DecryptProducerAsync(sourceReader, decryptedChannel, cancellationToken);
-            var consumersTask = DecryptConsumersAsync(decryptedChannel, masterKey, outputWriter, cancellationToken);
-
-            await Task.WhenAll(producerTask, consumersTask).ConfigureAwait(false);
-        }
-        finally
-        {
-            decryptedChannel.Writer.TryComplete();
-        }
+        await AwaitPipelineAsync([producer, consumer], cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task ProducerAsync(
-        Func<long, Task<UnencryptedChunk?>> reader,
-        Channel<UnencryptedChunk> channel,
-        CancellationToken cancellationToken)
+    private static Channel<T> CreateChannel<T>() =>
+        Channel.CreateBounded<T>(new BoundedChannelOptions(ChannelCapacity)
+        {
+            FullMode = BoundedChannelFullMode.Wait,
+            SingleWriter = false,
+            SingleReader = false
+        });
+
+    private async Task RunConsumersAsync(
+        ChannelReader<UnencryptedChunk> reader,
+        ChannelWriter<EncryptedChunk> writer,
+        byte[] masterKey,
+        byte[] noncePrefix,
+        CancellationToken cancellationToken,
+        CancellationTokenSource failureCts)
     {
         try
         {
-            long index = 0;
-            while (!cancellationToken.IsCancellationRequested)
+            var workers = Enumerable.Range(0, _consumerCount)
+                .Select(_ => EncryptWorkerWithCancellationAsync(
+                    reader,
+                    writer,
+                    masterKey,
+                    noncePrefix,
+                    cancellationToken,
+                    failureCts))
+                .ToArray();
+            await Task.WhenAll(workers).ConfigureAwait(false);
+            writer.TryComplete();
+        }
+        catch (Exception ex)
+        {
+            writer.TryComplete(ex);
+            failureCts.Cancel();
+            throw;
+        }
+    }
+
+    private static async Task RunStageAsync<T>(
+        Func<Task> stage,
+        ChannelWriter<T>? writerToComplete,
+        CancellationTokenSource failureCts)
+    {
+        try
+        {
+            await stage().ConfigureAwait(false);
+            writerToComplete?.TryComplete();
+        }
+        catch (Exception ex)
+        {
+            writerToComplete?.TryComplete(ex);
+            failureCts.Cancel();
+            throw;
+        }
+    }
+
+    private static async Task AwaitPipelineAsync(Task[] tasks, CancellationToken callerToken)
+    {
+        try
+        {
+            await Task.WhenAll(tasks).ConfigureAwait(false);
+        }
+        catch when (!callerToken.IsCancellationRequested)
+        {
+            var failure = tasks.Select(t => t.Exception?.Flatten().InnerExceptions.FirstOrDefault())
+                .FirstOrDefault(ex => ex is not null and not OperationCanceledException);
+            if (failure is not null)
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
+            throw;
+        }
+    }
+
+    private static async Task ProduceAsync(
+        Func<long, Task<UnencryptedChunk?>> reader,
+        ChannelWriter<UnencryptedChunk> writer,
+        long startingIndex,
+        SemaphoreSlim inFlight,
+        CancellationToken cancellationToken)
+    {
+        for (var index = startingIndex; ; index++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await inFlight.WaitAsync(cancellationToken).ConfigureAwait(false);
+            var handedOff = false;
+            try
             {
                 var chunk = await reader(index).ConfigureAwait(false);
                 if (chunk is null)
-                    break;
-
-                await channel.Writer.WriteAsync(chunk, cancellationToken).ConfigureAwait(false);
-                index++;
+                    return;
+                if (chunk.Index != index)
+                    throw new InvalidDataException($"Source returned chunk {chunk.Index}; expected {index}.");
+                await writer.WriteAsync(chunk, cancellationToken).ConfigureAwait(false);
+                handedOff = true;
             }
-        }
-        finally
-        {
-            channel.Writer.TryComplete();
+            finally
+            {
+                if (!handedOff)
+                    inFlight.Release();
+            }
         }
     }
 
-    private async Task ConsumersAsync(
-        Channel<UnencryptedChunk> inputChannel,
-        Channel<EncryptedChunk> outputChannel,
+    private async Task EncryptWorkerAsync(
+        ChannelReader<UnencryptedChunk> reader,
+        ChannelWriter<EncryptedChunk> writer,
         byte[] masterKey,
         byte[] noncePrefix,
         CancellationToken cancellationToken)
     {
-        var tasks = new List<Task>();
-        for (int i = 0; i < _consumerCount; i++)
+        await foreach (var chunk in reader.ReadAllAsync(cancellationToken))
         {
-            tasks.Add(ConsumerWorkerAsync(inputChannel, outputChannel, masterKey, noncePrefix, cancellationToken));
+            var encrypted = _aesGcm.EncryptChunk(
+                chunk.Data, masterKey, noncePrefix, chunk.Index, chunk.IsLastChunk);
+            await writer.WriteAsync(encrypted, cancellationToken).ConfigureAwait(false);
         }
-
-        await Task.WhenAll(tasks).ConfigureAwait(false);
-        outputChannel.Writer.TryComplete();
     }
 
-    private async Task ConsumerWorkerAsync(
-        Channel<UnencryptedChunk> inputChannel,
-        Channel<EncryptedChunk> outputChannel,
+    private async Task EncryptWorkerWithCancellationAsync(
+        ChannelReader<UnencryptedChunk> reader,
+        ChannelWriter<EncryptedChunk> writer,
         byte[] masterKey,
         byte[] noncePrefix,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        CancellationTokenSource failureCts)
     {
         try
         {
-            await foreach (var plainChunk in inputChannel.Reader.ReadAllAsync(cancellationToken))
-            {
-                var encryptedChunk = _aesGcm.EncryptChunk(plainChunk.Data, masterKey, noncePrefix, plainChunk.Index, plainChunk.IsLastChunk);
-                await outputChannel.Writer.WriteAsync(encryptedChunk, cancellationToken).ConfigureAwait(false);
-            }
+            await EncryptWorkerAsync(
+                reader, writer, masterKey, noncePrefix, cancellationToken).ConfigureAwait(false);
         }
-        finally
+        catch
         {
-            outputChannel.Writer.TryComplete();
+            failureCts.Cancel();
+            throw;
         }
     }
 
-    private async Task WriterAsync(
-        Channel<EncryptedChunk> encryptedChannel,
+    private async Task WriteOrderedAsync(
+        ChannelReader<EncryptedChunk> reader,
         Func<EncryptedChunk, Task> outputWriter,
+        long startingIndex,
+        bool reportProgress,
+        Action<double>? progressCallback,
+        SemaphoreSlim inFlight,
         CancellationToken cancellationToken)
     {
         var buffer = new Dictionary<long, EncryptedChunk>();
-        long nextIndexToWrite = 0;
+        var nextIndex = startingIndex;
+        var sawLastChunk = false;
 
-        try
+        await foreach (var chunk in reader.ReadAllAsync(cancellationToken))
         {
-            await foreach (var chunk in encryptedChannel.Reader.ReadAllAsync(cancellationToken))
-            {
-                if (chunk.Index == nextIndexToWrite)
-                {
-                    await outputWriter(chunk).ConfigureAwait(false);
-                    ReportProgress(nextIndexToWrite + 1);
-                    nextIndexToWrite++;
+            if (chunk.Index < nextIndex || !buffer.TryAdd(chunk.Index, chunk))
+                throw new InvalidDataException($"Duplicate or stale chunk index {chunk.Index}.");
 
-                    while (buffer.Remove(nextIndexToWrite, out var bufferedChunk))
-                    {
-                        await outputWriter(bufferedChunk).ConfigureAwait(false);
-                        ReportProgress(nextIndexToWrite + 1);
-                        nextIndexToWrite++;
-                    }
-                }
-                else if (chunk.Index > nextIndexToWrite)
-                {
-                    buffer[chunk.Index] = chunk;
-                }
-                else if (chunk.Index < nextIndexToWrite)
-                {
-                    // Duplicate or out-of-order chunk that arrived after it should have been written
-                    throw new InvalidOperationException(
-                        $"Out-of-order chunk received: chunk index {chunk.Index} is less than next expected index {nextIndexToWrite}. " +
-                        $"This indicates data corruption or a timing error in the encryption pipeline.");
-                }
-            }
-
-            if (buffer.Count > 0)
+            while (buffer.Remove(nextIndex, out var ready))
             {
-                throw new InvalidOperationException($"Incomplete chunk stream: missing chunks before index {nextIndexToWrite}.");
+                if (sawLastChunk)
+                    throw new InvalidDataException("Unencrypted stream contains data after the final chunk.");
+                await outputWriter(ready).ConfigureAwait(false);
+                sawLastChunk = ready.IsLastChunk;
+                inFlight.Release();
+                if (reportProgress)
+                    ReportProgress(nextIndex - startingIndex + 1, progressCallback);
+                nextIndex++;
             }
         }
-        finally
-        {
-            encryptedChannel.Reader.Completion.Wait(TimeSpan.FromSeconds(5));
-        }
+
+        if (buffer.Count != 0)
+            throw new InvalidDataException($"Incomplete chunk stream before index {nextIndex}.");
+        if (!sawLastChunk)
+            throw new InvalidDataException("Unencrypted stream is truncated or has no final chunk.");
     }
 
-    private async Task DecryptProducerAsync(
+    private static async Task ProduceEncryptedAsync(
         Func<long, Task<EncryptedChunk?>> reader,
-        Channel<DecryptedChunk> channel,
+        ChannelWriter<EncryptedChunk> writer,
+        long startingIndex,
         CancellationToken cancellationToken)
     {
-        try
+        for (var index = startingIndex; ; index++)
         {
-            long index = 0;
-            while (!cancellationToken.IsCancellationRequested)
-            {
-                var chunk = await reader(index).ConfigureAwait(false);
-                if (chunk is null)
-                    break;
-
-                await channel.Writer.WriteAsync(
-                    new DecryptedChunk(chunk.Index, chunk, chunk.IsLastChunk),
-                    cancellationToken).ConfigureAwait(false);
-                index++;
-            }
-        }
-        finally
-        {
-            channel.Writer.TryComplete();
+            cancellationToken.ThrowIfCancellationRequested();
+            var chunk = await reader(index).ConfigureAwait(false);
+            if (chunk is null)
+                return;
+            await writer.WriteAsync(chunk, cancellationToken).ConfigureAwait(false);
         }
     }
 
-    private async Task DecryptConsumersAsync(
-        Channel<DecryptedChunk> channel,
-        byte[] masterKey,
+    private async Task DecryptOrderedAsync(
+        ChannelReader<EncryptedChunk> reader,
         Func<byte[], Task> outputWriter,
+        byte[] masterKey,
+        long startingIndex,
         CancellationToken cancellationToken)
     {
-        var buffer = new Dictionary<long, DecryptedChunk>();
-        long nextIndexToWrite = 0;
-
-        try
+        var expectedIndex = startingIndex;
+        var sawLastChunk = false;
+        await foreach (var chunk in reader.ReadAllAsync(cancellationToken))
         {
-            await foreach (var item in channel.Reader.ReadAllAsync(cancellationToken))
-            {
-                if (item.Index == nextIndexToWrite)
-                {
-                    var plaintext = _aesGcm.DecryptChunk(item.EncryptedChunk, masterKey);
-                    await outputWriter(plaintext).ConfigureAwait(false);
-                    ReportProgress(nextIndexToWrite + 1);
-                    nextIndexToWrite++;
+            if (sawLastChunk)
+                throw new InvalidDataException("Encrypted stream contains data after the final chunk.");
+            if (chunk.Index != expectedIndex)
+                throw new InvalidDataException($"Chunk index mismatch: expected {expectedIndex}, got {chunk.Index}.");
 
-                    while (buffer.Remove(nextIndexToWrite, out var bufferedItem))
-                    {
-                        plaintext = _aesGcm.DecryptChunk(bufferedItem.EncryptedChunk, masterKey);
-                        await outputWriter(plaintext).ConfigureAwait(false);
-                        ReportProgress(nextIndexToWrite + 1);
-                        nextIndexToWrite++;
-                    }
-                }
-                else if (item.Index > nextIndexToWrite)
-                {
-                    buffer[item.Index] = item;
-                }
-                else if (item.Index < nextIndexToWrite)
-                {
-                    // Duplicate or out-of-order chunk that arrived after it should have been written
-                    throw new InvalidOperationException(
-                        $"Out-of-order chunk received: chunk index {item.Index} is less than next expected index {nextIndexToWrite}. " +
-                        $"This indicates data corruption or a timing error in the decryption pipeline.");
-                }
-            }
+            var plaintext = _aesGcm.DecryptChunk(chunk, masterKey);
+            await outputWriter(plaintext).ConfigureAwait(false);
+            sawLastChunk = chunk.IsLastChunk;
+            ReportProgress(expectedIndex - startingIndex + 1);
+            expectedIndex++;
         }
-        finally
-        {
-            channel.Reader.Completion.Wait(TimeSpan.FromSeconds(5));
-        }
+
+        if (!sawLastChunk)
+            throw new InvalidDataException("Encrypted stream is truncated or has no final chunk.");
+    }
+
+    private static void ValidateKey(byte[] masterKey)
+    {
+        ArgumentNullException.ThrowIfNull(masterKey);
+        if (masterKey.Length != Argon2Kdf.KeySize)
+            throw new ArgumentException("Master key must be 32 bytes.", nameof(masterKey));
+    }
+
+    private void SetTotalChunks(long? totalChunks)
+    {
+        if (totalChunks is > 0)
+            _totalChunksExpected = totalChunks.Value;
     }
 
     private void ReportProgress(long processedChunks)
+        => ReportProgress(processedChunks, progressCallback: null);
+
+    private void ReportProgress(long processedChunks, Action<double>? progressCallback)
     {
-        if (_progress is not null && _totalChunksExpected > 0)
+        if (_totalChunksExpected <= 0)
+            return;
+
+        var value = Math.Min((double)processedChunks / _totalChunksExpected, 1.0);
+        _progress?.Report(value);
+        progressCallback?.Invoke(value);
+    }
+
+    internal void ValidateMemoryBudget(int chunkSizeBytes)
+    {
+        var availableMemoryBytes = GC.GetGCMemoryInfo().TotalAvailableMemoryBytes;
+        if (availableMemoryBytes <= 0)
+            throw new InvalidOperationException("Unable to determine the available memory budget.");
+
+        // At most ChannelCapacity chunks can be anywhere in the channels/reorder
+        // buffer. Each worker can temporarily hold plaintext and ciphertext; the
+        // folder ZIP pipe can retain up to four additional chunk-sized buffers.
+        var maximumResidentChunks = checked(ChannelCapacity + (2L * _consumerCount) + 4);
+        var requiredBytes = checked((long)chunkSizeBytes * maximumResidentChunks);
+        var maximumAllowedBytes = availableMemoryBytes / 2;
+        if (requiredBytes > maximumAllowedBytes)
         {
-            var progress = (double)processedChunks / _totalChunksExpected;
-            _progress.Report(Math.Min(progress, 1.0));
+            throw new InvalidOperationException(
+                $"Chunk size {chunkSizeBytes:N0} bytes with up to {maximumResidentChunks} resident buffers " +
+                $"requires {requiredBytes:N0} bytes, exceeding half of available memory " +
+                $"({maximumAllowedBytes:N0} bytes).");
         }
     }
 }
-
-internal sealed record DecryptedChunk(long Index, EncryptedChunk EncryptedChunk, bool IsLastChunk);
