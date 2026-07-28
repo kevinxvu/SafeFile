@@ -3,18 +3,59 @@
         xmlns:vm="using:SafeFile.ViewModels"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+        mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="760"
         x:Class="SafeFile.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Icon="/Assets/avalonia-logo.ico"
-        Title="SafeFile">
+        Title="SafeFile"
+        Background="#F4F6F8"
+        Foreground="#1F2937">
+  <Grid RowDefinitions="*,Auto" ColumnDefinitions="230,*">
+    <Border Grid.RowSpan="2" Grid.Column="0" Background="White" BorderBrush="#E3E7EC" BorderThickness="0,0,1,0" Padding="14,16">
+      <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto" RowSpacing="6">
+        <StackPanel Grid.Row="0" Spacing="2" Margin="0,0,0,8">
+          <TextBlock Text="SafeFile" FontSize="20" FontWeight="SemiBold"/>
+          <TextBlock Text="Enterprise Encryption" Foreground="#6B7280" FontSize="12"/>
+        </StackPanel>
 
-    <Design.DataContext>
-        <!-- This only sets the DataContext for the previewer in an IDE,
-             to set the actual DataContext for runtime, set the DataContext property in code (look at App.axaml.cs) -->
-        <vm:MainWindowViewModel/>
-    </Design.DataContext>
+        <Button Grid.Row="1" Content="Mã hoá" Command="{Binding NavigateToEncryptCommand}" HorizontalContentAlignment="Left"/>
+        <Button Grid.Row="2" Content="Giải mã" Command="{Binding NavigateToDecryptCommand}" HorizontalContentAlignment="Left"/>
+        <Button Grid.Row="3" Content="Nhật ký" Command="{Binding NavigateToLogsCommand}" HorizontalContentAlignment="Left"/>
+        <Button Grid.Row="4" Content="Thiết lập" Command="{Binding NavigateToSettingsCommand}" HorizontalContentAlignment="Left"/>
 
-    <TextBlock Text="{Binding Greeting}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        <Button Grid.Row="6" Content="Về ứng dụng" Command="{Binding NavigateToAboutCommand}" HorizontalContentAlignment="Left"/>
+      </Grid>
+    </Border>
 
+    <Grid Grid.Column="1" Grid.Row="0" RowDefinitions="Auto,*" Margin="0">
+      <Border Grid.Row="0" Background="#F8FAFC" BorderBrush="#E3E7EC" BorderThickness="0,0,0,1" Padding="16,10">
+        <Grid ColumnDefinitions="*,Auto,Auto">
+          <TextBlock Text="{Binding ActivePage}" FontSize="26" FontWeight="SemiBold" VerticalAlignment="Center"/>
+          <ComboBox Grid.Column="1" Width="120" SelectedIndex="0" Margin="0,0,10,0">
+            <ComboBoxItem Content="Tiếng Việt"/>
+            <ComboBoxItem Content="English"/>
+          </ComboBox>
+          <Button Grid.Column="2" Content="☾" Width="36" Height="32"/>
+        </Grid>
+      </Border>
+
+      <Border Grid.Row="1" Background="#F4F6F8">
+        <ContentControl Content="{Binding CurrentPage}" Margin="0"/>
+      </Border>
+    </Grid>
+
+    <Border Grid.Column="1" Grid.Row="1" Background="White" BorderBrush="#E3E7EC" BorderThickness="0,1,0,0" Padding="14,10">
+      <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto">
+        <TextBlock Grid.Column="0" Text="Đang xử lý:" Foreground="#6B7280" VerticalAlignment="Center" Margin="0,0,8,0"/>
+        <TextBlock Grid.Column="1" Text="{Binding StatusCurrentFile}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,12,0"/>
+        <ProgressBar Grid.Column="2" Width="240" Height="6" VerticalAlignment="Center" Minimum="0" Maximum="1" Value="{Binding StatusProgress}" Margin="0,0,10,0"/>
+        <TextBlock Grid.Column="3" Text="{Binding StatusProgress, StringFormat={}{0:P0}}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+        <TextBlock Grid.Column="4" Text="{Binding StatusSpeed}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+        <StackPanel Grid.Column="5" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <TextBlock Text="{Binding StatusEta}" VerticalAlignment="Center"/>
+          <Button Content="Huỷ" Command="{Binding CancelOperationCommand}"/>
+        </StackPanel>
+      </Grid>
+    </Border>
+  </Grid>
 </Window>
