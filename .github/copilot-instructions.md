@@ -32,6 +32,15 @@
 - `EncryptFolderPerFileAsync` / `DecryptFolderPerFileAsync`: one `VaultMode.PerFile` vault per regular file while preserving relative paths. Filename encryption uses each authenticated filename ciphertext; decrypt reads the behavior from each header and restores authenticated names.
 - `PerFileProgress` reports the source file path with its per-file percentage.
 - `DecryptOutputFileNameAsync` decrypts the standalone Base64URL output name with the password and runs Argon2 off the caller thread; a shortened output name may differ from the complete name restored from the vault.
+- `ReadVaultMetadataAsync` validates the password and decrypts only the
+  authenticated filename chunk, not the file contents. It returns the complete
+  original filename, vault filesystem metadata, format/mode, filename flag,
+  chunk size, KDF parameters, and algorithm.
+- File and ZIP encryption default `overwriteExisting` to `false`. Use
+  create-new semantics unless the caller explicitly enables overwrite.
+- File decryption also defaults `overwriteExisting` to `false` for both clear
+  and restored encrypted filenames. Only use create semantics after explicit
+  overwrite confirmation.
 - Derive the vault key and final encrypted output path before opening the destination; never create a clear-name staging vault or truncate the requested placeholder path when filename encryption is enabled.
 - Skip symlinks, junctions, and other reparse points.
 - Folder destinations must be outside the source tree.
@@ -42,14 +51,49 @@
 
 - Construct one `FileEncryptor` per active UI operation; shared instances do not provide independent concurrent progress state.
 - Convert passwords to UTF-8 bytes, pass the byte array to Core, and zero the caller-owned array in UI `finally` blocks.
-- Pass `AppSettings.GetChunkSizeBytes()` and `GetKdfParameters()` to encrypt operations. A nullable filename-encryption argument overrides `AppSettings.EncryptFileNames`.
+- Pass `AppSettings.GetChunkSizeBytes()` and `GetKdfParameters()` to encrypt operations.
+- Filename encryption is not stored in `AppSettings`. Read it from the encryption-form checkbox and pass it explicitly to the relevant Core method; a nullable filename-encryption argument defaults to `false`.
+- Build file, ZIP, and PerFile encryption destinations under `AppSettings.DefaultOutputPath`, creating that directory when necessary. The output-folder button must open this configured directory.
 - Always use the path returned by `EncryptFileAsync`, `DecryptFileAsync`, and `EncryptFolderZipAsync`; filename encryption can change the basename.
 - For encrypted-name file decrypt, `destinationPath` supplies the parent directory and Core restores the authenticated full basename.
 - ZIP and PerFile decrypt destination folders must not already exist. Folder destinations must be outside the source tree.
 - Use `IProgress<double>` for file/ZIP progress and `IProgress<PerFileProgress>` for current source path plus per-file progress.
 - Await `DecryptOutputFileNameAsync` to preview a standalone encrypted name. It may return a shortened stem; full vault decrypt restores the complete stored filename.
+- Use `ReadVaultMetadataAsync` after an explicit **Check password** action when
+  the UI needs the complete authenticated original filename. Do not invoke it
+  on password-field changes because it runs Argon2id.
+- Pass the encryption-form overwrite checkbox to `EncryptFileAsync` and
+  `EncryptFolderZipAsync`. PerFile mode still requires a new destination
+  directory and does not support this checkbox.
+- Pass the decryption-form overwrite checkbox to `DecryptFileAsync`. With the
+  checkbox disabled, an existing plaintext file must be rejected and preserved
+  on the first and every subsequent attempt.
 - Handle `OperationCanceledException` as cancellation; key-verifier `InvalidOperationException` or `CryptographicException` as wrong password/tampering; `InvalidDataException` as malformed vault data; and path/I/O exceptions as user-correctable selection conflicts.
 - Core never shows prompts. The UI owns pickers, overwrite/naming decisions, password confirmation, success/error messages, and cancellation-token lifetime.
+
+## Current Avalonia UI behavior
+
+- The main window opens centered at 1280×720.
+- The encryption view supports file/folder picker selection and drag-and-drop. A dropped item automatically selects the matching source type.
+- Do not add algorithm, chunk-size, or worker-count controls back to the encryption form. Those operational values come from Settings.
+- Keep the filename-encryption checkbox on the encryption form only; it is intentionally absent from Settings.
+- The encryption form includes an overwrite checkbox for single-file and ZIP
+  vault output. Disable it for PerFile folder mode.
+- `ConfirmPasswordToggle` controls whether the confirmation label/input are visible and whether matching-password validation runs.
+- Both encryption password inputs have independent show/hide controls.
+- The encryption status bar is owned by `EncryptViewModel`, not `MainWindowViewModel`. It is hidden before an operation, shown during progress, and retained after success, cancellation, or failure until the user closes it. Its close button cancels while encryption is active.
+- Keep status messages on their own row below the output preview/actions so long output names cannot hide them. Truncate long preview names visually with an ellipsis.
+- The decryption view parses the unauthenticated header after file selection,
+  but only verifies the password and reveals authenticated metadata when the
+  user presses **Check password**.
+- Display the password-check result beside its button. Clear the verified state
+  and metadata when the password changes.
+- Display the complete verified original filename with wrapping; do not truncate
+  it with an ellipsis.
+- The decryption view offers overwrite and open-folder options. Do not re-add
+  the removed automatic collision-renaming option.
+- All `ProgressBar` controls use the application-level primary blue `#2563EB`, matching the primary encryption button.
+- Settings currently exposes performance, password/KDF, and `DefaultOutputPath`. It does not expose filename encryption or a naming/collision policy.
 
 ## Pipeline and safety
 
@@ -59,15 +103,37 @@
 - Keep binary integers explicitly little-endian.
 - Reject unsafe lengths and KDF parameters before allocation or expensive work.
 - On failed operations, clean only output or staging paths created for that operation.
+- A create-new collision must never delete or modify the pre-existing file.
 
 ## Tests
 
 - Tests live in `SafeFile.Core.Tests`.
 - Maintain happy-case round trips for `File`, `Zip`, and `PerFile`.
 - Also retain regression coverage for empty files, truncation, Zip Slip, progress, and ordered multi-consumer output.
+- Retain regression tests proving that file/ZIP encryption and file decryption
+  preserve existing destinations by default, overwrite only when explicitly
+  enabled, and never delete a collision after `FileMode.CreateNew` fails.
+- Retain coverage for `ReadVaultMetadataAsync`, including wrong-password
+  rejection and full long-filename recovery.
 - Run:
 
 ```bash
 dotnet test SafeFile.slnx
 dotnet build SafeFile.slnx
 ```
+
+## MCP Integration
+
+- This project uses **Avalonia Build MCP** to enhance GitHub Copilot with real-time access to Avalonia documentation and expert development guidance.
+- Configuration: See `.github/copilot-mcp.json`
+- **Available MCP Tools:**
+  - `search_avalonia_docs` – Search Avalonia documentation, tutorials, API references, migration guides
+  - `lookup_avalonia_api` – Look up specific Avalonia classes, properties, methods
+  - `get_avalonia_expert_rules` – Load comprehensive Avalonia development rules and best practices
+  - `migrate_diagnostics` – Guidance for upgrading Avalonia Developer Tools
+  - `analyze_wpf_project`, `migrate_to_xpf`, `migrate_to_avalonia` – WPF-to-Avalonia migration support
+- When working on Avalonia UI code (in `SafeFile` project), request Copilot to use these tools for:
+  - AXAML syntax validation and optimization
+  - Data binding and MVVM pattern guidance
+  - Styling, theming, and layout best practices
+  - Control and component recommendations

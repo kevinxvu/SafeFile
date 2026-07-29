@@ -111,10 +111,6 @@ public sealed class SettingsService
         if (string.IsNullOrWhiteSpace(settings.DefaultOutputPath))
             settings.DefaultOutputPath = AppSettings.GetDefaults().DefaultOutputPath;
 
-        var validNamingPolicies = new[] { "AskMeWhatToDo", "AutoRename", "OverwriteExisting" };
-        if (!validNamingPolicies.Contains(settings.NamingPolicy))
-            settings.NamingPolicy = "AskMeWhatToDo";
-
         var validPriorities = new[] { "Low", "Normal", "High" };
         if (!validPriorities.Contains(settings.CpuPriority))
             settings.CpuPriority = "Normal";

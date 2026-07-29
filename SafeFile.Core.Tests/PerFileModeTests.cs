@@ -83,16 +83,15 @@ public sealed class PerFileModeTests
         var encryptedFolder = Path.Combine(temp.Path, "encrypted");
         var restoredFolder = Path.Combine(temp.Path, "restored");
         var password = "filename-test-password"u8.ToArray();
-        var settings = AppSettings.GetDefaults();
-        settings.EncryptFileNames = true;
-        var encryptor = new FileEncryptor(consumerThreads: 2, settings: settings);
+        var encryptor = new FileEncryptor(consumerThreads: 2);
 
         await encryptor.EncryptFolderPerFileAsync(
             source,
             encryptedFolder,
             password,
             chunkSizeBytes: 1_048_576,
-            kdfParams: FastKdf);
+            kdfParams: FastKdf,
+            encryptFileNames: true);
 
         var vault = Assert.Single(Directory.GetFiles(
             Path.Combine(encryptedFolder, "nested"), "*.safe"));

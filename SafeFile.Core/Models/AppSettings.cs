@@ -13,8 +13,6 @@ public sealed class AppSettings
     public int Argon2Parallelism { get; set; } = 2;
 
     public string DefaultOutputPath { get; set; } = string.Empty;
-    public string NamingPolicy { get; set; } = "AskMeWhatToDo";
-    public bool EncryptFileNames { get; set; } = false;
     public bool ConfirmPasswordToggle { get; set; } = true;
     public int MinPasswordLength { get; set; } = 8;
 
@@ -43,8 +41,6 @@ public sealed class AppSettings
             Argon2Iterations = 4,
             Argon2Parallelism = 2,
             DefaultOutputPath = GetDefaultOutputPath(),
-            NamingPolicy = "AskMeWhatToDo",
-            EncryptFileNames = false,
             ConfirmPasswordToggle = true,
             MinPasswordLength = 8
         };

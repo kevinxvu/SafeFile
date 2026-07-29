@@ -72,6 +72,149 @@ public sealed class FileEncryptorTests
     }
 
     [Fact]
+    public async Task ReadVaultMetadata_ValidatesPasswordAndReturnsFullOriginalName()
+    {
+        using var temp = new TempDirectory();
+        var originalName = new string('m', 180) + ".txt";
+        var source = Path.Combine(temp.Path, originalName);
+        await File.WriteAllTextAsync(source, "metadata test");
+        var password = "metadata-password"u8.ToArray();
+        var encryptor = new FileEncryptor(consumerThreads: 2);
+        var vault = await encryptor.EncryptFileAsync(
+            source,
+            Path.Combine(temp.Path, "requested.safe"),
+            password,
+            1_048_576,
+            FastKdf,
+            encryptFileName: true);
+
+        var metadata = await encryptor.ReadVaultMetadataAsync(vault, password);
+
+        Assert.Equal(originalName, metadata.OriginalFileName);
+        Assert.Equal(VaultMode.File, metadata.Mode);
+        Assert.True(metadata.EncryptFileNames);
+        Assert.Equal(1_048_576, metadata.ChunkSize);
+        Assert.Equal(FastKdf, metadata.KdfParameters);
+        Assert.Equal(new FileInfo(vault).Length, metadata.VaultSizeBytes);
+        Assert.Equal("AES-256-GCM", metadata.EncryptionAlgorithm);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            encryptor.ReadVaultMetadataAsync(vault, "wrong-password"u8.ToArray()));
+    }
+
+    [Fact]
+    public async Task DecryptEncryptedName_OnlyOverwritesWhenExplicitlyEnabled()
+    {
+        using var temp = new TempDirectory();
+        var sourceFolder = Directory.CreateDirectory(Path.Combine(temp.Path, "source")).FullName;
+        var outputFolder = Directory.CreateDirectory(Path.Combine(temp.Path, "output")).FullName;
+        var source = Path.Combine(sourceFolder, "existing.txt");
+        var existingOutput = Path.Combine(outputFolder, "existing.txt");
+        await File.WriteAllTextAsync(source, "new content");
+        await File.WriteAllTextAsync(existingOutput, "keep this");
+        var password = "overwrite-password"u8.ToArray();
+        var encryptor = new FileEncryptor(consumerThreads: 2);
+        var vault = await encryptor.EncryptFileAsync(
+            source,
+            Path.Combine(temp.Path, "requested.safe"),
+            password,
+            1_048_576,
+            FastKdf,
+            encryptFileName: true);
+
+        await Assert.ThrowsAsync<IOException>(() =>
+            encryptor.DecryptFileAsync(
+                vault,
+                Path.Combine(outputFolder, "ignored"),
+                password));
+        Assert.Equal("keep this", await File.ReadAllTextAsync(existingOutput));
+
+        var actualOutput = await encryptor.DecryptFileAsync(
+            vault,
+            Path.Combine(outputFolder, "ignored"),
+            password,
+            overwriteExisting: true);
+
+        Assert.Equal(existingOutput, actualOutput);
+        Assert.Equal("new content", await File.ReadAllTextAsync(existingOutput));
+    }
+
+    [Fact]
+    public async Task DecryptClearName_OnlyOverwritesWhenExplicitlyEnabled()
+    {
+        using var temp = new TempDirectory();
+        var source = Path.Combine(temp.Path, "source.txt");
+        var vault = Path.Combine(temp.Path, "source.txt.safe");
+        var output = Path.Combine(temp.Path, "output.txt");
+        await File.WriteAllTextAsync(source, "new content");
+        await File.WriteAllTextAsync(output, "keep this");
+        var password = "overwrite-password"u8.ToArray();
+        var encryptor = new FileEncryptor(consumerThreads: 2);
+        await encryptor.EncryptFileAsync(
+            source, vault, password, 1_048_576, FastKdf);
+
+        await Assert.ThrowsAsync<IOException>(() =>
+            encryptor.DecryptFileAsync(vault, output, password));
+        Assert.Equal("keep this", await File.ReadAllTextAsync(output));
+
+        await encryptor.DecryptFileAsync(
+            vault, output, password, overwriteExisting: true);
+        Assert.Equal("new content", await File.ReadAllTextAsync(output));
+    }
+
+    [Fact]
+    public async Task EncryptFile_OnlyOverwritesWhenExplicitlyEnabled()
+    {
+        using var temp = new TempDirectory();
+        var source = Path.Combine(temp.Path, "source.txt");
+        var vault = Path.Combine(temp.Path, "source.txt.safe");
+        await File.WriteAllTextAsync(source, "source content");
+        await File.WriteAllTextAsync(vault, "keep this vault");
+        var password = "overwrite-password"u8.ToArray();
+        var encryptor = new FileEncryptor(consumerThreads: 2);
+
+        await Assert.ThrowsAsync<IOException>(() =>
+            encryptor.EncryptFileAsync(
+                source, vault, password, 1_048_576, FastKdf));
+        Assert.Equal("keep this vault", await File.ReadAllTextAsync(vault));
+
+        await encryptor.EncryptFileAsync(
+            source,
+            vault,
+            password,
+            1_048_576,
+            FastKdf,
+            overwriteExisting: true);
+        Assert.NotEqual("keep this vault", await File.ReadAllTextAsync(vault));
+    }
+
+    [Fact]
+    public async Task EncryptZip_OnlyOverwritesWhenExplicitlyEnabled()
+    {
+        using var temp = new TempDirectory();
+        var source = Directory.CreateDirectory(Path.Combine(temp.Path, "source")).FullName;
+        var vault = Path.Combine(temp.Path, "source.safe");
+        await File.WriteAllTextAsync(Path.Combine(source, "content.txt"), "zip content");
+        await File.WriteAllTextAsync(vault, "keep this vault");
+        var password = "overwrite-password"u8.ToArray();
+        var encryptor = new FileEncryptor(consumerThreads: 2);
+
+        await Assert.ThrowsAsync<IOException>(() =>
+            encryptor.EncryptFolderZipAsync(
+                source, vault, password, 1_048_576, FastKdf));
+        Assert.Equal("keep this vault", await File.ReadAllTextAsync(vault));
+
+        await encryptor.EncryptFolderZipAsync(
+            source,
+            vault,
+            password,
+            1_048_576,
+            FastKdf,
+            overwriteExisting: true);
+        Assert.NotEqual("keep this vault", await File.ReadAllTextAsync(vault));
+    }
+
+    [Fact]
     public async Task FileRoundTrip_LongEncryptedOutputName_IsTruncatedButFullyRestored()
     {
         using var temp = new TempDirectory();

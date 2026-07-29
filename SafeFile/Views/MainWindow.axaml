@@ -8,54 +8,161 @@
         x:DataType="vm:MainWindowViewModel"
         Icon="/Assets/avalonia-logo.ico"
         Title="SafeFile"
+        Width="1280"
+        Height="720"
+        WindowStartupLocation="CenterScreen"
         Background="#F4F6F8"
         Foreground="#1F2937">
-  <Grid RowDefinitions="*,Auto" ColumnDefinitions="230,*">
-    <Border Grid.RowSpan="2" Grid.Column="0" Background="White" BorderBrush="#E3E7EC" BorderThickness="0,0,1,0" Padding="14,16">
-      <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto" RowSpacing="6">
-        <StackPanel Grid.Row="0" Spacing="2" Margin="0,0,0,8">
-          <TextBlock Text="SafeFile" FontSize="20" FontWeight="SemiBold"/>
-          <TextBlock Text="Enterprise Encryption" Foreground="#6B7280" FontSize="12"/>
+
+  <Window.Resources>
+
+    <!-- ── Nav button ControlTheme ───────────────────────────────────────── -->
+    <ControlTheme x:Key="NavButtonTheme" TargetType="Button">
+      <Setter Property="Background"              Value="Transparent"/>
+      <Setter Property="Foreground"              Value="#4B5563"/>
+      <Setter Property="BorderBrush"             Value="Transparent"/>
+      <Setter Property="BorderThickness"         Value="3,0,0,0"/>
+      <Setter Property="CornerRadius"            Value="0"/>
+      <Setter Property="Padding"                 Value="13,11"/>
+      <Setter Property="HorizontalAlignment"     Value="Stretch"/>
+      <Setter Property="HorizontalContentAlignment" Value="Left"/>
+      <Setter Property="VerticalContentAlignment"   Value="Center"/>
+      <Setter Property="FontSize"                Value="14"/>
+      <Setter Property="Cursor"                  Value="Hand"/>
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border x:Name="PART_Border"
+                  Background="{TemplateBinding Background}"
+                  BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}"
+                  Padding="{TemplateBinding Padding}">
+            <ContentPresenter Content="{TemplateBinding Content}"
+                              HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                              VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                              Foreground="{TemplateBinding Foreground}"/>
+          </Border>
+        </ControlTemplate>
+      </Setter>
+      <Style Selector="^:pointerover /template/ Border#PART_Border">
+        <Setter Property="Background" Value="#F3F4F6"/>
+      </Style>
+      <Style Selector="^:pressed /template/ Border#PART_Border">
+        <Setter Property="Background" Value="#E5E7EB"/>
+      </Style>
+      <Style Selector="^.active">
+        <Setter Property="Background"  Value="#EFF6FF"/>
+        <Setter Property="BorderBrush" Value="#2563EB"/>
+        <Setter Property="Foreground"  Value="#2563EB"/>
+        <Setter Property="FontWeight"  Value="Medium"/>
+      </Style>
+      <Style Selector="^.active:pointerover /template/ Border#PART_Border">
+        <Setter Property="Background" Value="#DBEAFE"/>
+      </Style>
+      <Style Selector="^.active:pressed /template/ Border#PART_Border">
+        <Setter Property="Background" Value="#BFDBFE"/>
+      </Style>
+    </ControlTheme>
+
+  </Window.Resources>
+
+  <Grid ColumnDefinitions="230,*">
+
+    <!-- ═══════════════════════════ SIDEBAR ══════════════════════════════════ -->
+    <Border Grid.Column="0"
+            Background="White"
+            BorderBrush="#E3E7EC" BorderThickness="0,0,1,0">
+      <DockPanel>
+
+        <!-- Logo -->
+        <StackPanel DockPanel.Dock="Top"
+                    Orientation="Horizontal" Spacing="12"
+                    Margin="16,22,16,28">
+          <Border Width="42" Height="42" CornerRadius="10" Background="#1D4ED8"
+                  VerticalAlignment="Center">
+            <PathIcon Data="{StaticResource LockIcon}" Width="22" Height="22" Foreground="White"/>
+          </Border>
+          <StackPanel VerticalAlignment="Center" Spacing="1">
+            <TextBlock Text="SafeFile" FontSize="18" FontWeight="Bold" Foreground="#111827"/>
+            <TextBlock Text="Enterprise Encryption" FontSize="11" Foreground="#6B7280"/>
+          </StackPanel>
         </StackPanel>
 
-        <Button Grid.Row="1" Content="Mã hoá" Command="{Binding NavigateToEncryptCommand}" HorizontalContentAlignment="Left"/>
-        <Button Grid.Row="2" Content="Giải mã" Command="{Binding NavigateToDecryptCommand}" HorizontalContentAlignment="Left"/>
-        <Button Grid.Row="3" Content="Nhật ký" Command="{Binding NavigateToLogsCommand}" HorizontalContentAlignment="Left"/>
-        <Button Grid.Row="4" Content="Thiết lập" Command="{Binding NavigateToSettingsCommand}" HorizontalContentAlignment="Left"/>
+        <!-- Nav items -->
+        <StackPanel DockPanel.Dock="Top" Spacing="2">
 
-        <Button Grid.Row="6" Content="Về ứng dụng" Command="{Binding NavigateToAboutCommand}" HorizontalContentAlignment="Left"/>
-      </Grid>
+          <Button Theme="{StaticResource NavButtonTheme}"
+                  Classes.active="{Binding IsEncryptActive}"
+                  Command="{Binding NavigateToEncryptCommand}">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+              <PathIcon Data="{StaticResource LockIcon}" Width="18" Height="18"/>
+              <TextBlock Text="Mã hoá" VerticalAlignment="Center"/>
+            </StackPanel>
+          </Button>
+
+          <Button Theme="{StaticResource NavButtonTheme}"
+                  Classes.active="{Binding IsDecryptActive}"
+                  Command="{Binding NavigateToDecryptCommand}">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+              <PathIcon Data="{StaticResource LockOpenIcon}" Width="18" Height="18"/>
+              <TextBlock Text="Giải mã" VerticalAlignment="Center"/>
+            </StackPanel>
+          </Button>
+
+          <Button Theme="{StaticResource NavButtonTheme}"
+                  Classes.active="{Binding IsLogsActive}"
+                  Command="{Binding NavigateToLogsCommand}">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+              <PathIcon Data="{StaticResource HistoryIcon}" Width="18" Height="18"/>
+              <TextBlock Text="Nhật ký" VerticalAlignment="Center"/>
+            </StackPanel>
+          </Button>
+
+          <Button Theme="{StaticResource NavButtonTheme}"
+                  Classes.active="{Binding IsSettingsActive}"
+                  Command="{Binding NavigateToSettingsCommand}">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+              <PathIcon Data="{StaticResource SettingsIcon}" Width="18" Height="18"/>
+              <TextBlock Text="Thiết lập" VerticalAlignment="Center"/>
+            </StackPanel>
+          </Button>
+
+        </StackPanel>
+
+        <!-- Filler -->
+        <Grid/>
+      </DockPanel>
     </Border>
 
-    <Grid Grid.Column="1" Grid.Row="0" RowDefinitions="Auto,*" Margin="0">
-      <Border Grid.Row="0" Background="#F8FAFC" BorderBrush="#E3E7EC" BorderThickness="0,0,0,1" Padding="16,10">
+    <!-- ═══════════════════════ MAIN CONTENT ═════════════════════════════════ -->
+    <Grid Grid.Column="1" RowDefinitions="Auto,*">
+      <Border Grid.Row="0"
+              Background="#F8FAFC" BorderBrush="#E3E7EC" BorderThickness="0,0,0,1"
+              Padding="16,10">
         <Grid ColumnDefinitions="*,Auto,Auto">
-          <TextBlock Text="{Binding ActivePage}" FontSize="26" FontWeight="SemiBold" VerticalAlignment="Center"/>
-          <ComboBox Grid.Column="1" Width="120" SelectedIndex="0" Margin="0,0,10,0">
-            <ComboBoxItem Content="Tiếng Việt"/>
-            <ComboBoxItem Content="English"/>
-          </ComboBox>
-          <Button Grid.Column="2" Content="☾" Width="36" Height="32"/>
+          <TextBlock Text="{Binding ActivePage}"
+                     FontSize="26" FontWeight="SemiBold" VerticalAlignment="Center"/>
+          <Button Grid.Column="1" Margin="0,0,8,0"
+                  Theme="{StaticResource OutlinedButtonTheme}"
+                  Padding="10,6">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <PathIcon Data="{StaticResource GlobeIcon}" Width="15" Height="15"/>
+              <TextBlock Text="Tiếng Việt" VerticalAlignment="Center" FontSize="13"/>
+              <TextBlock Text="∨" VerticalAlignment="Center" FontSize="11" Foreground="#6B7280"/>
+            </StackPanel>
+          </Button>
+          <Button Grid.Column="2"
+                  Theme="{StaticResource OutlinedButtonTheme}"
+                  Padding="8,6" ToolTip.Tip="Chế độ tối">
+            <TextBlock Text="☾" FontSize="14"/>
+          </Button>
         </Grid>
       </Border>
 
       <Border Grid.Row="1" Background="#F4F6F8">
-        <ContentControl Content="{Binding CurrentPage}" Margin="0"/>
+        <ContentControl Content="{Binding CurrentPage}"/>
       </Border>
     </Grid>
 
-    <Border Grid.Column="1" Grid.Row="1" Background="White" BorderBrush="#E3E7EC" BorderThickness="0,1,0,0" Padding="14,10">
-      <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto">
-        <TextBlock Grid.Column="0" Text="Đang xử lý:" Foreground="#6B7280" VerticalAlignment="Center" Margin="0,0,8,0"/>
-        <TextBlock Grid.Column="1" Text="{Binding StatusCurrentFile}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,12,0"/>
-        <ProgressBar Grid.Column="2" Width="240" Height="6" VerticalAlignment="Center" Minimum="0" Maximum="1" Value="{Binding StatusProgress}" Margin="0,0,10,0"/>
-        <TextBlock Grid.Column="3" Text="{Binding StatusProgress, StringFormat={}{0:P0}}" VerticalAlignment="Center" Margin="0,0,10,0"/>
-        <TextBlock Grid.Column="4" Text="{Binding StatusSpeed}" VerticalAlignment="Center" Margin="0,0,10,0"/>
-        <StackPanel Grid.Column="5" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-          <TextBlock Text="{Binding StatusEta}" VerticalAlignment="Center"/>
-          <Button Content="Huỷ" Command="{Binding CancelOperationCommand}"/>
-        </StackPanel>
-      </Grid>
-    </Border>
   </Grid>
 </Window>
+

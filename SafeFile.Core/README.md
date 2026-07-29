@@ -65,10 +65,8 @@ Relevant `AppSettings` values:
 | `Argon2MemorySizeKb` | KDF memory setting |
 | `Argon2Iterations` | KDF iteration setting |
 | `Argon2Parallelism` | Portable KDF parallelism, valid range 1–16 |
-| `DefaultOutputPath` | Initial output picker location |
-| `NamingPolicy` | UI conflict policy; Core does not resolve naming prompts |
-| `EncryptFileNames` | Default filename-encryption toggle |
-| `ConfirmPasswordToggle` | UI-only password confirmation preference |
+| `DefaultOutputPath` | Destination root used by the desktop encryption form |
+| `ConfirmPasswordToggle` | Controls whether the encryption form shows and validates password confirmation |
 | `MinPasswordLength` | Minimum password byte length enforced during encryption |
 
 Use:
@@ -134,7 +132,8 @@ Task<string> EncryptFileAsync(
     int chunkSizeBytes = 1_048_576,
     Argon2Parameters? kdfParams = null,
     bool? encryptFileName = null,
-    CancellationToken cancellationToken = default);
+    CancellationToken cancellationToken = default,
+    bool overwriteExisting = false);
 ```
 
 UI inputs:
@@ -144,8 +143,10 @@ UI inputs:
 - `passwordBytes`: UTF-8 password bytes.
 - `chunkSizeBytes`: 1–16 MiB.
 - `kdfParams`: normally `settings.GetKdfParameters()`.
-- `encryptFileName`: `null` uses `settings.EncryptFileNames`; otherwise overrides it.
+- `encryptFileName`: pass the encryption-form toggle explicitly; `null` defaults to `false`.
 - `cancellationToken`: token owned by the UI operation.
+- `overwriteExisting`: replace an existing vault only after explicit user
+  confirmation; the default `false` preserves an existing destination.
 
 Return value:
 
@@ -164,7 +165,8 @@ var actualVaultPath = await encryptor.EncryptFileAsync(
     settings.GetChunkSizeBytes(),
     settings.GetKdfParameters(),
     encryptFileName: encryptNameToggle,
-    cancellationToken);
+    cancellationToken,
+    overwriteExisting: overwriteToggle);
 ```
 
 ### 4.2 Decrypt one file
@@ -174,7 +176,8 @@ Task<string> DecryptFileAsync(
     string sourcePath,
     string destinationPath,
     byte[] passwordBytes,
-    CancellationToken cancellationToken = default);
+    CancellationToken cancellationToken = default,
+    bool overwriteExisting = false);
 ```
 
 UI inputs:
@@ -182,6 +185,9 @@ UI inputs:
 - `sourcePath`: existing `VaultMode.File` vault.
 - `destinationPath`: requested plaintext output path or a placeholder path whose parent directory should receive the restored filename.
 - `passwordBytes`: non-empty UTF-8 password bytes.
+- `overwriteExisting`: allows replacing the authenticated restored filename when
+  it already exists. Keep the default `false` unless the user explicitly
+  confirms overwrite in the UI.
 
 Return value:
 
@@ -189,6 +195,8 @@ Return value:
 - vault flag on: ignores the destination basename, restores the complete authenticated filename from the vault, writes it under `Path.GetDirectoryName(destinationPath)`, and returns that actual path.
 
 The UI must use the returned path. Do not assume the basename selected before decrypt is the basename Core used.
+For both naming modes, an existing destination is rejected unless
+`overwriteExisting` is explicitly set to `true`.
 
 ### 4.3 Encrypt a folder as one ZIP vault
 
@@ -200,10 +208,13 @@ Task<string> EncryptFolderZipAsync(
     int chunkSizeBytes = 1_048_576,
     Argon2Parameters? kdfParams = null,
     bool? encryptFileName = null,
-    CancellationToken cancellationToken = default);
+    CancellationToken cancellationToken = default,
+    bool overwriteExisting = false);
 ```
 
 UI inputs match single-file encryption, except the source is an existing folder. `destinationPath` must be outside the source tree.
+`overwriteExisting` follows the same explicit-confirmation rule as
+`EncryptFileAsync`.
 
 Return value follows the same naming rule as `EncryptFileAsync`. Store and display the returned actual vault path.
 
@@ -252,7 +263,7 @@ UI inputs:
 
 - source folder must exist;
 - destination folder must not exist and must be outside the source tree;
-- `encryptFileNames = null` uses the setting default.
+- pass `encryptFileNames` explicitly from the encryption form; `null` defaults to `false`.
 
 Core preserves relative subfolder structure but does not preserve empty directories. Each regular file receives its own salt, key, header, filename chunk, and data chunks.
 
@@ -299,7 +310,28 @@ The returned value is the standalone filename stored in the Base64URL name. For 
 
 Argon2 runs on a background task. Cancellation is checked before scheduling; the current Argon2 library cannot interrupt a KDF invocation that has already started.
 
+### 4.8 Read authenticated vault metadata
+
+```csharp
+Task<VaultMetadata> ReadVaultMetadataAsync(
+    string sourcePath,
+    byte[] passwordBytes,
+    CancellationToken cancellationToken = default);
+```
+
+This API validates the password and decrypts only the authenticated filename
+chunk; it does not decrypt the file contents. The returned metadata includes
+the complete original filename, vault size and modification time, version,
+mode, filename-encryption flag, chunk size, Argon2id parameters, and encryption
+algorithm.
+
+Because the call runs Argon2id, invoke it from an explicit UI action such as
+**Check password**, not on every password-field change. Clear the caller-owned
+password byte array after the call.
+
 ## 5. Filename encryption
+
+Filename encryption is an operation-level choice, not a persisted `AppSettings` value. The desktop encryption form owns the checkbox and passes its value explicitly to `EncryptFileAsync`, `EncryptFolderZipAsync`, or `EncryptFolderPerFileAsync`.
 
 When enabled, the visible output name is not a random identifier. It is a self-contained Base64URL payload containing:
 
@@ -318,7 +350,55 @@ The output component ends in `.safe`. To fit the common 255-byte filesystem comp
 - the final extension from `Path.GetExtension` is preserved;
 - an extension longer than 140 UTF-8 bytes is rejected and the UI should ask the user to rename it.
 
+## 6. Current desktop encryption integration
+
+The Avalonia encryption form currently integrates Core as follows:
+
+- file and folder sources can be selected with a picker or drag-and-drop;
+- algorithm, chunk size, and worker count are not editable on the form;
+- chunk size, worker count, and Argon2id parameters come from `AppSettings`;
+- all encrypted output is written under `AppSettings.DefaultOutputPath`, which is created when necessary;
+- the filename-encryption checkbox exists only on the encryption form and is passed explicitly to Core;
+- the overwrite checkbox is passed to file and ZIP encryption; when disabled,
+  an existing vault is rejected and preserved;
+- overwrite is disabled for PerFile mode because its destination folder must
+  not already exist;
+- the estimated output label uses a placeholder for encrypted names because the final Base64URL name depends on a random salt created during encryption;
+- password confirmation is shown and validated only when `ConfirmPasswordToggle` is enabled;
+- each password field has an independent show/hide button;
+- the operation status bar belongs to the encryption view, appears only after an operation starts, supports cancellation while running, and remains visible after completion, cancellation, or failure until dismissed;
+- the form uses the actual path returned by Core when reporting successful file or ZIP encryption.
+
+The Settings screen does not expose filename encryption or an output-name
+collision policy. File and ZIP encryption default to no overwrite and require
+explicit UI confirmation to replace an existing vault. A PerFile destination
+folder must not already exist.
+
 The complete original filename is independently encrypted in the vault filename chunk and is never shortened there.
+
+## 6.1 Current desktop decryption integration
+
+The Avalonia decryption form integrates Core as follows:
+
+- a `.safe` file can be selected with the picker or drag-and-drop;
+- the unauthenticated header is parsed immediately to show format, mode, chunk
+  size, KDF summary, and algorithm;
+- the password is not checked while the user types;
+- pressing **Check password** calls `ReadVaultMetadataAsync`, which runs
+  Argon2id once, validates the key verifier, and decrypts only the filename
+  chunk;
+- the password result is displayed beside the check button;
+- successful verification displays the complete original filename without
+  ellipsis, vault size and modification time, KDF memory/iterations/parallelism,
+  version, mode, chunk size, and algorithm;
+- changing the password clears the verified metadata until the user checks it
+  again;
+- automatic collision renaming is not offered;
+- when overwrite is disabled, both clear-name and restored encrypted-name
+  destinations use create-new semantics and an existing file is preserved;
+- when overwrite is enabled, `DecryptFileAsync` receives
+  `overwriteExisting: true` and replaces the existing file;
+- password and derived-key buffers owned by the caller are cleared after use.
 
 ## 6. Progress behavior
 
@@ -396,9 +476,14 @@ Core does not display prompts. Naming conflict policy and overwrite confirmation
 - Symlinks, junctions, and reparse points are skipped.
 - Source files are opened with read sharing only.
 - Encryption uses a fixed source-length snapshot and rejects size changes.
-- Direct file destinations use `FileMode.Create` and may truncate an existing selected destination.
+- File and ZIP encryption destinations use `FileMode.CreateNew` by default and
+  preserve an existing vault. They use `FileMode.Create` only when
+  `overwriteExisting` is explicitly enabled.
 - Filename-encrypted output is written directly to its final Base64URL path; the clear requested path is not opened.
-- File decrypt deletes incomplete plaintext output after failure.
+- File decrypt uses `FileMode.CreateNew` by default for both clear and restored
+  filenames. It uses `FileMode.Create` only with explicit overwrite.
+- File decrypt deletes only output opened by the current operation after
+  failure; a pre-existing collision is never deleted.
 - ZIP decrypt uses a temporary ZIP plus an atomic staging-directory move.
 - ZIP extraction rejects entries outside the destination root.
 

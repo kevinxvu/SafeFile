@@ -1,0 +1,171 @@
+﻿<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:SafeFile.ViewModels"
+             x:Class="SafeFile.Views.SettingsView"
+             x:DataType="vm:SettingsViewModel"
+             Foreground="#1F2937">
+  <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <StackPanel Margin="24" Spacing="16" MaxWidth="1100"
+                HorizontalAlignment="Stretch">
+
+      <!-- Performance -->
+      <Border Background="White" CornerRadius="8" Padding="18">
+        <StackPanel Spacing="16">
+          <StackPanel Spacing="3">
+            <TextBlock Text="Hiệu năng" FontSize="16" FontWeight="SemiBold"/>
+            <TextBlock Text="Điều chỉnh tài nguyên dùng cho quá trình mã hoá và giải mã."
+                       FontSize="12" Foreground="#6B7280"/>
+          </StackPanel>
+
+          <Grid ColumnDefinitions="*,24,*">
+            <StackPanel Grid.Column="0" Spacing="8">
+              <TextBlock Text="Kích thước Chunk" FontWeight="Medium"/>
+              <ComboBox ItemsSource="{Binding ChunkSizeOptions}"
+                        SelectedItem="{Binding DefaultChunkSizeMb}">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate>
+                    <TextBlock Text="{Binding StringFormat={}{0} MB}"/>
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+              <TextBlock Text="Chunk lớn hơn có thể tăng tốc độ nhưng sử dụng thêm bộ nhớ."
+                         FontSize="11" Foreground="#6B7280" TextWrapping="Wrap"/>
+            </StackPanel>
+
+            <StackPanel Grid.Column="2" Spacing="8">
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Text="Số luồng xử lý" FontWeight="Medium"/>
+                <TextBlock Grid.Column="1" Text="{Binding MaxThreads}"
+                           Foreground="#2563EB" FontWeight="SemiBold"/>
+              </Grid>
+              <Slider Value="{Binding MaxThreads}" Minimum="1"
+                      Maximum="{Binding MaxThreadsLimit}"
+                      TickFrequency="1" IsSnapToTickEnabled="True"/>
+              <TextBlock Text="Giới hạn theo số bộ xử lý logic của thiết bị."
+                         FontSize="11" Foreground="#6B7280"/>
+            </StackPanel>
+          </Grid>
+
+          <StackPanel Spacing="8">
+            <TextBlock Text="Mức ưu tiên CPU" FontWeight="Medium"/>
+            <StackPanel Orientation="Horizontal" Spacing="22">
+              <RadioButton Content="Thấp" IsChecked="{Binding IsCpuLow}"
+                           GroupName="CpuPriority"/>
+              <RadioButton Content="Bình thường" IsChecked="{Binding IsCpuNormal}"
+                           GroupName="CpuPriority"/>
+              <RadioButton Content="Cao" IsChecked="{Binding IsCpuHigh}"
+                           GroupName="CpuPriority"/>
+            </StackPanel>
+          </StackPanel>
+        </StackPanel>
+      </Border>
+
+      <!-- Security -->
+      <Border Background="White" CornerRadius="8" Padding="18">
+        <StackPanel Spacing="16">
+          <StackPanel Spacing="3">
+            <TextBlock Text="Bảo mật" FontSize="16" FontWeight="SemiBold"/>
+            <TextBlock Text="Thiết lập chính sách mật khẩu và tham số dẫn xuất khoá Argon2id."
+                       FontSize="12" Foreground="#6B7280"/>
+          </StackPanel>
+
+          <Grid ColumnDefinitions="*,24,*">
+            <StackPanel Grid.Column="0" Spacing="12">
+              <TextBlock Text="Chính sách mật khẩu" FontWeight="Medium"/>
+              <Grid ColumnDefinitions="*,110">
+                <TextBlock Text="Độ dài mật khẩu tối thiểu" VerticalAlignment="Center"/>
+                <NumericUpDown Grid.Column="1"
+                               Value="{Binding MinPasswordLength}"
+                               Minimum="6" Maximum="128"
+                               Increment="1" FormatString="0"
+                               TextAlignment="Center"
+                               HorizontalAlignment="Stretch"/>
+              </Grid>
+              <CheckBox Content="Yêu cầu nhập lại mật khẩu để xác nhận"
+                        IsChecked="{Binding ConfirmPasswordToggle}"/>
+            </StackPanel>
+
+            <StackPanel Grid.Column="2" Spacing="10">
+              <TextBlock Text="Argon2id KDF" FontWeight="Medium"/>
+              <Grid ColumnDefinitions="*,110"
+                    RowDefinitions="32,32,32"
+                    RowSpacing="8">
+                <TextBlock Grid.Row="0" Text="Bộ nhớ (MB)" VerticalAlignment="Center"/>
+                <NumericUpDown Grid.Row="0" Grid.Column="1"
+                               Value="{Binding Argon2MemoryMb}"
+                               Minimum="{Binding Argon2MemoryMinMb}"
+                               Maximum="{Binding Argon2MemoryMaxMb}"
+                               Increment="16" FormatString="0"
+                               TextAlignment="Center"
+                               HorizontalAlignment="Stretch"/>
+                <TextBlock Grid.Row="1" Text="Số vòng lặp" VerticalAlignment="Center"/>
+                <NumericUpDown Grid.Row="1" Grid.Column="1"
+                               Value="{Binding Argon2Iterations}"
+                               Minimum="1" Maximum="{Binding Argon2IterationsMax}"
+                               Increment="1" FormatString="0"
+                               TextAlignment="Center"
+                               HorizontalAlignment="Stretch"/>
+                <TextBlock Grid.Row="2" Text="Mức song song" VerticalAlignment="Center"/>
+                <NumericUpDown Grid.Row="2" Grid.Column="1"
+                               Value="{Binding Argon2Parallelism}"
+                               Minimum="1" Maximum="{Binding Argon2ParallelismMax}"
+                               Increment="1" FormatString="0"
+                               TextAlignment="Center"
+                               HorizontalAlignment="Stretch"/>
+              </Grid>
+              <TextBlock Text="Giá trị cao hơn tăng khả năng chống dò mật khẩu, đồng thời cần nhiều tài nguyên hơn."
+                         FontSize="11" Foreground="#6B7280" TextWrapping="Wrap"/>
+            </StackPanel>
+          </Grid>
+        </StackPanel>
+      </Border>
+
+      <!-- Output -->
+      <Border Background="White" CornerRadius="8" Padding="18">
+        <StackPanel Spacing="14">
+          <StackPanel Spacing="3">
+            <TextBlock Text="Đầu ra" FontSize="16" FontWeight="SemiBold"/>
+            <TextBlock Text="Chọn vị trí lưu mặc định cho dữ liệu đã mã hoá."
+                       FontSize="12" Foreground="#6B7280"/>
+          </StackPanel>
+
+          <StackPanel Spacing="7">
+            <TextBlock Text="Thư mục đầu ra mặc định" FontWeight="Medium"/>
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBox Grid.Column="0" Text="{Binding DefaultOutputPath}"
+                       PlaceholderText="Chọn thư mục đầu ra"/>
+              <Button Grid.Column="1" Margin="8,0,0,0"
+                      Theme="{StaticResource OutlinedButtonTheme}"
+                      Command="{Binding BrowseOutputPathCommand}">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <PathIcon Data="{StaticResource FolderIcon}" Width="15" Height="15"/>
+                  <TextBlock Text="Duyệt..." VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+            </Grid>
+          </StackPanel>
+
+        </StackPanel>
+      </Border>
+
+      <!-- Actions -->
+      <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,2,0,8">
+        <TextBlock Text="{Binding StatusMessage}"
+                   Foreground="{Binding StatusForeground}"
+                   VerticalAlignment="Center" FontWeight="Medium"/>
+        <Button Grid.Column="1" Margin="0,0,8,0"
+                Theme="{StaticResource OutlinedButtonTheme}"
+                Command="{Binding RestoreDefaultsCommand}">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <PathIcon Data="{StaticResource RefreshIcon}" Width="15" Height="15"/>
+            <TextBlock Text="Khôi phục mặc định" VerticalAlignment="Center"/>
+          </StackPanel>
+        </Button>
+        <Button Grid.Column="2" Theme="{StaticResource PrimaryButtonTheme}"
+                Command="{Binding SaveCommand}">
+          <TextBlock Text="Lưu thiết lập"/>
+        </Button>
+      </Grid>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

@@ -1,24 +1,31 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using SafeFile.Core.Services;
 using SafeFile.Services;
-using System.Threading;
 
 namespace SafeFile.ViewModels;
 
+public enum NavItem { Encrypt, Decrypt, Logs, Settings }
+
 public sealed partial class MainWindowViewModel : ViewModelBase
 {
-    private CancellationTokenSource? _activeCts;
+    private readonly SettingsService _settingsService;
 
     // ── Navigation ────────────────────────────────────────────────
     [ObservableProperty] private ViewModelBase _currentPage;
     [ObservableProperty] private string _activePage = "Mã hoá dữ liệu";
 
-    // ── Status bar ────────────────────────────────────────────────
-    [ObservableProperty] private bool _isOperationActive;
-    [ObservableProperty] private string _statusCurrentFile = "";
-    [ObservableProperty] private double _statusProgress;
-    [ObservableProperty] private string _statusSpeed = "";
-    [ObservableProperty] private string _statusEta = "";
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsEncryptActive))]
+    [NotifyPropertyChangedFor(nameof(IsDecryptActive))]
+    [NotifyPropertyChangedFor(nameof(IsLogsActive))]
+    [NotifyPropertyChangedFor(nameof(IsSettingsActive))]
+    private NavItem _activeNav = NavItem.Encrypt;
+
+    public bool IsEncryptActive  => ActiveNav == NavItem.Encrypt;
+    public bool IsDecryptActive  => ActiveNav == NavItem.Decrypt;
+    public bool IsLogsActive     => ActiveNav == NavItem.Logs;
+    public bool IsSettingsActive => ActiveNav == NavItem.Settings;
 
     // ── Commands ──────────────────────────────────────────────────
     public IRelayCommand NavigateToEncryptCommand { get; }
@@ -26,49 +33,40 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     public IRelayCommand NavigateToLogsCommand { get; }
     public IRelayCommand NavigateToSettingsCommand { get; }
     public IRelayCommand NavigateToAboutCommand { get; }
-    public IRelayCommand CancelOperationCommand { get; }
 
-    public MainWindowViewModel(IFilePickerService filePicker)
+    public MainWindowViewModel(IFilePickerService filePicker, SettingsService settingsService)
     {
-        _currentPage = new EncryptViewModel(filePicker, this);
+        _settingsService = settingsService;
+        _currentPage = new EncryptViewModel(filePicker);
 
         NavigateToEncryptCommand = new RelayCommand(() =>
         {
+            ActiveNav = NavItem.Encrypt;
             ActivePage = "Mã hoá dữ liệu";
-            CurrentPage = new EncryptViewModel(filePicker, this);
+            CurrentPage = new EncryptViewModel(filePicker);
         });
         NavigateToDecryptCommand = new RelayCommand(() =>
         {
+            ActiveNav = NavItem.Decrypt;
             ActivePage = "Giải mã dữ liệu";
-            CurrentPage = new PlaceholderViewModel("Giải mã");
+            CurrentPage = new DecryptViewModel(filePicker);
         });
         NavigateToLogsCommand = new RelayCommand(() =>
         {
+            ActiveNav = NavItem.Logs;
             ActivePage = "Nhật ký";
             CurrentPage = new PlaceholderViewModel("Nhật ký");
         });
         NavigateToSettingsCommand = new RelayCommand(() =>
         {
+            ActiveNav = NavItem.Settings;
             ActivePage = "Thiết lập";
-            CurrentPage = new PlaceholderViewModel("Thiết lập");
+            CurrentPage = new SettingsViewModel(_settingsService, filePicker);
         });
         NavigateToAboutCommand = new RelayCommand(() =>
         {
             ActivePage = "Về ứng dụng";
             CurrentPage = new PlaceholderViewModel("Về ứng dụng");
         });
-
-        CancelOperationCommand = new RelayCommand(
-            () => _activeCts?.Cancel(),
-            () => IsOperationActive);
-    }
-
-    partial void OnIsOperationActiveChanged(bool value)
-        => CancelOperationCommand.NotifyCanExecuteChanged();
-
-    public void SetActiveCts(CancellationTokenSource? cts)
-    {
-        _activeCts = cts;
-        CancelOperationCommand.NotifyCanExecuteChanged();
     }
 }

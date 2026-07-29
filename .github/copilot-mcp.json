@@ -1,0 +1,33 @@
+{
+  "$schema": "https://docs.avaloniaui.net/schemas/mcp-server.schema.json",
+  "mcpServers": {
+    "avalonia-build": {
+      "name": "Avalonia Build MCP",
+      "description": "Remote MCP server providing access to Avalonia documentation, expert development rules, and migration tools",
+      "url": "sse://mcp.avaloniaui.net/build",
+      "autoConnect": true,
+      "tools": {
+        "documentation": [
+          "search_avalonia_docs",
+          "lookup_avalonia_api",
+          "get_avalonia_expert_rules"
+        ],
+        "migration": [
+          "migrate_diagnostics",
+          "analyze_wpf_project",
+          "migrate_to_xpf",
+          "migrate_to_avalonia",
+          "lookup_wpf_to_avalonia_mapping"
+        ]
+      }
+    }
+  },
+  "projectContext": {
+    "projectType": "Avalonia UI",
+    "targetFramework": ".NET 10",
+    "uiFramework": "Avalonia",
+    "hasCore": true,
+    "coreLibrary": "SafeFile.Core",
+    "uiProject": "SafeFile"
+  }
+}

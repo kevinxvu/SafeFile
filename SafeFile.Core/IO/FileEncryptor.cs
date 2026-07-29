@@ -17,7 +17,6 @@ public sealed class FileEncryptor
     private readonly IProgress<double>? _progress;
     private readonly IProgress<PerFileProgress>? _perFileProgress;
     private readonly int _minimumPasswordLength;
-    private readonly bool _encryptFileNames;
 
     public FileEncryptor(
         int consumerThreads = -1,
@@ -29,7 +28,6 @@ public sealed class FileEncryptor
         _perFileProgress = perFileProgress;
         var effectiveSettings = settings ?? AppSettings.GetDefaults();
         _minimumPasswordLength = effectiveSettings.MinPasswordLength;
-        _encryptFileNames = effectiveSettings.EncryptFileNames;
         if (_minimumPasswordLength < 1 || _minimumPasswordLength > 128)
             throw new ArgumentOutOfRangeException(nameof(settings), "Minimum password length must be between 1 and 128.");
         _pipeline = new CryptoPipeline(consumerThreads, progress);
@@ -42,7 +40,8 @@ public sealed class FileEncryptor
         int chunkSizeBytes = 1_048_576,
         Argon2Parameters? kdfParams = null,
         bool? encryptFileName = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool overwriteExisting = false)
     {
         ArgumentNullException.ThrowIfNull(sourceFolderPath);
         ArgumentNullException.ThrowIfNull(destinationPath);
@@ -55,8 +54,9 @@ public sealed class FileEncryptor
         ValidateChunkSize(chunkSizeBytes);
         _pipeline.ValidateMemoryBudget(chunkSizeBytes);
         EnsureDestinationOutsideSourceFolder(sourceFolderPath, destinationPath);
-        var shouldEncryptFileName = encryptFileName ?? _encryptFileNames;
+        var shouldEncryptFileName = encryptFileName ?? false;
         var actualDestinationPath = destinationPath;
+        var destinationOpened = false;
 
         var folderName = Path.GetFileName(Path.TrimEndingDirectorySeparator(sourceFolderPath));
         var encryptedFileName = System.Text.Encoding.UTF8.GetBytes(folderName + ".zip");
@@ -91,8 +91,10 @@ public sealed class FileEncryptor
                     salt,
                     effectiveKdfParams);
 
+            var destinationMode = overwriteExisting ? FileMode.Create : FileMode.CreateNew;
             using var destStream = new FileStream(
-                actualDestinationPath, FileMode.Create, FileAccess.Write, FileShare.None);
+                actualDestinationPath, destinationMode, FileAccess.Write, FileShare.None);
+            destinationOpened = true;
             var passwordChecksum = PasswordValidator.ComputeChecksum(masterKey, salt);
             var header = new VaultHeader
             {
@@ -213,7 +215,7 @@ public sealed class FileEncryptor
         }
         catch
         {
-            if (File.Exists(actualDestinationPath))
+            if (destinationOpened && File.Exists(actualDestinationPath))
             {
                 try
                 {
@@ -340,7 +342,8 @@ public sealed class FileEncryptor
         int chunkSizeBytes = 1_048_576,
         Argon2Parameters? kdfParams = null,
         bool? encryptFileName = null,
-        CancellationToken cancellationToken = default) =>
+        CancellationToken cancellationToken = default,
+        bool overwriteExisting = false) =>
         EncryptFileCoreAsync(
             sourcePath,
             destinationPath,
@@ -350,7 +353,86 @@ public sealed class FileEncryptor
             kdfParams,
             cancellationToken,
             progressCallback: null,
-            encryptFileNames: encryptFileName ?? _encryptFileNames);
+            encryptFileNames: encryptFileName ?? false,
+            overwriteExisting);
+
+    /// <summary>
+    /// Validates the password and reads authenticated vault metadata without
+    /// decrypting the file contents. Argon2 is only run when this method is called.
+    /// </summary>
+    public async Task<VaultMetadata> ReadVaultMetadataAsync(
+        string sourcePath,
+        byte[] passwordBytes,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(sourcePath);
+        ArgumentNullException.ThrowIfNull(passwordBytes);
+
+        if (passwordBytes.Length == 0)
+            throw new ArgumentException("Password cannot be empty.", nameof(passwordBytes));
+        if (!File.Exists(sourcePath))
+            throw new FileNotFoundException($"Source file not found: {sourcePath}");
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        using var sourceStream = new FileStream(
+            sourcePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+        var header = VaultHeader.ReadFrom(sourceStream);
+        var masterKey = await DeriveKeyAsync(
+            passwordBytes,
+            header.Salt,
+            header.KdfParameters,
+            cancellationToken).ConfigureAwait(false);
+
+        try
+        {
+            if (!PasswordValidator.ValidateChecksum(
+                    header.PasswordChecksum, masterKey, header.Salt))
+            {
+                throw new InvalidOperationException(
+                    "Invalid password or corrupted vault file (key verifier mismatch).");
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            var fileNameChunk = ReadEncryptedFileNameChunk(sourceStream, header)
+                ?? throw new InvalidDataException(
+                    "Missing encrypted filename chunk in vault file.");
+            if (fileNameChunk.Index != 0)
+            {
+                throw new InvalidDataException(
+                    $"Expected filename chunk index 0, got {fileNameChunk.Index}.");
+            }
+
+            var plaintext = new AesGcmEngine().DecryptChunk(fileNameChunk, masterKey);
+            try
+            {
+                var originalFileName =
+                    new System.Text.UTF8Encoding(false, true).GetString(plaintext);
+                ValidateStoredFileName(originalFileName);
+                var fileInfo = new FileInfo(sourcePath);
+
+                return new VaultMetadata(
+                    fileInfo.FullName,
+                    originalFileName,
+                    fileInfo.Length,
+                    fileInfo.LastWriteTimeUtc,
+                    header.Version,
+                    header.Mode,
+                    header.EncryptFileNames,
+                    header.ChunkSize,
+                    header.KdfParameters,
+                    "AES-256-GCM");
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(plaintext);
+            }
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(masterKey);
+        }
+    }
 
     public async Task<string> DecryptOutputFileNameAsync(
         string encryptedOutputFileName,
@@ -465,7 +547,7 @@ public sealed class FileEncryptor
         EnsureDestinationOutsideSourceFolder(sourceFolderPath, destinationFolderPath);
 
         var sourceRoot = Path.GetFullPath(sourceFolderPath);
-        var shouldEncryptFileNames = encryptFileNames ?? _encryptFileNames;
+        var shouldEncryptFileNames = encryptFileNames ?? false;
         Directory.CreateDirectory(destinationFolderPath);
 
         try
@@ -493,7 +575,8 @@ public sealed class FileEncryptor
                     cancellationToken,
                     progress => _perFileProgress?.Report(
                         new PerFileProgress(sourceFile.FullName, progress)),
-                    shouldEncryptFileNames).ConfigureAwait(false);
+                    shouldEncryptFileNames,
+                    overwriteExisting: false).ConfigureAwait(false);
             }
         }
         catch
@@ -545,7 +628,8 @@ public sealed class FileEncryptor
                     decryptedPath,
                     passwordBytes,
                     VaultMode.PerFile,
-                    cancellationToken).ConfigureAwait(false);
+                    cancellationToken,
+                    overwriteExisting: false).ConfigureAwait(false);
             }
         }
         catch
@@ -564,7 +648,8 @@ public sealed class FileEncryptor
         Argon2Parameters? kdfParams,
         CancellationToken cancellationToken,
         Action<double>? progressCallback,
-        bool encryptFileNames)
+        bool encryptFileNames,
+        bool overwriteExisting)
     {
         ArgumentNullException.ThrowIfNull(sourcePath);
         ArgumentNullException.ThrowIfNull(destinationPath);
@@ -590,6 +675,7 @@ public sealed class FileEncryptor
         var fileSize = sourceStream.Length;
         var actualDestinationPath = destinationPath;
         var masterKey = Array.Empty<byte>();
+        var destinationOpened = false;
 
         try
         {
@@ -615,8 +701,10 @@ public sealed class FileEncryptor
                     effectiveKdfParams);
 
             EnsureDistinctPaths(sourcePath, actualDestinationPath);
+            var destinationMode = overwriteExisting ? FileMode.Create : FileMode.CreateNew;
             using var destStream = new FileStream(
-                actualDestinationPath, FileMode.Create, FileAccess.Write, FileShare.None);
+                actualDestinationPath, destinationMode, FileAccess.Write, FileShare.None);
+            destinationOpened = true;
             var passwordChecksum = PasswordValidator.ComputeChecksum(masterKey, salt);
             var header = new VaultHeader
             {
@@ -680,7 +768,7 @@ public sealed class FileEncryptor
         }
         catch
         {
-            if (File.Exists(actualDestinationPath))
+            if (destinationOpened && File.Exists(actualDestinationPath))
             {
                 try
                 {
@@ -706,20 +794,23 @@ public sealed class FileEncryptor
         string sourcePath,
         string destinationPath,
         byte[] passwordBytes,
-        CancellationToken cancellationToken = default) =>
+        CancellationToken cancellationToken = default,
+        bool overwriteExisting = false) =>
         DecryptFileCoreAsync(
             sourcePath,
             destinationPath,
             passwordBytes,
             VaultMode.File,
-            cancellationToken);
+            cancellationToken,
+            overwriteExisting);
 
     private async Task<string> DecryptFileCoreAsync(
         string sourcePath,
         string destinationPath,
         byte[] passwordBytes,
         VaultMode expectedMode,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool overwriteExisting)
     {
         ArgumentNullException.ThrowIfNull(sourcePath);
         ArgumentNullException.ThrowIfNull(destinationPath);
@@ -733,6 +824,7 @@ public sealed class FileEncryptor
         EnsureDistinctPaths(sourcePath, destinationPath);
 
         var actualDestinationPath = destinationPath;
+        var destinationOpened = false;
         try
         {
             using var sourceStream = new FileStream(sourcePath, FileMode.Open, FileAccess.Read, FileShare.Read);
@@ -774,9 +866,12 @@ public sealed class FileEncryptor
                         originalFileName);
                 }
 
-                var destinationMode = restoreStoredFileName ? FileMode.CreateNew : FileMode.Create;
+                var destinationMode = overwriteExisting
+                    ? FileMode.Create
+                    : FileMode.CreateNew;
                 using var destStream = new FileStream(
                     actualDestinationPath, destinationMode, FileAccess.Write, FileShare.None);
+                destinationOpened = true;
 
                 long expectedChunkIndex = 1;  // Data chunks start at index 1
                 var sawLastChunk = false;
@@ -814,7 +909,7 @@ public sealed class FileEncryptor
         }
         catch
         {
-            if (File.Exists(actualDestinationPath))
+            if (destinationOpened && File.Exists(actualDestinationPath))
             {
                 try
                 {

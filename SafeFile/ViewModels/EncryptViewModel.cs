@@ -17,13 +17,14 @@ namespace SafeFile.ViewModels;
 public sealed partial class EncryptViewModel : ViewModelBase
 {
     private readonly IFilePickerService _filePicker;
-    private readonly MainWindowViewModel _mainVm;
     private readonly AppSettings _settings;
+    private CancellationTokenSource? _activeCts;
 
     // ── Source ────────────────────────────────────────────────────
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(EstimatedOutputName))]
     [NotifyPropertyChangedFor(nameof(IsFolderSource))]
+    [NotifyPropertyChangedFor(nameof(IsSingleVaultOutput))]
     private bool _isFileSource = true;
 
     [ObservableProperty]
@@ -60,6 +61,7 @@ public sealed partial class EncryptViewModel : ViewModelBase
 
     public char PasswordChar => ShowPassword ? '\0' : '•';
     public char ConfirmPasswordChar => ShowConfirmPassword ? '\0' : '•';
+    public bool IsPasswordConfirmationRequired { get; }
 
     public double PasswordStrength
     {
@@ -98,13 +100,21 @@ public sealed partial class EncryptViewModel : ViewModelBase
             _ => "#00897B"
         };
 
-    // ── Options ───────────────────────────────────────────────────
-    [ObservableProperty] private int _chunkSizeMb;
-    [ObservableProperty] private int _maxThreads;
+    // ── Encryption options ────────────────────────────────────────
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(EstimatedOutputName))]
+    private bool _encryptFileNames;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsFolderModePerFile))]
+    [NotifyPropertyChangedFor(nameof(EstimatedOutputName))]
+    [NotifyPropertyChangedFor(nameof(IsSingleVaultOutput))]
     private bool _isFolderModeZip = true;
+
+    [ObservableProperty]
+    private bool _overwriteExisting;
+
+    public bool IsSingleVaultOutput => IsFileSource || IsFolderModeZip;
 
     public bool IsFolderModePerFile
     {
@@ -112,22 +122,61 @@ public sealed partial class EncryptViewModel : ViewModelBase
         set => IsFolderModeZip = !value;
     }
 
-    public int[] ChunkSizeOptions { get; } = [1, 2, 4, 8, 16];
-    public int MaxThreadsLimit { get; } = Math.Max(1, Environment.ProcessorCount);
-
     // ── Output preview ────────────────────────────────────────────
     public string EstimatedOutputName
     {
         get
         {
             if (string.IsNullOrEmpty(SourcePath)) return "";
-            return Path.GetFileName(SourcePath.TrimEnd(Path.DirectorySeparatorChar)) + ".safe";
+
+            var sourceName = Path.GetFileName(
+                SourcePath.TrimEnd(Path.DirectorySeparatorChar));
+
+            if (IsFolderSource && !IsFolderModeZip)
+            {
+                var folderName = sourceName + "_encrypted";
+                return EncryptFileNames
+                    ? $"{folderName} (tên các tập tin sẽ được mã hoá)"
+                    : folderName;
+            }
+
+            return EncryptFileNames
+                ? IsFileSource
+                    ? "[Tên tập tin đã mã hoá].safe"
+                    : "[Tên thư mục đã mã hoá].safe"
+                : sourceName + ".safe";
         }
     }
 
     // ── Operation state ───────────────────────────────────────────
     [ObservableProperty]
     private bool _isEncrypting;
+
+    [ObservableProperty] private bool _isStatusBarVisible;
+    [ObservableProperty] private string _statusAction = "";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StatusDetails))]
+    private string _statusCurrentFile = "";
+
+    [ObservableProperty] private double _statusProgress;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StatusDetails))]
+    private string _statusBytes = "";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StatusDetails))]
+    private string _statusSpeed = "";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StatusDetails))]
+    private string _statusEta = "";
+
+    public string StatusDetails => string.Join(
+        " \u2022 ",
+        new[] { StatusBytes, StatusSpeed, StatusEta }
+            .Where(s => !string.IsNullOrEmpty(s)));
 
     [ObservableProperty] private string _statusMessage = "";
     [ObservableProperty] private bool _hasError;
@@ -137,20 +186,27 @@ public sealed partial class EncryptViewModel : ViewModelBase
     public IAsyncRelayCommand EncryptCommand { get; }
     public IRelayCommand ResetCommand { get; }
     public IRelayCommand OpenOutputFolderCommand { get; }
+    public IRelayCommand CloseStatusCommand { get; }
+    public IRelayCommand TogglePasswordVisibilityCommand { get; }
+    public IRelayCommand ToggleConfirmPasswordVisibilityCommand { get; }
 
-    public EncryptViewModel(IFilePickerService filePicker, MainWindowViewModel mainVm)
+    public EncryptViewModel(IFilePickerService filePicker)
     {
         _filePicker = filePicker;
-        _mainVm = mainVm;
         var settingsService = new SettingsService();
         _settings = settingsService.Load();
-        _maxThreads = Math.Clamp(_settings.MaxThreads, 1, MaxThreadsLimit);
-        _chunkSizeMb = _settings.DefaultChunkSizeMb;
+        _encryptFileNames = false;
+        IsPasswordConfirmationRequired = _settings.ConfirmPasswordToggle;
 
         BrowseSourceCommand = new AsyncRelayCommand(BrowseAsync);
         EncryptCommand = new AsyncRelayCommand(EncryptAsync);
         ResetCommand = new RelayCommand(Reset);
         OpenOutputFolderCommand = new RelayCommand(OpenOutputFolder);
+        CloseStatusCommand = new RelayCommand(CloseOrCancelStatus);
+        TogglePasswordVisibilityCommand = new RelayCommand(
+            () => ShowPassword = !ShowPassword);
+        ToggleConfirmPasswordVisibilityCommand = new RelayCommand(
+            () => ShowConfirmPassword = !ShowConfirmPassword);
     }
 
     private async Task BrowseAsync()
@@ -180,7 +236,7 @@ public sealed partial class EncryptViewModel : ViewModelBase
             HasError = true;
             return;
         }
-        if (Password != ConfirmPassword)
+        if (IsPasswordConfirmationRequired && Password != ConfirmPassword)
         {
             StatusMessage = "Mật khẩu xác nhận không khớp.";
             HasError = true;
@@ -190,39 +246,42 @@ public sealed partial class EncryptViewModel : ViewModelBase
         HasError = false;
         StatusMessage = "";
         IsEncrypting = true;
+        IsStatusBarVisible = true;
 
         var cts = new CancellationTokenSource();
-        _mainVm.SetActiveCts(cts);
-        _mainVm.IsOperationActive = true;
-        _mainVm.StatusCurrentFile = Path.GetFileName(SourcePath.TrimEnd(Path.DirectorySeparatorChar));
-        _mainVm.StatusProgress = 0;
-        _mainVm.StatusSpeed = "";
-        _mainVm.StatusEta = "";
+        _activeCts = cts;
+        StatusAction = "Đang mã hoá";
+        StatusCurrentFile = Path.GetFileName(SourcePath.TrimEnd(Path.DirectorySeparatorChar));
+        StatusProgress = 0;
+        StatusBytes = "";
+        StatusSpeed = "";
+        StatusEta = "";
 
         var startTime = DateTime.UtcNow;
         long? sourceSize = TryGetSourceSize();
 
         var progress = new Progress<double>(p =>
         {
-            _mainVm.StatusProgress = p;
+            StatusProgress = p;
             var elapsed = (DateTime.UtcNow - startTime).TotalSeconds;
             if (elapsed > 0.5 && sourceSize is > 0)
             {
-                var bytesProcessed = sourceSize.Value * p;
+                var bytesProcessed = (long)(sourceSize.Value * p);
                 var speed = bytesProcessed / elapsed;
-                _mainVm.StatusSpeed = FormatSpeed(speed);
+                StatusBytes = FormatBytes(bytesProcessed) + " / " + FormatBytes(sourceSize.Value);
+                StatusSpeed = FormatSpeed(speed);
                 if (p > 0.001)
                 {
                     var remaining = elapsed / p - elapsed;
-                    _mainVm.StatusEta = "ETA: " + FormatEta(remaining);
+                    StatusEta = "ETA: " + FormatEta(remaining);
                 }
             }
         });
 
         var perFileProgress = new Progress<PerFileProgress>(p =>
         {
-            _mainVm.StatusCurrentFile = Path.GetFileName(p.SourceFilePath);
-            _mainVm.StatusProgress = p.Progress;
+            StatusCurrentFile = Path.GetFileName(p.SourceFilePath);
+            StatusProgress = p.Progress;
         });
 
         byte[]? passwordBytes = null;
@@ -230,65 +289,81 @@ public sealed partial class EncryptViewModel : ViewModelBase
         {
             passwordBytes = Encoding.UTF8.GetBytes(Password);
             var encryptor = new FileEncryptor(
-                consumerThreads: MaxThreads,
+                consumerThreads: _settings.MaxThreads,
                 progress: progress,
                 settings: _settings,
                 perFileProgress: perFileProgress);
 
-            var chunkSizeBytes = ChunkSizeMb * 1_048_576;
+            var chunkSizeBytes = _settings.GetChunkSizeBytes();
             var kdfParams = _settings.GetKdfParameters();
+            var outputDirectory = Path.GetFullPath(_settings.DefaultOutputPath);
+            Directory.CreateDirectory(outputDirectory);
 
             string actualOutputPath;
             if (IsFileSource)
             {
                 var destPath = Path.Combine(
-                    Path.GetDirectoryName(SourcePath)!,
+                    outputDirectory,
                     Path.GetFileName(SourcePath) + ".safe");
                 actualOutputPath = await encryptor.EncryptFileAsync(
                     SourcePath, destPath, passwordBytes,
                     chunkSizeBytes, kdfParams,
-                    cancellationToken: cts.Token);
+                    encryptFileName: EncryptFileNames,
+                    cancellationToken: cts.Token,
+                    overwriteExisting: OverwriteExisting);
             }
             else if (IsFolderModeZip)
             {
                 var src = SourcePath.TrimEnd(Path.DirectorySeparatorChar);
                 var destPath = Path.Combine(
-                    Path.GetDirectoryName(src)!,
+                    outputDirectory,
                     Path.GetFileName(src) + ".safe");
                 actualOutputPath = await encryptor.EncryptFolderZipAsync(
                     SourcePath, destPath, passwordBytes,
                     chunkSizeBytes, kdfParams,
-                    cancellationToken: cts.Token);
+                    encryptFileName: EncryptFileNames,
+                    cancellationToken: cts.Token,
+                    overwriteExisting: OverwriteExisting);
             }
             else
             {
                 var src = SourcePath.TrimEnd(Path.DirectorySeparatorChar);
                 var destFolder = Path.Combine(
-                    Path.GetDirectoryName(src)!,
+                    outputDirectory,
                     Path.GetFileName(src) + "_encrypted");
                 await encryptor.EncryptFolderPerFileAsync(
                     SourcePath, destFolder, passwordBytes,
                     chunkSizeBytes, kdfParams,
+                    encryptFileNames: EncryptFileNames,
                     cancellationToken: cts.Token);
                 actualOutputPath = destFolder;
             }
 
-            _mainVm.StatusProgress = 1.0;
+            StatusProgress = 1.0;
+            StatusAction = "Mã hoá hoàn tất";
+            StatusCurrentFile = Path.GetFileName(actualOutputPath);
+            StatusEta = "";
             StatusMessage = $"✓ Mã hoá thành công: {Path.GetFileName(actualOutputPath)}";
             HasError = false;
         }
         catch (OperationCanceledException)
         {
+            StatusAction = "Đã huỷ mã hoá";
+            StatusEta = "";
             StatusMessage = "Đã huỷ thao tác.";
             HasError = false;
         }
         catch (InvalidOperationException ex)
         {
+            StatusAction = "Mã hoá thất bại";
+            StatusEta = "";
             StatusMessage = $"Sai mật khẩu hoặc dữ liệu bị hỏng: {ex.Message}";
             HasError = true;
         }
         catch (Exception ex)
         {
+            StatusAction = "Mã hoá thất bại";
+            StatusEta = "";
             StatusMessage = $"Lỗi: {ex.Message}";
             HasError = true;
         }
@@ -297,9 +372,20 @@ public sealed partial class EncryptViewModel : ViewModelBase
             if (passwordBytes is not null)
                 CryptographicOperations.ZeroMemory(passwordBytes);
             IsEncrypting = false;
-            _mainVm.IsOperationActive = false;
-            _mainVm.SetActiveCts(null);
+            _activeCts?.Dispose();
+            _activeCts = null;
         }
+    }
+
+    private void CloseOrCancelStatus()
+    {
+        if (IsEncrypting)
+        {
+            _activeCts?.Cancel();
+            return;
+        }
+
+        IsStatusBarVisible = false;
     }
 
     private void Reset()
@@ -310,19 +396,26 @@ public sealed partial class EncryptViewModel : ViewModelBase
         StatusMessage = "";
         HasError = false;
         IsFileSource = true;
-        ChunkSizeMb = _settings.DefaultChunkSizeMb;
-        MaxThreads = Math.Clamp(_settings.MaxThreads, 1, MaxThreadsLimit);
+        EncryptFileNames = false;
+        OverwriteExisting = false;
         IsFolderModeZip = true;
     }
 
     private void OpenOutputFolder()
     {
-        if (string.IsNullOrEmpty(SourcePath)) return;
-        var folder = IsFileSource
-            ? Path.GetDirectoryName(SourcePath)
-            : Path.GetDirectoryName(SourcePath.TrimEnd(Path.DirectorySeparatorChar));
-        if (!string.IsNullOrEmpty(folder))
-            _filePicker.OpenFolder(folder);
+        if (string.IsNullOrWhiteSpace(_settings.DefaultOutputPath))
+            return;
+
+        try
+        {
+            Directory.CreateDirectory(_settings.DefaultOutputPath);
+            _filePicker.OpenFolder(_settings.DefaultOutputPath);
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Không thể mở thư mục đầu ra: {ex.Message}";
+            HasError = true;
+        }
     }
 
     private long? TryGetSourceSize()
@@ -339,6 +432,15 @@ public sealed partial class EncryptViewModel : ViewModelBase
         catch { }
         return null;
     }
+
+    private static string FormatBytes(long bytes) =>
+        bytes switch
+        {
+            >= 1_073_741_824 => $"{bytes / 1_073_741_824.0:F1} GB",
+            >= 1_048_576     => $"{bytes / 1_048_576.0:F1} MB",
+            >= 1_024         => $"{bytes / 1_024.0:F1} KB",
+            _                => $"{bytes} B"
+        };
 
     private static string FormatSpeed(double bytesPerSecond) =>
         bytesPerSecond switch

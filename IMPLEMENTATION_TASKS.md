@@ -6,7 +6,7 @@ This document tracks the full implementation plan for the SafeFile app (.NET 10 
 
 ## Progress Summary
 
-- Overall progress: **8 / 14 main tasks completed** (Task 6 integrated into Task 7)
+- Overall progress: **10 / 14 main tasks completed** (Task 6 integrated into Task 7)
 - Status legend:
   - `[ ]` Not started
   - `[-]` In progress
@@ -163,32 +163,54 @@ This document tracks the full implementation plan for the SafeFile app (.NET 10 
 ## Task 10 — Encrypt Screen (View + ViewModel)
 
 **Checklist**
-- [ ] Create `Views/EncryptView.axaml`
-- [ ] Create `ViewModels/EncryptViewModel.cs`
-- [ ] Source picker (file/folder) + drag/drop zone
-- [ ] Password + confirm + strength indicator
-- [ ] Options: algorithm label, chunk size, threads, folder mode
-- [ ] Commands: Browse, Encrypt, Reset, Cancel, Open output folder
-- [ ] Bind real progress from core service
+- [x] Create `Views/EncryptView.axaml`
+- [x] Create `ViewModels/EncryptViewModel.cs`
+- [x] Source picker (file/folder) + drag/drop zone
+- [x] Password + confirm + strength indicator
+- [x] Options: filename encryption, overwrite, folder ZIP/per-file mode
+- [x] Commands: Browse, Encrypt, Reset, Cancel, Open output folder
+- [x] Bind real progress from core service
+- [x] Reject existing file/ZIP vaults unless overwrite is explicitly enabled
+- [x] Preserve an existing vault when overwrite is disabled
 
 **Deliverable**
 - Functional encrypt flow UI matching spec.
+
+**Implementation Notes**
+- The overwrite checkbox applies to single-file and ZIP vault outputs.
+- Per-file folder mode keeps its stricter contract: the destination directory
+  must not already exist.
+- `EncryptFileAsync` and `EncryptFolderZipAsync` default
+  `overwriteExisting` to `false`.
 
 ---
 
 ## Task 11 — Decrypt Screen (View + ViewModel)
 
 **Checklist**
-- [ ] Create `Views/DecryptView.axaml`
-- [ ] Create `ViewModels/DecryptViewModel.cs`
-- [ ] `.safe` picker + drag/drop zone
-- [ ] Parse header and show file info panel
-- [ ] Password input + verification flow
-- [ ] Output path options (overwrite/rename/open folder)
-- [ ] Commands: Browse, Decrypt, Cancel
+- [x] Create `Views/DecryptView.axaml`
+- [x] Create `ViewModels/DecryptViewModel.cs`
+- [x] `.safe` picker + drag/drop zone
+- [x] Parse header and show file info panel
+- [x] Password input + verification flow
+- [x] Output path options (overwrite/open folder)
+- [x] Commands: Browse, Decrypt, Cancel
+- [x] Add `ReadVaultMetadataAsync` for authenticated metadata and full original filename
+- [x] Show password result beside the verification button
+- [x] Show the complete original filename without ellipsis
+- [x] Enforce overwrite consistently for clear and encrypted filenames
 
 **Deliverable**
 - Functional decrypt flow with metadata-aware UX.
+
+**Implementation Notes**
+- Metadata is read only after the user presses **Check password**; password
+  changes do not automatically run Argon2id.
+- Successful verification displays the complete authenticated filename, vault
+  size/time, format version, mode, chunk size, KDF parameters, and algorithm.
+- `DecryptFileAsync` defaults `overwriteExisting` to `false`; an existing
+  plaintext file is preserved unless overwrite is explicitly enabled.
+- The removed automatic-rename option is not part of the current decrypt UI.
 
 ---
 
