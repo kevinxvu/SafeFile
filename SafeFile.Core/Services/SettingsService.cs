@@ -69,7 +69,9 @@ public sealed class SettingsService
 
     public void RestoreDefaults()
     {
+        var currentLanguage = _cachedSettings.Language;
         _cachedSettings = AppSettings.GetDefaults();
+        _cachedSettings.Language = currentLanguage;
         Save(_cachedSettings);
     }
 
@@ -77,6 +79,12 @@ public sealed class SettingsService
 
     private static void ValidateSettings(AppSettings settings)
     {
+        if (settings.Language is not ("en" or "vi"))
+            settings.Language = "en";
+
+        if (settings.Theme is not ("Light" or "Dark"))
+            settings.Theme = "Light";
+
         if (settings.DefaultChunkSizeMb < 1 || settings.DefaultChunkSizeMb > 16)
             settings.DefaultChunkSizeMb = 1;
 

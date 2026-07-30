@@ -4,6 +4,8 @@ namespace SafeFile.Core.Models;
 
 public sealed class AppSettings
 {
+    public string Language { get; set; } = "en";
+    public string Theme { get; set; } = "Light";
     public int DefaultChunkSizeMb { get; set; } = 1;
     public int MaxThreads { get; set; } = Math.Max(1, Environment.ProcessorCount - 1);
     public string CpuPriority { get; set; } = "Normal";
@@ -35,6 +37,8 @@ public sealed class AppSettings
     {
         return new AppSettings
         {
+            Language = "en",
+            Theme = "Light",
             DefaultChunkSizeMb = 1,
             MaxThreads = Math.Max(1, Environment.ProcessorCount - 1),
             CpuPriority = "Normal",

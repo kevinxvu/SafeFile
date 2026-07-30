@@ -1,0 +1,156 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:SafeFile.ViewModels"
+             xmlns:loc="using:SafeFile.Markup"
+             x:Class="SafeFile.Views.AboutView"
+             x:DataType="vm:AboutViewModel"
+             Foreground="#1F2937">
+  <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <StackPanel Margin="24" Spacing="16" MaxWidth="1100"
+                HorizontalAlignment="Stretch">
+
+      <!-- Product identity -->
+      <Border Background="White" CornerRadius="10" Padding="24">
+        <Grid ColumnDefinitions="Auto,20,*,Auto">
+          <Border Width="72" Height="72" CornerRadius="16" Background="#1D4ED8">
+            <PathIcon Data="{StaticResource LockIcon}" Width="38" Height="38"
+                      Foreground="White" HorizontalAlignment="Center"
+                      VerticalAlignment="Center"/>
+          </Border>
+          <StackPanel Grid.Column="2" VerticalAlignment="Center"
+                      HorizontalAlignment="Left" Spacing="4">
+            <StackPanel Orientation="Horizontal" Spacing="10"
+                        HorizontalAlignment="Left">
+              <TextBlock Text="SafeFile" FontSize="24" FontWeight="Bold"/>
+              <Border Background="#EFF6FF" CornerRadius="12" Padding="9,3"
+                      VerticalAlignment="Center">
+                <TextBlock Text="{Binding VersionText}" Foreground="#1D4ED8"
+                           FontSize="11" FontWeight="SemiBold"/>
+              </Border>
+            </StackPanel>
+            <TextBlock Text="{loc:Tr AboutTagline}" FontSize="14"
+                       Foreground="#4B5563" HorizontalAlignment="Left"/>
+            <TextBlock Text="{loc:Tr AboutDescription}" FontSize="11"
+                       Foreground="#6B7280" TextWrapping="Wrap" MaxWidth="650"
+                       HorizontalAlignment="Left"/>
+          </StackPanel>
+          <StackPanel Grid.Column="3" VerticalAlignment="Center" Spacing="8">
+            <Button Theme="{StaticResource OutlinedButtonTheme}"
+                    Command="{Binding CopySystemInfoCommand}">
+              <TextBlock Text="{loc:Tr CopySystemInfo}"/>
+            </Button>
+            <TextBlock Text="{Binding StatusMessage}" Foreground="#16A34A"
+                       FontSize="11" HorizontalAlignment="Center"/>
+          </StackPanel>
+        </Grid>
+      </Border>
+
+      <!-- Core promises -->
+      <Grid ColumnDefinitions="*,12,*,12,*">
+        <Border Grid.Column="0" Background="White" CornerRadius="8" Padding="18">
+          <StackPanel Spacing="8">
+            <Border Width="36" Height="36" CornerRadius="8" Background="#EFF6FF"
+                    HorizontalAlignment="Left">
+              <PathIcon Data="{StaticResource LockIcon}" Width="19" Height="19"
+                        Foreground="#2563EB"/>
+            </Border>
+            <TextBlock Text="{loc:Tr AuthenticatedEncryption}"
+                       FontWeight="SemiBold"/>
+            <TextBlock Text="{loc:Tr AuthenticatedEncryptionDescription}"
+                       FontSize="11" Foreground="#6B7280" TextWrapping="Wrap"/>
+          </StackPanel>
+        </Border>
+        <Border Grid.Column="2" Background="White" CornerRadius="8" Padding="18">
+          <StackPanel Spacing="8">
+            <Border Width="36" Height="36" CornerRadius="8" Background="#ECFDF5"
+                    HorizontalAlignment="Left">
+              <TextBlock Text="⌁" FontSize="21" Foreground="#059669"
+                         HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <TextBlock Text="{loc:Tr StrongKeyDerivation}" FontWeight="SemiBold"/>
+            <TextBlock Text="{loc:Tr StrongKeyDerivationDescription}"
+                       FontSize="11" Foreground="#6B7280" TextWrapping="Wrap"/>
+          </StackPanel>
+        </Border>
+        <Border Grid.Column="4" Background="White" CornerRadius="8" Padding="18">
+          <StackPanel Spacing="8">
+            <Border Width="36" Height="36" CornerRadius="8" Background="#FFF7ED"
+                    HorizontalAlignment="Left">
+              <PathIcon Data="{StaticResource FolderIcon}" Width="19" Height="19"
+                        Foreground="#EA580C"/>
+            </Border>
+            <TextBlock Text="{loc:Tr FlexibleWorkflows}" FontWeight="SemiBold"/>
+            <TextBlock Text="{loc:Tr FlexibleWorkflowsDescription}"
+                       FontSize="11" Foreground="#6B7280" TextWrapping="Wrap"/>
+          </StackPanel>
+        </Border>
+      </Grid>
+
+      <Grid ColumnDefinitions="*,12,*">
+        <!-- Privacy and trust -->
+        <Border Grid.Column="0" Background="White" CornerRadius="8" Padding="18">
+          <StackPanel Spacing="12">
+            <TextBlock Text="{loc:Tr PrivacyAndSecurity}" FontSize="15"
+                       FontWeight="SemiBold"/>
+            <TextBlock Text="{loc:Tr LocalProcessingDescription}"
+                       TextWrapping="Wrap" Foreground="#4B5563"/>
+            <StackPanel Spacing="8">
+              <TextBlock Text="{loc:Tr PrivacyPointOffline}"/>
+              <TextBlock Text="{loc:Tr PrivacyPointPasswords}"/>
+              <TextBlock Text="{loc:Tr PrivacyPointIntegrity}"/>
+            </StackPanel>
+            <Border Background="#FFFBEB" CornerRadius="6" Padding="10">
+              <TextBlock Text="{loc:Tr PasswordRecoveryWarning}"
+                         Foreground="#92400E" FontSize="11" TextWrapping="Wrap"/>
+            </Border>
+          </StackPanel>
+        </Border>
+
+        <!-- Runtime details -->
+        <Border Grid.Column="2" Background="White" CornerRadius="8" Padding="18">
+          <StackPanel Spacing="12">
+            <TextBlock Text="{loc:Tr TechnicalInformation}" FontSize="15"
+                       FontWeight="SemiBold"/>
+            <Grid ColumnDefinitions="135,*" RowDefinitions="Auto,Auto,Auto,Auto"
+                  RowSpacing="10">
+              <TextBlock Text="{loc:Tr OperatingSystem}" Foreground="#6B7280"/>
+              <TextBlock Grid.Column="1" Text="{Binding OperatingSystem}"
+                         TextWrapping="Wrap"/>
+              <TextBlock Grid.Row="1" Text="{loc:Tr Runtime}" Foreground="#6B7280"/>
+              <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Runtime}"/>
+              <TextBlock Grid.Row="2" Text="{loc:Tr Architecture}" Foreground="#6B7280"/>
+              <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Architecture}"/>
+              <TextBlock Grid.Row="3" Text="Avalonia UI" Foreground="#6B7280"/>
+              <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding AvaloniaVersion}"/>
+            </Grid>
+            <Button Theme="{StaticResource OutlinedButtonTheme}"
+                    HorizontalAlignment="Left"
+                    Command="{Binding OpenLogFolderCommand}">
+              <StackPanel Orientation="Horizontal" Spacing="7">
+                <PathIcon Data="{StaticResource FolderIcon}" Width="15" Height="15"/>
+                <TextBlock Text="{loc:Tr OpenLogFolder}"/>
+              </StackPanel>
+            </Button>
+          </StackPanel>
+        </Border>
+      </Grid>
+
+      <!-- Legal footer -->
+      <Border Background="White" CornerRadius="8" Padding="16">
+        <Grid ColumnDefinitions="*,Auto">
+          <StackPanel Spacing="3">
+            <TextBlock Text="{loc:Tr OpenSourceLicense}" FontWeight="SemiBold"/>
+            <TextBlock Text="{loc:Tr MitLicenseDescription}" FontSize="11"
+                       Foreground="#6B7280"/>
+          </StackPanel>
+          <StackPanel Grid.Column="1" VerticalAlignment="Center">
+            <TextBlock Text="© 2026 kevinxvu" FontWeight="Medium"
+                       HorizontalAlignment="Right"/>
+            <TextBlock Text="{loc:Tr AllRightsNotice}" FontSize="11"
+                       Foreground="#6B7280" HorizontalAlignment="Right"/>
+          </StackPanel>
+        </Grid>
+      </Border>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

@@ -22,7 +22,8 @@ All modes:
 - optionally encrypt output filenames;
 - skip symlinks, junctions, and other reparse points;
 - reject unsafe chunk sizes and KDF parameters;
-- clean incomplete output created by a failed operation.
+- clean incomplete encryption output created by a failed encryption operation;
+- preserve decryption output when a vault fails or a batch is cancelled.
 
 Empty directories are not preserved.
 
@@ -60,12 +61,15 @@ Relevant `AppSettings` values:
 
 | Setting | UI purpose |
 |---|---|
+| `Language` | UI culture: `en` or `vi`; defaults to English |
+| `Theme` | Avalonia theme: `Light` or `Dark` |
 | `DefaultChunkSizeMb` | Chunk-size selector, valid range 1–16 MiB |
 | `MaxThreads` | Encryption worker count |
 | `Argon2MemorySizeKb` | KDF memory setting |
 | `Argon2Iterations` | KDF iteration setting |
 | `Argon2Parallelism` | Portable KDF parallelism, valid range 1–16 |
 | `DefaultOutputPath` | Destination root used by the desktop encryption form |
+| `DefaultDecryptOutputPath` | Destination root used by the desktop decryption form |
 | `ConfirmPasswordToggle` | Controls whether the encryption form shows and validates password confirmation |
 | `MinPasswordLength` | Minimum password byte length enforced during encryption |
 
@@ -77,6 +81,9 @@ var kdfParameters = settings.GetKdfParameters();
 ```
 
 `SettingsService.Save` normalizes unsafe values before writing `settings.json`.
+The default roots are `Documents/SafeFile/Encrypted` and
+`Documents/SafeFile/Decrypted`. Legacy `SafeFile`, `Encrypt`, and `Decrypt`
+defaults are migrated to the distinct `Encrypted` and `Decrypted` folders.
 
 ### 3.2 Create one `FileEncryptor` per active operation
 
@@ -242,7 +249,10 @@ UI inputs:
 - `destinationFolder`: folder that must not already exist;
 - `passwordBytes`: non-empty UTF-8 password bytes.
 
-Core decrypts to a temporary seekable ZIP, extracts into a staging directory, validates extraction paths, and moves the completed staging directory to `destinationFolder`.
+Core decrypts to a temporary seekable ZIP and extracts directly into
+`destinationFolder`, validating every extraction path. If extraction fails or
+is cancelled, successfully written and partial output remains available; Core
+does not remove the destination folder.
 
 The stored encrypted filename can be displayed separately with `DecryptOutputFileNameAsync`, but ZIP extraction always uses the destination folder selected by the UI.
 
@@ -287,7 +297,10 @@ Task DecryptFolderPerFileAsync(
 
 The destination folder must not exist. Core recursively processes regular files ending in `.safe`; other files are skipped. Each vault header determines whether the authenticated full filename must be restored. Missing vault files are simply absent from the result.
 
-If any processed vault fails, Core removes the destination tree created for that operation and rethrows the error.
+If any processed vault fails, Core rethrows the error without deleting the
+destination tree. Files already written and any partial output remain in place.
+The desktop batch UI normally invokes the appropriate operation per queue item
+so one failure can be recorded without stopping the remaining valid vaults.
 
 ### 4.7 Decrypt only the standalone encrypted output name
 
@@ -374,13 +387,23 @@ collision policy. File and ZIP encryption default to no overwrite and require
 explicit UI confirmation to replace an existing vault. A PerFile destination
 folder must not already exist.
 
+Settings owns the language, theme, performance, password/KDF, encrypted-output,
+and decrypted-output values. Language and theme are staged in the form and are
+applied only after **Save settings**. Restoring defaults populates the form but
+does not apply or persist the values until Save.
+
 The complete original filename is independently encrypted in the vault filename chunk and is never shortened there.
 
 ## 6.1 Current desktop decryption integration
 
 The Avalonia decryption form integrates Core as follows:
 
-- a `.safe` file can be selected with the picker or drag-and-drop;
+- one `.safe` file, multiple files, or a folder can be selected with pickers or
+  drag-and-drop; duplicates are ignored;
+- selected vaults appear in a queue table with basename, authenticated original
+  filename, size, per-item progress, and status;
+- only the vault basename is displayed and used by its tooltip; the source path
+  stays internal;
 - the unauthenticated header is parsed immediately to show format, mode, chunk
   size, KDF summary, and algorithm;
 - the password is not checked while the user types;
@@ -393,21 +416,50 @@ The Avalonia decryption form integrates Core as follows:
   version, mode, chunk size, and algorithm;
 - changing the password clears the verified metadata until the user checks it
   again;
+- all source inputs, drop zones, queue mutation controls, password input, and
+  options are locked while a batch is decrypting;
+- an invalid or failed vault records its own error and does not prevent later
+  valid queue items from running;
+- aggregate progress is based on completed queue items plus the current item's
+  progress, and the table retains individual success/failure results;
 - automatic collision renaming is not offered;
 - when overwrite is disabled, both clear-name and restored encrypted-name
   destinations use create-new semantics and an existing file is preserved;
 - when overwrite is enabled, `DecryptFileAsync` receives
   `overwriteExisting: true` and replaces the existing file;
+- overwrite applies to `File` and individual `PerFile` outputs only; ZIP
+  destination folders must not already exist;
 - password and derived-key buffers owned by the caller are cleared after use.
+- submit-time errors are shown through a dialog rather than inline error text;
+- failure or cancellation never triggers cleanup of the configured output
+  folder.
 
-## 6. Progress behavior
+## 6.2 Desktop shell, localization, logs, and About
+
+- `MainWindowViewModel` keeps one ViewModel instance for each page: Encrypt,
+  Decrypt, Logs, Settings, and About.
+- Page-specific bottom status bars remain inside their pages; they are not moved
+  into the main shell.
+- All user-facing AXAML text is stored in `SafeFile/Resources/Strings.resx`
+  (neutral English) and `Strings.vi.resx`. `LocalizationService` updates live
+  bindings when the saved language changes.
+- English is the default. Language and Light/Dark theme controls live only in
+  Settings and apply on Save; the header contains only the current page title.
+- Serilog writes structured events to a daily rolling file and the in-memory UI
+  sink. The Logs page supports level filtering, search, clear-display, export,
+  auto-scroll, and opening the log directory.
+- The About page explains the cryptographic and local-processing model, reads
+  version/runtime information from the running application, can copy diagnostic
+  system information, opens the log folder, and identifies the MIT license.
+
+## 6.3 Progress behavior
 
 | Operation | Progress source |
 |---|---|
 | File encrypt | Ordered encrypted chunks |
 | File decrypt | Authenticated decrypted chunks |
 | ZIP encrypt | Source bytes read divided by estimated regular-file input bytes |
-| PerFile | Resets for each file and includes `SourceFilePath` |
+| PerFile | Includes `SourceFilePath`; overall UI progress is `(completed files + current file progress) / total files` |
 
 ZIP encryption remains below 100% until both ZIP production and encryption finish.
 
@@ -482,9 +534,11 @@ Core does not display prompts. Naming conflict policy and overwrite confirmation
 - Filename-encrypted output is written directly to its final Base64URL path; the clear requested path is not opened.
 - File decrypt uses `FileMode.CreateNew` by default for both clear and restored
   filenames. It uses `FileMode.Create` only with explicit overwrite.
-- File decrypt deletes only output opened by the current operation after
-  failure; a pre-existing collision is never deleted.
-- ZIP decrypt uses a temporary ZIP plus an atomic staging-directory move.
+- File and PerFile decrypt do not delete output after failure or cancellation.
+  A pre-existing collision is never deleted or modified unless explicit file
+  overwrite was enabled.
+- ZIP decrypt uses a temporary ZIP, validates extraction paths, and preserves
+  partial destination output on failure.
 - ZIP extraction rejects entries outside the destination root.
 
 ## 10. Cryptographic format
@@ -539,13 +593,13 @@ Pipeline faults cancel other stages. Encrypt and decrypt both reject missing fin
 
 ## 12. Build and tests
 
-```bash
-dotnet restore SafeFile.slnx
-dotnet build SafeFile.slnx
-dotnet test SafeFile.slnx
+```powershell
+dotnet.exe restore SafeFile.slnx
+dotnet.exe build SafeFile/SafeFile.csproj
 ```
 
 Tests live in `SafeFile.Core.Tests` and cover File, ZIP, PerFile, filename encryption, long-name restoration, empty files, cancellation before KDF, truncation, Zip Slip, progress, and ordered multi-consumer output.
+Run Core tests only when the current task explicitly requires them.
 
 ## 13. Format-change rules
 

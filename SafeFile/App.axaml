@@ -1,5 +1,6 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="using:SafeFile.Markup"
              x:Class="SafeFile.App"
              xmlns:local="using:SafeFile"
              RequestedThemeVariant="Light">
@@ -46,7 +47,7 @@
                 <Setter Property="HorizontalContentAlignment" Value="Center"/>
                 <Setter Property="VerticalContentAlignment"   Value="Center"/>
                 <Setter Property="Cursor"                     Value="Hand"/>
-                <Setter Property="ToolTip.Tip"                Value="Huỷ thao tác"/>
+                <Setter Property="ToolTip.Tip"                Value="{loc:Tr CancelOperation}"/>
                 <Setter Property="Template">
                     <ControlTemplate>
                         <Border x:Name="PART_Border"

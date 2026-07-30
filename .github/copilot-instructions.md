@@ -28,8 +28,12 @@
 
 - `EncryptFileAsync` / `DecryptFileAsync`: one file, `VaultMode.File`; for standalone output-name encryption, shorten the plaintext stem on UTF-8 boundaries when necessary, preserve its extension, then encrypt and Base64URL-encode it. Keep the complete authenticated original name inside the vault. These APIs return the actual output path.
 - `EncryptFolderZipAsync`: `ZipArchive → bounded Pipe → crypto pipeline → one .safe`; filename encryption uses the reversible filename ciphertext rather than a random identifier. Encrypt returns the actual vault path.
-- `DecryptFolderZipAsync`: decrypt to temporary ZIP, extract through a staging directory, then move to destination.
+- `DecryptFolderZipAsync`: decrypt to a temporary ZIP and extract directly to
+  the requested destination while preserving partial output on failure.
 - `EncryptFolderPerFileAsync` / `DecryptFolderPerFileAsync`: one `VaultMode.PerFile` vault per regular file while preserving relative paths. Filename encryption uses each authenticated filename ciphertext; decrypt reads the behavior from each header and restores authenticated names.
+- A failed or cancelled decrypt must not delete files or directories from the
+  configured output folder. Preserve completed outputs and any partial output
+  produced before the failure so the UI can report each vault independently.
 - `PerFileProgress` reports the source file path with its per-file percentage.
 - `DecryptOutputFileNameAsync` decrypts the standalone Base64URL output name with the password and runs Argon2 off the caller thread; a shortened output name may differ from the complete name restored from the vault.
 - `ReadVaultMetadataAsync` validates the password and decrypts only the
@@ -53,7 +57,11 @@
 - Convert passwords to UTF-8 bytes, pass the byte array to Core, and zero the caller-owned array in UI `finally` blocks.
 - Pass `AppSettings.GetChunkSizeBytes()` and `GetKdfParameters()` to encrypt operations.
 - Filename encryption is not stored in `AppSettings`. Read it from the encryption-form checkbox and pass it explicitly to the relevant Core method; a nullable filename-encryption argument defaults to `false`.
-- Build file, ZIP, and PerFile encryption destinations under `AppSettings.DefaultOutputPath`, creating that directory when necessary. The output-folder button must open this configured directory.
+- Build encrypted destinations under `AppSettings.DefaultOutputPath` and
+  decrypted destinations under `AppSettings.DefaultDecryptOutputPath`, creating
+  the configured root when necessary. Keep these two output roots visually and
+  semantically distinct. Defaults are `Documents/SafeFile/Encrypted` and
+  `Documents/SafeFile/Decrypted`.
 - Always use the path returned by `EncryptFileAsync`, `DecryptFileAsync`, and `EncryptFolderZipAsync`; filename encryption can change the basename.
 - For encrypted-name file decrypt, `destinationPath` supplies the parent directory and Core restores the authenticated full basename.
 - ZIP and PerFile decrypt destination folders must not already exist. Folder destinations must be outside the source tree.
@@ -86,14 +94,50 @@
 - The decryption view parses the unauthenticated header after file selection,
   but only verifies the password and reveals authenticated metadata when the
   user presses **Check password**.
+- The decryption view accepts one file, multiple `.safe` files, a folder, and
+  drag-and-drop. Keep the picker/drop zone independent from the queue/detail
+  region so long metadata does not change the source-selection layout.
+- Show each queued vault in a table with vault basename, authenticated original
+  filename, size, per-item progress, and success/failure state. The visible
+  value and tooltip for a vault use the basename, never the full source path.
+- Lock every picker, drop zone, queue mutation, password field, and option while
+  `IsDecrypting` is true. A batch failure must not stop subsequent valid vaults;
+  preserve each row's result and show the aggregate result after the batch.
 - Display the password-check result beside its button. Clear the verified state
   and metadata when the password changes.
 - Display the complete verified original filename with wrapping; do not truncate
   it with an ellipsis.
-- The decryption view offers overwrite and open-folder options. Do not re-add
-  the removed automatic collision-renaming option.
+- The decryption view offers overwrite and open-folder options. Overwrite
+  applies only to `File` and individual `PerFile` vault outputs; a ZIP
+  destination folder must remain new. Do not re-add the removed automatic
+  collision-renaming option.
 - All `ProgressBar` controls use the application-level primary blue `#2563EB`, matching the primary encryption button.
-- Settings currently exposes performance, password/KDF, and `DefaultOutputPath`. It does not expose filename encryption or a naming/collision policy.
+- PerFile encryption's overall progress is
+  `(completed file count + current file progress) / total file count`; do not
+  display the current file percentage as the overall percentage.
+- Every submit-time failure on encryption, decryption, Settings, and Logs is
+  shown through `IErrorDialogService`, not as inline error text.
+- Cache one ViewModel instance per main-shell page. The bottom status bars stay
+  owned by their individual pages rather than the main shell.
+- Settings exposes appearance, performance, password/KDF, and separate
+  encrypted/decrypted output roots. It does not expose filename encryption or a
+  naming policy.
+- Language (`en` or `vi`, default `en`) and theme (`Light` or `Dark`) are staged
+  in Settings and take effect only after **Save settings**. Do not place these
+  controls back in the header. Restoring defaults only populates the form; Save
+  is still required.
+- UI text belongs in neutral-English `Resources/Strings.resx` and Vietnamese
+  `Resources/Strings.vi.resx`. Use `{loc:Tr Key}` in AXAML and
+  `LocalizationService` for runtime strings. Both resource files must have
+  identical keys. Language changes refresh the live resource bindings; do not
+  recreate the Settings page.
+- Main navigation includes Encrypt, Decrypt, Logs, Settings, and About. About
+  shows product/security/privacy information, runtime details, MIT licensing,
+  copyable system information, and access to the log folder.
+- Serilog is the only application logging pipeline. Write structured events to
+  the daily rolling file sink and `UiLogSink`; technical log messages remain in
+  English. The Logs page can filter/search, clear its in-memory display, export,
+  auto-scroll, and open the log directory.
 
 ## Pipeline and safety
 
@@ -102,7 +146,9 @@
 - Open source files with read sharing only and verify their size is unchanged before completing encryption.
 - Keep binary integers explicitly little-endian.
 - Reject unsafe lengths and KDF parameters before allocation or expensive work.
-- On failed operations, clean only output or staging paths created for that operation.
+- Encryption may clean only output or staging paths created by that encryption
+  operation. Decryption must not delete anything from the output folder when a
+  vault fails or the batch is cancelled.
 - A create-new collision must never delete or modify the pre-existing file.
 
 ## Tests
@@ -117,10 +163,12 @@
   rejection and full long-filename recovery.
 - Run:
 
-```bash
-dotnet test SafeFile.slnx
-dotnet build SafeFile.slnx
+```powershell
+dotnet.exe build SafeFile/SafeFile.csproj
 ```
+
+Run desktop builds with Windows `dotnet.exe`. Do not run Core tests unless the
+current task explicitly requires them.
 
 ## MCP Integration
 

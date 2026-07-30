@@ -1,10 +1,14 @@
 using System;
 using System.Threading.Tasks;
+using System.Linq;
+using Avalonia;
+using Avalonia.Styling;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SafeFile.Core.Crypto;
 using SafeFile.Core.Models;
 using SafeFile.Core.Services;
+using SafeFile.Models;
 using SafeFile.Services;
 using Serilog;
 
@@ -17,6 +21,29 @@ public sealed partial class SettingsViewModel : ViewModelBase
     private readonly SettingsService _settingsService;
     private readonly IFilePickerService _filePicker;
     private readonly IErrorDialogService _errorDialog;
+
+    public LanguageOption[] Languages { get; } =
+    [
+        new("en", "English"),
+        new("vi", "Tiếng Việt")
+    ];
+    [ObservableProperty] private LanguageOption _selectedLanguage;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsLightTheme))]
+    [NotifyPropertyChangedFor(nameof(IsDarkTheme))]
+    private string _theme = "Light";
+
+    public bool IsLightTheme
+    {
+        get => Theme == "Light";
+        set { if (value) Theme = "Light"; }
+    }
+
+    public bool IsDarkTheme
+    {
+        get => Theme == "Dark";
+        set { if (value) Theme = "Dark"; }
+    }
 
     // ── Performance ───────────────────────────────────────────────────────────
     [ObservableProperty] private int _defaultChunkSizeMb;
@@ -77,6 +104,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
         _settingsService = settingsService;
         _filePicker = filePicker;
         _errorDialog = errorDialog;
+        _selectedLanguage = Languages[0];
 
         BrowseOutputPathCommand = new AsyncRelayCommand(BrowseOutputPathAsync);
         BrowseDecryptOutputPathCommand = new AsyncRelayCommand(BrowseDecryptOutputPathAsync);
@@ -91,6 +119,9 @@ public sealed partial class SettingsViewModel : ViewModelBase
     private void LoadFromService()
     {
         var s = _settingsService.Load();
+        SelectedLanguage = Languages.FirstOrDefault(
+            language => language.Code == s.Language) ?? Languages[0];
+        Theme                 = s.Theme;
         DefaultChunkSizeMb    = s.DefaultChunkSizeMb;
         MaxThreads            = Math.Clamp(s.MaxThreads, 1, MaxThreadsLimit);
         CpuPriority           = s.CpuPriority;
@@ -111,6 +142,8 @@ public sealed partial class SettingsViewModel : ViewModelBase
         {
             var s = new AppSettings
             {
+                Language = SelectedLanguage.Code,
+                Theme = Theme,
                 DefaultChunkSizeMb    = DefaultChunkSizeMb,
                 MaxThreads            = MaxThreads,
                 CpuPriority           = CpuPriority,
@@ -123,7 +156,11 @@ public sealed partial class SettingsViewModel : ViewModelBase
                 DefaultDecryptOutputPath = DefaultDecryptOutputPath,
             };
             _settingsService.Save(s);
-            StatusMessage = "✓ Đã lưu cài đặt thành công.";
+            Application.Current!.RequestedThemeVariant = Theme == "Dark"
+                ? ThemeVariant.Dark
+                : ThemeVariant.Light;
+            LocalizationService.Instance.SetLanguage(SelectedLanguage.Code);
+            StatusMessage = LocalizationService.Instance.Get("SettingsSaved");
             HasError = false;
             Logger.Information("Application settings saved");
         }
@@ -132,29 +169,44 @@ public sealed partial class SettingsViewModel : ViewModelBase
             Logger.Error(ex, "Failed to save application settings");
             StatusMessage = "";
             HasError = false;
-            await _errorDialog.ShowErrorAsync(ex.Message, "Không thể lưu thiết lập");
+            await _errorDialog.ShowErrorAsync(
+                ex.Message, LocalizationService.Instance.Get("SettingsSaveFailed"));
         }
     }
 
     private void RestoreDefaults()
     {
-        _settingsService.RestoreDefaults();
-        LoadFromService();
-        StatusMessage = "✓ Đã khôi phục cài đặt mặc định.";
+        var defaults = AppSettings.GetDefaults();
+        SelectedLanguage = Languages.First(language =>
+            language.Code == defaults.Language);
+        Theme = defaults.Theme;
+        DefaultChunkSizeMb = defaults.DefaultChunkSizeMb;
+        MaxThreads = Math.Clamp(defaults.MaxThreads, 1, MaxThreadsLimit);
+        CpuPriority = defaults.CpuPriority;
+        Argon2MemoryMb = defaults.Argon2MemorySizeKb / 1_024;
+        Argon2Iterations = defaults.Argon2Iterations;
+        Argon2Parallelism = defaults.Argon2Parallelism;
+        MinPasswordLength = defaults.MinPasswordLength;
+        ConfirmPasswordToggle = defaults.ConfirmPasswordToggle;
+        DefaultOutputPath = defaults.DefaultOutputPath;
+        DefaultDecryptOutputPath = defaults.DefaultDecryptOutputPath;
+        StatusMessage = LocalizationService.Instance.Get("DefaultsReadyToSave");
         HasError = false;
-        Logger.Information("Application settings restored to defaults");
+        Logger.Debug("Default application settings loaded into the form");
     }
 
     private async Task BrowseOutputPathAsync()
     {
-        var path = await _filePicker.PickFolderAsync("Chọn thư mục lưu dữ liệu mã hoá");
+        var path = await _filePicker.PickFolderAsync(
+            LocalizationService.Instance.Get("SelectEncryptedOutputFolder"));
         if (path is not null)
             DefaultOutputPath = path;
     }
 
     private async Task BrowseDecryptOutputPathAsync()
     {
-        var path = await _filePicker.PickFolderAsync("Chọn thư mục lưu dữ liệu giải mã");
+        var path = await _filePicker.PickFolderAsync(
+            LocalizationService.Instance.Get("SelectDecryptedOutputFolder"));
         if (path is not null)
             DefaultDecryptOutputPath = path;
     }

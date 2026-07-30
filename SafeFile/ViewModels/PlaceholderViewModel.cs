@@ -2,7 +2,10 @@ namespace SafeFile.ViewModels;
 
 public sealed class PlaceholderViewModel : ViewModelBase
 {
-    public string Title { get; }
+    private readonly string _titleKey;
+    public string Title => Services.LocalizationService.Instance.Get(_titleKey);
 
-    public PlaceholderViewModel(string title) => Title = title;
+    public PlaceholderViewModel(string titleKey) => _titleKey = titleKey;
+
+    public void RefreshLocalization() => OnPropertyChanged(nameof(Title));
 }

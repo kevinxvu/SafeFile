@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="AppSubtitle" xml:space="preserve"><value>Enterprise Encryption</value></data>
+  <data name="NavEncrypt" xml:space="preserve"><value>Encrypt</value></data>
+  <data name="NavDecrypt" xml:space="preserve"><value>Decrypt</value></data>
+  <data name="NavLogs" xml:space="preserve"><value>Logs</value></data>
+  <data name="NavSettings" xml:space="preserve"><value>Settings</value></data>
+  <data name="NavAbout" xml:space="preserve"><value>About</value></data>
+  <data name="PageEncrypt" xml:space="preserve"><value>Encrypt data</value></data>
+  <data name="PageDecrypt" xml:space="preserve"><value>Decrypt data</value></data>
+  <data name="PageLogs" xml:space="preserve"><value>System logs</value></data>
+  <data name="PageSettings" xml:space="preserve"><value>Settings</value></data>
+  <data name="PageAbout" xml:space="preserve"><value>About</value></data>
+  <data name="DarkMode" xml:space="preserve"><value>Dark mode</value></data>
+  <data name="Appearance" xml:space="preserve"><value>Appearance</value></data>
+  <data name="AppearanceHint" xml:space="preserve"><value>Choose the application language and visual theme.</value></data>
+  <data name="Language" xml:space="preserve"><value>Language</value></data>
+  <data name="Theme" xml:space="preserve"><value>Theme</value></data>
+  <data name="LightTheme" xml:space="preserve"><value>Light</value></data>
+  <data name="DarkTheme" xml:space="preserve"><value>Dark</value></data>
+  <data name="AppearanceApplyHint" xml:space="preserve"><value>Language and theme changes are applied when you save the settings.</value></data>
+  <data name="LanguageEnglish" xml:space="preserve"><value>English</value></data>
+  <data name="LanguageVietnamese" xml:space="preserve"><value>Tiếng Việt</value></data>
+  <data name="Browse" xml:space="preserve"><value>Browse...</value></data>
+  <data name="Reset" xml:space="preserve"><value>Reset</value></data>
+  <data name="OpenOutputFolder" xml:space="preserve"><value>Open output folder</value></data>
+  <data name="Close" xml:space="preserve"><value>Close</value></data>
+  <data name="ErrorTitle" xml:space="preserve"><value>An error occurred</value></data>
+  <data name="SourceData" xml:space="preserve"><value>Source data</value></data>
+  <data name="File" xml:space="preserve"><value>File</value></data>
+  <data name="Folder" xml:space="preserve"><value>Folder</value></data>
+  <data name="EnterPath" xml:space="preserve"><value>Enter a path</value></data>
+  <data name="DropEncryptSource" xml:space="preserve"><value>Drop a file or folder here</value></data>
+  <data name="Security" xml:space="preserve"><value>Security</value></data>
+  <data name="Password" xml:space="preserve"><value>Password</value></data>
+  <data name="ConfirmPassword" xml:space="preserve"><value>Confirm password</value></data>
+  <data name="TogglePassword" xml:space="preserve"><value>Show or hide password</value></data>
+  <data name="ToggleConfirmPassword" xml:space="preserve"><value>Show or hide confirmation password</value></data>
+  <data name="EncryptionOptions" xml:space="preserve"><value>Encryption options</value></data>
+  <data name="EncryptFileNames" xml:space="preserve"><value>Encrypt file names</value></data>
+  <data name="OverwriteSafe" xml:space="preserve"><value>Overwrite an existing .safe file</value></data>
+  <data name="EncryptedNameHint" xml:space="preserve"><value>The output name will be encrypted and restored during decryption.</value></data>
+  <data name="FolderProcessing" xml:space="preserve"><value>Folder processing</value></data>
+  <data name="FolderModeZip" xml:space="preserve"><value>Compress into one file (ZIP)</value></data>
+  <data name="FolderModePerFile" xml:space="preserve"><value>Encrypt each file separately</value></data>
+  <data name="EstimatedOutput" xml:space="preserve"><value>Estimated output</value></data>
+  <data name="EncryptNow" xml:space="preserve"><value>Encrypt now</value></data>
+  <data name="CancelEncryptionTooltip" xml:space="preserve"><value>Cancel while encrypting, close when completed</value></data>
+  <data name="DecryptData" xml:space="preserve"><value>Data to decrypt</value></data>
+  <data name="DecryptSelectionHint" xml:space="preserve"><value>Select one file, multiple files, or an entire vault folder.</value></data>
+  <data name="DropDecryptSources" xml:space="preserve"><value>Drop .safe files or folders here</value></data>
+  <data name="DuplicatesIgnored" xml:space="preserve"><value>Duplicate files are ignored automatically.</value></data>
+  <data name="SelectFiles" xml:space="preserve"><value>Select files</value></data>
+  <data name="SelectFolder" xml:space="preserve"><value>Select folder</value></data>
+  <data name="VaultList" xml:space="preserve"><value>Vault list</value></data>
+  <data name="ClearAll" xml:space="preserve"><value>Clear all</value></data>
+  <data name="Vault" xml:space="preserve"><value>Vault</value></data>
+  <data name="OriginalFileName" xml:space="preserve"><value>Original file name</value></data>
+  <data name="Size" xml:space="preserve"><value>Size</value></data>
+  <data name="Progress" xml:space="preserve"><value>Progress</value></data>
+  <data name="Status" xml:space="preserve"><value>Status</value></data>
+  <data name="NoVaults" xml:space="preserve"><value>No vaults in the list</value></data>
+  <data name="SelectToBegin" xml:space="preserve"><value>Select files or a folder, or drop them here to begin.</value></data>
+  <data name="RemoveFromList" xml:space="preserve"><value>Remove from list</value></data>
+  <data name="SecurityAndOptions" xml:space="preserve"><value>Security and options</value></data>
+  <data name="DecryptPasswordPlaceholder" xml:space="preserve"><value>Enter the password for the vaults...</value></data>
+  <data name="VerifyAll" xml:space="preserve"><value>Verify all</value></data>
+  <data name="OverwriteExisting" xml:space="preserve"><value>Overwrite existing files</value></data>
+  <data name="OpenFolderOnCompletion" xml:space="preserve"><value>Open folder when completed</value></data>
+  <data name="DecryptNow" xml:space="preserve"><value>Decrypt now</value></data>
+  <data name="FileDetails" xml:space="preserve"><value>File details</value></data>
+  <data name="SelectVaultForDetails" xml:space="preserve"><value>Select a vault from the list to view its details.</value></data>
+  <data name="Format" xml:space="preserve"><value>Format</value></data>
+  <data name="Mode" xml:space="preserve"><value>Mode</value></data>
+  <data name="Algorithm" xml:space="preserve"><value>Algorithm</value></data>
+  <data name="Modified" xml:space="preserve"><value>Modified</value></data>
+  <data name="Overview" xml:space="preserve"><value>Overview</value></data>
+  <data name="BatchResult" xml:space="preserve"><value>Batch result</value></data>
+  <data name="OutputFolder" xml:space="preserve"><value>Output folder</value></data>
+  <data name="BatchDetailsHint" xml:space="preserve"><value>Each row keeps its own progress and result. Select a failed row to view the reason.</value></data>
+  <data name="Performance" xml:space="preserve"><value>Performance</value></data>
+  <data name="PerformanceHint" xml:space="preserve"><value>Configure resources used for encryption and decryption.</value></data>
+  <data name="ChunkSize" xml:space="preserve"><value>Chunk size</value></data>
+  <data name="ChunkSizeHint" xml:space="preserve"><value>Larger chunks may improve speed but use more memory.</value></data>
+  <data name="WorkerThreads" xml:space="preserve"><value>Worker threads</value></data>
+  <data name="WorkerThreadsHint" xml:space="preserve"><value>Limited by the number of logical processors on this device.</value></data>
+  <data name="CpuPriority" xml:space="preserve"><value>CPU priority</value></data>
+  <data name="Low" xml:space="preserve"><value>Low</value></data>
+  <data name="Normal" xml:space="preserve"><value>Normal</value></data>
+  <data name="High" xml:space="preserve"><value>High</value></data>
+  <data name="SecuritySettingsHint" xml:space="preserve"><value>Configure the password policy and Argon2id key derivation parameters.</value></data>
+  <data name="PasswordPolicy" xml:space="preserve"><value>Password policy</value></data>
+  <data name="MinimumPasswordLength" xml:space="preserve"><value>Minimum password length</value></data>
+  <data name="RequirePasswordConfirmation" xml:space="preserve"><value>Require password confirmation</value></data>
+  <data name="MemoryMb" xml:space="preserve"><value>Memory (MB)</value></data>
+  <data name="Iterations" xml:space="preserve"><value>Iterations</value></data>
+  <data name="Parallelism" xml:space="preserve"><value>Parallelism</value></data>
+  <data name="KdfHint" xml:space="preserve"><value>Higher values improve resistance to password guessing but require more resources.</value></data>
+  <data name="Output" xml:space="preserve"><value>Output</value></data>
+  <data name="OutputSettingsHint" xml:space="preserve"><value>Choose separate locations for encrypted and decrypted data.</value></data>
+  <data name="EncryptedOutputFolder" xml:space="preserve"><value>Encrypted data folder</value></data>
+  <data name="DecryptedOutputFolder" xml:space="preserve"><value>Decrypted data folder</value></data>
+  <data name="SelectEncryptedOutputFolder" xml:space="preserve"><value>Select the encrypted data folder</value></data>
+  <data name="SelectDecryptedOutputFolder" xml:space="preserve"><value>Select the decrypted data folder</value></data>
+  <data name="RestoreDefaults" xml:space="preserve"><value>Restore defaults</value></data>
+  <data name="SaveSettings" xml:space="preserve"><value>Save settings</value></data>
+  <data name="SettingsSaved" xml:space="preserve"><value>✓ Settings saved successfully.</value></data>
+  <data name="SettingsSaveFailed" xml:space="preserve"><value>Unable to save settings</value></data>
+  <data name="SettingsRestored" xml:space="preserve"><value>✓ Default settings restored.</value></data>
+  <data name="DefaultsReadyToSave" xml:space="preserve"><value>Default values loaded. Save the settings to apply them.</value></data>
+  <data name="ClearLogs" xml:space="preserve"><value>Clear logs</value></data>
+  <data name="ExportToFile" xml:space="preserve"><value>Export to file</value></data>
+  <data name="OpenLogFolder" xml:space="preserve"><value>Open log folder</value></data>
+  <data name="LogLevel" xml:space="preserve"><value>Log level</value></data>
+  <data name="SearchLogs" xml:space="preserve"><value>Search logs...</value></data>
+  <data name="AutoScroll" xml:space="preserve"><value>Auto-scroll</value></data>
+  <data name="NoLogEvents" xml:space="preserve"><value>No log events yet.</value></data>
+  <data name="FeatureInDevelopment" xml:space="preserve"><value>This feature is under development.</value></data>
+  <data name="AboutTagline" xml:space="preserve"><value>Private, authenticated encryption for your files.</value></data>
+  <data name="AboutDescription" xml:space="preserve"><value>SafeFile protects individual files and entire folders with modern cryptography while keeping you in control of where your data is stored.</value></data>
+  <data name="CopySystemInfo" xml:space="preserve"><value>Copy system info</value></data>
+  <data name="SystemInfoCopied" xml:space="preserve"><value>System information copied.</value></data>
+  <data name="AuthenticatedEncryption" xml:space="preserve"><value>Authenticated encryption</value></data>
+  <data name="AuthenticatedEncryptionDescription" xml:space="preserve"><value>AES-256-GCM protects confidentiality and detects unauthorized changes to encrypted data.</value></data>
+  <data name="StrongKeyDerivation" xml:space="preserve"><value>Strong key derivation</value></data>
+  <data name="StrongKeyDerivationDescription" xml:space="preserve"><value>Argon2id turns your password into a strong encryption key using configurable memory and processing costs.</value></data>
+  <data name="FlexibleWorkflows" xml:space="preserve"><value>Flexible workflows</value></data>
+  <data name="FlexibleWorkflowsDescription" xml:space="preserve"><value>Encrypt files, package a folder into one vault, or process each file separately with batch progress.</value></data>
+  <data name="PrivacyAndSecurity" xml:space="preserve"><value>Privacy &amp; security</value></data>
+  <data name="LocalProcessingDescription" xml:space="preserve"><value>Encryption and decryption run locally on this device. SafeFile does not upload your files, passwords, or encryption keys.</value></data>
+  <data name="PrivacyPointOffline" xml:space="preserve"><value>✓ Works without an internet connection</value></data>
+  <data name="PrivacyPointPasswords" xml:space="preserve"><value>✓ Passwords are used in memory and are not stored by the application</value></data>
+  <data name="PrivacyPointIntegrity" xml:space="preserve"><value>✓ Authentication detects an incorrect password or modified vault</value></data>
+  <data name="PasswordRecoveryWarning" xml:space="preserve"><value>Important: SafeFile cannot recover a forgotten password. Keep your password and backups in a secure place.</value></data>
+  <data name="TechnicalInformation" xml:space="preserve"><value>Technical information</value></data>
+  <data name="OperatingSystem" xml:space="preserve"><value>Operating system</value></data>
+  <data name="Runtime" xml:space="preserve"><value>Runtime</value></data>
+  <data name="Architecture" xml:space="preserve"><value>Architecture</value></data>
+  <data name="OpenSourceLicense" xml:space="preserve"><value>Open-source software</value></data>
+  <data name="MitLicenseDescription" xml:space="preserve"><value>SafeFile is distributed under the MIT License.</value></data>
+  <data name="AllRightsNotice" xml:space="preserve"><value>Licensed under MIT</value></data>
+  <data name="Weak" xml:space="preserve"><value>Weak</value></data><data name="Medium" xml:space="preserve"><value>Medium</value></data><data name="Strong" xml:space="preserve"><value>Strong</value></data><data name="VeryStrong" xml:space="preserve"><value>Very strong</value></data>
+  <data name="SelectSourceFile" xml:space="preserve"><value>Select a source file</value></data><data name="SelectSourceFolder" xml:space="preserve"><value>Select a source folder</value></data><data name="SourceRequired" xml:space="preserve"><value>Select a source file or folder.</value></data><data name="PasswordRequired" xml:space="preserve"><value>Enter a password.</value></data><data name="PasswordsDoNotMatch" xml:space="preserve"><value>The confirmation password does not match.</value></data>
+  <data name="Encrypting" xml:space="preserve"><value>Encrypting</value></data><data name="EncryptionCompleted" xml:space="preserve"><value>Encryption completed</value></data><data name="EncryptionSucceeded" xml:space="preserve"><value>✓ Encrypted successfully: {0}</value></data><data name="EncryptionCancelled" xml:space="preserve"><value>Encryption cancelled</value></data><data name="OperationCancelled" xml:space="preserve"><value>The operation was cancelled.</value></data><data name="EncryptionFailed" xml:space="preserve"><value>Encryption failed</value></data><data name="CannotEncrypt" xml:space="preserve"><value>Unable to encrypt</value></data><data name="CannotOpenOutput" xml:space="preserve"><value>Unable to open the output folder</value></data>
+  <data name="All" xml:space="preserve"><value>All</value></data><data name="Information" xml:space="preserve"><value>Information</value></data><data name="Warning" xml:space="preserve"><value>Warning</value></data><data name="Error" xml:space="preserve"><value>Error</value></data><data name="EventsCount" xml:space="preserve"><value>{0:N0} / {1:N0} events</value></data><data name="LogsCleared" xml:space="preserve"><value>Logs were cleared from the screen.</value></data><data name="ExportLogs" xml:space="preserve"><value>Export logs</value></data><data name="LogsExported" xml:space="preserve"><value>Exported {0:N0} events.</value></data><data name="CannotExportLogs" xml:space="preserve"><value>Unable to export logs</value></data><data name="CannotOpenLogFolder" xml:space="preserve"><value>Unable to open the log folder</value></data>
+  <data name="NoDataSelected" xml:space="preserve"><value>No data selected</value></data><data name="Ready" xml:space="preserve"><value>Ready</value></data><data name="Invalid" xml:space="preserve"><value>Invalid</value></data><data name="Verifying" xml:space="preserve"><value>Verifying</value></data><data name="ReadyToDecrypt" xml:space="preserve"><value>Ready to decrypt</value></data><data name="VerificationFailed" xml:space="preserve"><value>Verification failed</value></data><data name="Failed" xml:space="preserve"><value>Failed</value></data><data name="Succeeded" xml:space="preserve"><value>Succeeded</value></data><data name="Cancelled" xml:space="preserve"><value>Cancelled</value></data><data name="Decrypting" xml:space="preserve"><value>Decrypting</value></data>
+  <data name="NotVerified" xml:space="preserve"><value>🔒 Not verified</value></data><data name="BatchSummary" xml:space="preserve"><value>Succeeded: {0:N0}  •  Failed: {1:N0}  •  Remaining: {2:N0}</value></data><data name="VaultModeZip" xml:space="preserve"><value>ZIP folder</value></data><data name="KdfIterations" xml:space="preserve"><value>Argon2id • {0:N0} iterations • {1:N0} MB • p={2}</value></data>
+  <data name="CannotAddDecryptData" xml:space="preserve"><value>Unable to add decryption data</value></data><data name="SelectSafeFiles" xml:space="preserve"><value>Select one or more SafeFile vaults</value></data><data name="SelectSafeFolder" xml:space="preserve"><value>Select a folder containing .safe files</value></data><data name="NoSafeFilesFound" xml:space="preserve"><value>No .safe files were found in the selected data.</value></data><data name="CheckingPassword" xml:space="preserve"><value>Checking password</value></data><data name="VerificationCompleted" xml:space="preserve"><value>Verification completed</value></data><data name="VerificationCancelled" xml:space="preserve"><value>Verification cancelled</value></data><data name="DecryptCompleted" xml:space="preserve"><value>Decryption completed</value></data><data name="DecryptCompletedWithErrors" xml:space="preserve"><value>Decryption completed with errors</value></data><data name="DecryptCancelled" xml:space="preserve"><value>Decryption cancelled</value></data><data name="CannotDecrypt" xml:space="preserve"><value>Unable to decrypt</value></data>
+  <data name="DecryptFolderNotConfigured" xml:space="preserve"><value>The decryption folder is not configured in Settings.</value></data><data name="DecryptSelectionRequired" xml:space="preserve"><value>Select at least one .safe file or vault folder.</value></data><data name="NoValidVaults" xml:space="preserve"><value>The list contains no valid vaults.</value></data><data name="DecryptPasswordRequired" xml:space="preserve"><value>Enter the decryption password.</value></data><data name="WrongPassword" xml:space="preserve"><value>The password is incorrect or the vault has been modified.</value></data><data name="CannotOpenOutputFolder" xml:space="preserve"><value>Unable to open the output folder</value></data>
+  <data name="CancelOperation" xml:space="preserve"><value>Cancel operation</value></data><data name="KdfDetails" xml:space="preserve"><value>Argon2id • {0:N0} iterations • {1:N0} MB</value></data><data name="VerificationSummary" xml:space="preserve"><value>Verified {0:N0}/{1:N0} vaults{2}</value></data><data name="FailureSuffix" xml:space="preserve"><value> • {0:N0} failed</value></data><data name="SuccessFailureSummary" xml:space="preserve"><value>{0:N0} succeeded • {1:N0} failed</value></data><data name="CompletionSummary" xml:space="preserve"><value>✓ Completed: {0:N0} succeeded{1}</value></data><data name="BatchFailureDetails" xml:space="preserve"><value>Decrypted {0:N0} vaults successfully. {1:N0} vaults failed. Select a row to view the reason.</value></data><data name="CompletedWithErrors" xml:space="preserve"><value>Completed with errors</value></data><data name="OutputAlreadyExists" xml:space="preserve"><value>The output already exists. Enable overwrite or remove the existing output.</value></data><data name="UnsupportedVaultMode" xml:space="preserve"><value>Vault mode {0} is not supported.</value></data><data name="EncryptedFileNamesSuffix" xml:space="preserve"><value>{0} (file names will be encrypted)</value></data><data name="EncryptedFileNamePlaceholder" xml:space="preserve"><value>[Encrypted file name].safe</value></data><data name="EncryptedFolderNamePlaceholder" xml:space="preserve"><value>[Encrypted folder name].safe</value></data><data name="CorruptData" xml:space="preserve"><value>Incorrect password or corrupt data: {0}</value></data>
+</root>

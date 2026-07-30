@@ -7,12 +7,13 @@ namespace SafeFile.Services;
 
 public sealed class ErrorDialogService : IErrorDialogService
 {
-    public async Task ShowErrorAsync(string message, string title = "Đã xảy ra lỗi")
+    public async Task ShowErrorAsync(string message, string? title = null)
     {
         var owner = (Application.Current?.ApplicationLifetime
             as IClassicDesktopStyleApplicationLifetime)?.MainWindow;
 
-        var dialog = new ErrorDialog(title, message);
+        var dialog = new ErrorDialog(
+            title ?? LocalizationService.Instance.Get("ErrorTitle"), message);
         if (owner is not null)
             await dialog.ShowDialog(owner);
         else

@@ -27,16 +27,15 @@ public sealed partial class LogViewModel : ViewModelBase
     private readonly IErrorDialogService _errorDialog;
 
     public ObservableCollection<LogEntry> FilteredEntries { get; } = [];
-    public string[] LevelOptions { get; } =
-        ["Tất cả", "Debug", "Thông tin", "Cảnh báo", "Lỗi"];
+    public ObservableCollection<string> LevelOptions { get; } = [];
 
-    [ObservableProperty] private string _selectedLevel = "Tất cả";
+    [ObservableProperty] private string _selectedLevel = "";
     [ObservableProperty] private string _searchText = "";
     [ObservableProperty] private bool _autoScroll = true;
     [ObservableProperty] private string _statusMessage = "";
 
     public string EntryCountText =>
-        $"{FilteredEntries.Count:N0} / {_logService.Entries.Count:N0} sự kiện";
+        F("EventsCount", FilteredEntries.Count, _logService.Entries.Count);
     public bool HasEntries => FilteredEntries.Count > 0;
     public string LogDirectory => _logService.LogDirectory;
 
@@ -52,6 +51,9 @@ public sealed partial class LogViewModel : ViewModelBase
         _logService = logService;
         _filePicker = filePicker;
         _errorDialog = errorDialog;
+        RefreshLevelOptions();
+        LocalizationService.Instance.CultureChanged += (_, _) =>
+            RefreshLevelOptions();
 
         ClearCommand = new RelayCommand(Clear);
         ExportCommand = new AsyncRelayCommand(ExportAsync);
@@ -79,11 +81,11 @@ public sealed partial class LogViewModel : ViewModelBase
         {
             "Debug" => query.Where(entry =>
                 entry.Level is LogEventLevel.Verbose or LogEventLevel.Debug),
-            "Thông tin" => query.Where(entry =>
+            var level when level == L("Information") => query.Where(entry =>
                 entry.Level == LogEventLevel.Information),
-            "Cảnh báo" => query.Where(entry =>
+            var level when level == L("Warning") => query.Where(entry =>
                 entry.Level == LogEventLevel.Warning),
-            "Lỗi" => query.Where(entry =>
+            var level when level == L("Error") => query.Where(entry =>
                 entry.Level is LogEventLevel.Error or LogEventLevel.Fatal),
             _ => query
         };
@@ -108,7 +110,7 @@ public sealed partial class LogViewModel : ViewModelBase
     private void Clear()
     {
         _logService.Clear();
-        StatusMessage = "Đã xóa nhật ký khỏi màn hình.";
+        StatusMessage = L("LogsCleared");
     }
 
     private async Task ExportAsync()
@@ -116,7 +118,7 @@ public sealed partial class LogViewModel : ViewModelBase
         try
         {
             var path = await _filePicker.PickSaveFileAsync(
-                "Xuất nhật ký",
+                L("ExportLogs"),
                 $"SafeFile-log-{DateTime.Now:yyyyMMdd-HHmmss}.log",
                 [TextFileType]);
             if (path is null)
@@ -134,7 +136,7 @@ public sealed partial class LogViewModel : ViewModelBase
                 path,
                 content.ToString(),
                 new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-            StatusMessage = $"Đã xuất {FilteredEntries.Count:N0} sự kiện.";
+            StatusMessage = F("LogsExported", FilteredEntries.Count);
             Log.Information(
                 "Exported {LogEntryCount} log events to {ExportPath}",
                 FilteredEntries.Count,
@@ -144,7 +146,7 @@ public sealed partial class LogViewModel : ViewModelBase
         {
             Log.Error(ex, "Failed to export logs");
             await _errorDialog.ShowErrorAsync(
-                ex.Message, "Không thể xuất nhật ký");
+                ex.Message, L("CannotExportLogs"));
         }
     }
 
@@ -159,7 +161,23 @@ public sealed partial class LogViewModel : ViewModelBase
         {
             Log.Error(ex, "Failed to open log directory");
             _ = _errorDialog.ShowErrorAsync(
-                ex.Message, "Không thể mở thư mục nhật ký");
+                ex.Message, L("CannotOpenLogFolder"));
         }
     }
+
+    private void RefreshLevelOptions()
+    {
+        var selectedIndex = Math.Max(0, LevelOptions.IndexOf(SelectedLevel));
+        LevelOptions.Clear();
+        foreach (var option in new[]
+                 { L("All"), "Debug", L("Information"), L("Warning"), L("Error") })
+            LevelOptions.Add(option);
+        SelectedLevel = LevelOptions[Math.Min(selectedIndex, LevelOptions.Count - 1)];
+        OnPropertyChanged(nameof(EntryCountText));
+        RefreshFilter();
+    }
+
+    private static string L(string key) => LocalizationService.Instance.Get(key);
+    private static string F(string key, params object?[] args) =>
+        LocalizationService.Instance.Format(key, args);
 }

@@ -90,17 +90,18 @@ public sealed partial class DecryptViewModel : ViewModelBase
     public bool HasStatusMessage => !string.IsNullOrWhiteSpace(StatusMessage);
     public string SelectionSummary =>
         Items.Count == 0
-            ? "Chưa chọn dữ liệu"
+            ? L("NoDataSelected")
             : $"{Items.Count:N0} vault • {FormatBytes(Items.Sum(item => TryGetLength(item.SourcePath)))}";
     public string ResultSummary
     {
         get
         {
-            var success = Items.Count(item => item.Status == "Thành công");
+            var success = Items.Count(item => item.Status == L("Succeeded"));
             var failed = Items.Count(item =>
-                item.Status is "Thất bại" or "Không hợp lệ" or "Xác thực thất bại");
+                item.Status == L("Failed") || item.Status == L("Invalid") ||
+                item.Status == L("VerificationFailed"));
             var pending = Items.Count - success - failed;
-            return $"Thành công: {success:N0}  •  Thất bại: {failed:N0}  •  Còn lại: {pending:N0}";
+            return F("BatchSummary", success, failed, pending);
         }
     }
 
@@ -112,7 +113,7 @@ public sealed partial class DecryptViewModel : ViewModelBase
     public string DetailMode => SelectedItem?.Header?.Mode switch
     {
         VaultMode.File => "File",
-        VaultMode.Zip => "Thư mục ZIP",
+        VaultMode.Zip => L("VaultModeZip"),
         VaultMode.PerFile => "Per-file",
         { } mode => mode.ToString(),
         null => ""
@@ -121,8 +122,8 @@ public sealed partial class DecryptViewModel : ViewModelBase
         ? FormatBytes(header.ChunkSize)
         : "";
     public string DetailKdf => SelectedItem?.Header is { } header
-        ? $"Argon2id • {header.KdfParameters.Iterations:N0} vòng • " +
-          $"{header.KdfParameters.MemorySizeKb / 1024:N0} MB"
+        ? F("KdfDetails", header.KdfParameters.Iterations,
+            header.KdfParameters.MemorySizeKb / 1024)
         : "";
     public string DetailAlgorithm => SelectedItem is null ? "" : "AES-256-GCM";
     public string DetailVaultSize => SelectedItem?.VaultSizeText ?? "";
@@ -195,21 +196,21 @@ public sealed partial class DecryptViewModel : ViewModelBase
         catch (Exception ex)
         {
             await _errorDialog.ShowErrorAsync(
-                ex.Message, "Không thể thêm dữ liệu giải mã");
+                ex.Message, L("CannotAddDecryptData"));
         }
     }
 
     private async Task BrowseSourceAsync()
     {
         var paths = await _filePicker.PickFilesAsync(
-            "Chọn một hoặc nhiều file SafeFile", [SafeFileType]);
+            L("SelectSafeFiles"), [SafeFileType]);
         await AddDroppedSourcesAsync(paths);
     }
 
     private async Task BrowseSourceFolderAsync()
     {
         var path = await _filePicker.PickFolderAsync(
-            "Chọn thư mục chứa các file .safe");
+            L("SelectSafeFolder"));
         if (path is not null)
             await AddDroppedSourcesAsync([path]);
     }
@@ -249,7 +250,7 @@ public sealed partial class DecryptViewModel : ViewModelBase
 
         if (!foundVault && !hadExistingItems)
             throw new InvalidDataException(
-                "Không tìm thấy file .safe trong dữ liệu đã chọn.");
+                L("NoSafeFilesFound"));
 
         SelectedItem ??= Items.FirstOrDefault();
         PasswordCheckMessage = "";
@@ -269,7 +270,7 @@ public sealed partial class DecryptViewModel : ViewModelBase
             return;
 
         VaultHeader? header = null;
-        var initialStatus = "Sẵn sàng";
+        var initialStatus = L("Ready");
         var initialError = "";
         try
         {
@@ -279,7 +280,7 @@ public sealed partial class DecryptViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            initialStatus = "Không hợp lệ";
+            initialStatus = L("Invalid");
             initialError = ex.Message;
         }
 
@@ -311,7 +312,7 @@ public sealed partial class DecryptViewModel : ViewModelBase
             Items.Count(item => item.IsValid));
         SetQueueLocked(true);
         IsStatusBarVisible = true;
-        StatusAction = "Đang kiểm tra mật khẩu";
+        StatusAction = L("CheckingPassword");
         StatusProgress = 0;
         var cts = new CancellationTokenSource();
         _activeCts = cts;
@@ -327,7 +328,7 @@ public sealed partial class DecryptViewModel : ViewModelBase
                 cts.Token.ThrowIfCancellationRequested();
                 var item = validItems[index];
                 StatusCurrentFile = item.VaultName;
-                item.Status = "Đang xác thực";
+                item.Status = L("Verifying");
                 item.StatusForeground = "#2563EB";
                 item.ErrorMessage = "";
                 NotifySummaries();
@@ -339,11 +340,11 @@ public sealed partial class DecryptViewModel : ViewModelBase
             }
 
             var failed = validItems.Length - verified;
-            PasswordCheckMessage =
-                $"Đã xác thực {verified:N0}/{validItems.Length:N0} vault" +
-                (failed > 0 ? $" • {failed:N0} thất bại" : "");
+            PasswordCheckMessage = F(
+                "VerificationSummary", verified, validItems.Length,
+                failed > 0 ? F("FailureSuffix", failed) : "");
             IsPasswordCheckError = failed > 0;
-            StatusAction = "Kiểm tra hoàn tất";
+            StatusAction = L("VerificationCompleted");
             StatusDetails = PasswordCheckMessage;
             Logger.Information(
                 "Password verification completed: {VerifiedCount} verified, {FailedCount} failed",
@@ -352,8 +353,8 @@ public sealed partial class DecryptViewModel : ViewModelBase
         }
         catch (OperationCanceledException)
         {
-            StatusAction = "Đã huỷ kiểm tra";
-            PasswordCheckMessage = "Đã huỷ thao tác kiểm tra.";
+            StatusAction = L("VerificationCancelled");
+            PasswordCheckMessage = L("OperationCancelled");
             Logger.Warning("Password verification cancelled");
         }
         finally
@@ -383,7 +384,7 @@ public sealed partial class DecryptViewModel : ViewModelBase
 
             item.OriginalFileName = metadata.OriginalFileName;
             item.HasVerifiedMetadata = true;
-            item.Status = "Sẵn sàng giải mã";
+            item.Status = L("ReadyToDecrypt");
             item.StatusForeground = "#16A34A";
             item.ErrorMessage = "";
             return true;
@@ -396,10 +397,10 @@ public sealed partial class DecryptViewModel : ViewModelBase
         {
             item.OriginalFileName = "—";
             item.HasVerifiedMetadata = false;
-            item.Status = "Xác thực thất bại";
+            item.Status = L("VerificationFailed");
             item.StatusForeground = "#DC2626";
             item.ErrorMessage = ex is InvalidOperationException or CryptographicException
-                ? "Mật khẩu không đúng hoặc vault đã bị thay đổi."
+                ? L("WrongPassword")
                 : ex.Message;
             Logger.Warning(
                 ex,
@@ -417,14 +418,14 @@ public sealed partial class DecryptViewModel : ViewModelBase
         if (!ValidateSelectionAndPassword(out var validationError))
         {
             await _errorDialog.ShowErrorAsync(
-                validationError, "Không thể giải mã");
+                validationError, L("CannotDecrypt"));
             return;
         }
         if (string.IsNullOrWhiteSpace(OutputPath))
         {
             await _errorDialog.ShowErrorAsync(
-                "Thư mục giải mã chưa được cấu hình trong Thiết lập.",
-                "Không thể giải mã");
+                L("DecryptFolderNotConfigured"),
+                L("CannotDecrypt"));
             return;
         }
 
@@ -436,7 +437,7 @@ public sealed partial class DecryptViewModel : ViewModelBase
         IsDecrypting = true;
         SetQueueLocked(true);
         IsStatusBarVisible = true;
-        StatusAction = "Đang giải mã";
+        StatusAction = L("Decrypting");
         StatusProgress = 0;
         StatusDetails = "";
         StatusMessage = "";
@@ -451,7 +452,7 @@ public sealed partial class DecryptViewModel : ViewModelBase
             passwordBytes = Encoding.UTF8.GetBytes(Password);
             foreach (var invalidItem in Items.Where(item => !item.IsValid))
             {
-                invalidItem.Status = "Thất bại";
+                invalidItem.Status = L("Failed");
                 invalidItem.StatusForeground = "#DC2626";
             }
             var validItems = Items.Where(item => item.IsValid).ToArray();
@@ -465,7 +466,7 @@ public sealed partial class DecryptViewModel : ViewModelBase
                 if (!item.HasVerifiedMetadata &&
                     !await VerifyItemAsync(item, passwordBytes, cts.Token))
                 {
-                    item.Status = "Thất bại";
+                    item.Status = L("Failed");
                     failed++;
                     completedItems++;
                     UpdateOverallProgress(completedItems, Items.Count, 0);
@@ -475,7 +476,7 @@ public sealed partial class DecryptViewModel : ViewModelBase
 
                 item.IsProcessing = true;
                 item.Progress = 0;
-                item.Status = "Đang giải mã";
+                item.Status = L("Decrypting");
                 item.StatusForeground = "#2563EB";
                 item.ErrorMessage = "";
 
@@ -492,7 +493,7 @@ public sealed partial class DecryptViewModel : ViewModelBase
                                 completedItems, Items.Count, value);
                         }));
                     item.Progress = 1;
-                    item.Status = "Thành công";
+                    item.Status = L("Succeeded");
                     item.StatusForeground = "#16A34A";
                     success++;
                     Logger.Information(
@@ -501,7 +502,7 @@ public sealed partial class DecryptViewModel : ViewModelBase
                 }
                 catch (OperationCanceledException)
                 {
-                    item.Status = "Đã huỷ";
+                    item.Status = L("Cancelled");
                     item.StatusForeground = "#6B7280";
                     Logger.Warning(
                         "Vault decryption cancelled: {VaultPath}",
@@ -510,7 +511,7 @@ public sealed partial class DecryptViewModel : ViewModelBase
                 }
                 catch (Exception ex)
                 {
-                    item.Status = "Thất bại";
+                    item.Status = L("Failed");
                     item.StatusForeground = "#DC2626";
                     item.ErrorMessage = GetFriendlyError(ex);
                     failed++;
@@ -529,10 +530,13 @@ public sealed partial class DecryptViewModel : ViewModelBase
                 }
             }
 
-            StatusAction = failed == 0 ? "Giải mã hoàn tất" : "Giải mã có lỗi";
-            StatusDetails = $"{success:N0} thành công • {failed:N0} thất bại";
-            StatusMessage = $"✓ Hoàn tất: {success:N0} thành công" +
-                            (failed > 0 ? $" • {failed:N0} thất bại" : "");
+            StatusAction = failed == 0
+                ? L("DecryptCompleted")
+                : L("DecryptCompletedWithErrors");
+            StatusDetails = F("SuccessFailureSummary", success, failed);
+            StatusMessage = F(
+                "CompletionSummary", success,
+                failed > 0 ? F("FailureSuffix", failed) : "");
             Logger.Information(
                 "Batch decryption completed: {SuccessCount} succeeded, {FailedCount} failed",
                 success,
@@ -541,17 +545,16 @@ public sealed partial class DecryptViewModel : ViewModelBase
             if (failed > 0)
             {
                 await _errorDialog.ShowErrorAsync(
-                    $"Đã giải mã thành công {success:N0} vault. " +
-                    $"{failed:N0} vault thất bại. Chọn từng dòng để xem nguyên nhân.",
-                    "Hoàn tất với lỗi");
+                    F("BatchFailureDetails", success, failed),
+                    L("CompletedWithErrors"));
             }
             if (OpenFolderWhenDone && success > 0)
                 _filePicker.OpenFolder(OutputPath);
         }
         catch (OperationCanceledException)
         {
-            StatusAction = "Đã huỷ giải mã";
-            StatusMessage = "Đã huỷ thao tác.";
+            StatusAction = L("DecryptCancelled");
+            StatusMessage = L("OperationCancelled");
             Logger.Warning(
                 "Batch decryption cancelled after {SuccessCount} successful and {FailedCount} failed vaults",
                 success,
@@ -588,7 +591,7 @@ public sealed partial class DecryptViewModel : ViewModelBase
               File.Exists(destination)))
         {
             throw new IOException(
-                "Đầu ra đã tồn tại. Bật ghi đè hoặc xóa đầu ra cũ.");
+                L("OutputAlreadyExists"));
         }
 
         var encryptor = new FileEncryptor(
@@ -620,7 +623,7 @@ public sealed partial class DecryptViewModel : ViewModelBase
                 break;
             default:
                 throw new InvalidDataException(
-                    $"Chế độ vault {mode} không được hỗ trợ.");
+                    F("UnsupportedVaultMode", mode));
         }
     }
 
@@ -642,17 +645,17 @@ public sealed partial class DecryptViewModel : ViewModelBase
     {
         if (Items.Count == 0)
         {
-            error = "Vui lòng chọn ít nhất một file .safe hoặc thư mục vault.";
+            error = L("DecryptSelectionRequired");
             return false;
         }
         if (!Items.Any(item => item.IsValid))
         {
-            error = "Danh sách không có vault hợp lệ.";
+            error = L("NoValidVaults");
             return false;
         }
         if (string.IsNullOrEmpty(Password))
         {
-            error = "Vui lòng nhập mật khẩu giải mã.";
+            error = L("DecryptPasswordRequired");
             return false;
         }
 
@@ -723,7 +726,7 @@ public sealed partial class DecryptViewModel : ViewModelBase
         {
             Logger.Error(ex, "Failed to open decrypted output directory");
             _ = _errorDialog.ShowErrorAsync(
-                ex.Message, "Không thể mở thư mục đầu ra");
+                ex.Message, L("CannotOpenOutputFolder"));
         }
     }
 
@@ -801,7 +804,7 @@ public sealed partial class DecryptViewModel : ViewModelBase
 
     private static string GetFriendlyError(Exception ex) =>
         ex is InvalidOperationException or CryptographicException
-            ? "Mật khẩu không đúng hoặc vault đã bị thay đổi."
+            ? L("WrongPassword")
             : ex.Message;
 
     private static string FormatBytes(long bytes)
@@ -816,4 +819,8 @@ public sealed partial class DecryptViewModel : ViewModelBase
         }
         return $"{value:0.##} {units[unit]}";
     }
+
+    private static string L(string key) => LocalizationService.Instance.Get(key);
+    private static string F(string key, params object?[] args) =>
+        LocalizationService.Instance.Format(key, args);
 }

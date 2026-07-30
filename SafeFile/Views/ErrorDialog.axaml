@@ -1,5 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:loc="using:SafeFile.Markup"
         x:Class="SafeFile.Views.ErrorDialog"
         Width="440"
         MinHeight="190"
@@ -8,7 +9,7 @@
         CanResize="False"
         ShowInTaskbar="False"
         WindowStartupLocation="CenterOwner"
-        Title="Đã xảy ra lỗi">
+        Title="{loc:Tr ErrorTitle}">
   <Grid Margin="24" RowDefinitions="Auto,*,Auto">
     <Grid ColumnDefinitions="Auto,*">
       <Border Width="38" Height="38" CornerRadius="19" Background="#FEE2E2">
@@ -27,7 +28,7 @@
             HorizontalAlignment="Right" MinWidth="88"
             Theme="{StaticResource PrimaryButtonTheme}"
             Click="CloseDialog">
-      <TextBlock Text="Đóng"/>
+      <TextBlock Text="{loc:Tr Close}"/>
     </Button>
   </Grid>
 </Window>

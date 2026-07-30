@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:SafeFile.ViewModels"
+        xmlns:loc="using:SafeFile.Markup"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="760"
@@ -83,7 +84,7 @@
           </Border>
           <StackPanel VerticalAlignment="Center" Spacing="1">
             <TextBlock Text="SafeFile" FontSize="17" FontWeight="Bold" Foreground="#111827"/>
-            <TextBlock Text="Enterprise Encryption" FontSize="11" Foreground="#6B7280"/>
+            <TextBlock Text="{loc:Tr AppSubtitle}" FontSize="11" Foreground="#6B7280"/>
           </StackPanel>
         </StackPanel>
 
@@ -95,7 +96,7 @@
                   Command="{Binding NavigateToEncryptCommand}">
             <StackPanel Orientation="Horizontal" Spacing="12">
               <PathIcon Data="{StaticResource LockIcon}" Width="18" Height="18"/>
-              <TextBlock Text="Mã hoá" VerticalAlignment="Center"/>
+              <TextBlock Text="{loc:Tr NavEncrypt}" VerticalAlignment="Center"/>
             </StackPanel>
           </Button>
 
@@ -104,7 +105,7 @@
                   Command="{Binding NavigateToDecryptCommand}">
             <StackPanel Orientation="Horizontal" Spacing="12">
               <PathIcon Data="{StaticResource LockOpenIcon}" Width="18" Height="18"/>
-              <TextBlock Text="Giải mã" VerticalAlignment="Center"/>
+              <TextBlock Text="{loc:Tr NavDecrypt}" VerticalAlignment="Center"/>
             </StackPanel>
           </Button>
 
@@ -113,7 +114,7 @@
                   Command="{Binding NavigateToLogsCommand}">
             <StackPanel Orientation="Horizontal" Spacing="12">
               <PathIcon Data="{StaticResource HistoryIcon}" Width="18" Height="18"/>
-              <TextBlock Text="Nhật ký" VerticalAlignment="Center"/>
+              <TextBlock Text="{loc:Tr NavLogs}" VerticalAlignment="Center"/>
             </StackPanel>
           </Button>
 
@@ -122,7 +123,7 @@
                   Command="{Binding NavigateToSettingsCommand}">
             <StackPanel Orientation="Horizontal" Spacing="12">
               <PathIcon Data="{StaticResource SettingsIcon}" Width="18" Height="18"/>
-              <TextBlock Text="Thiết lập" VerticalAlignment="Center"/>
+              <TextBlock Text="{loc:Tr NavSettings}" VerticalAlignment="Center"/>
             </StackPanel>
           </Button>
 
@@ -133,7 +134,7 @@
               <TextBlock Text="ⓘ" Width="18" FontSize="16"
                          HorizontalAlignment="Center"
                          VerticalAlignment="Center"/>
-              <TextBlock Text="Về ứng dụng" VerticalAlignment="Center"/>
+              <TextBlock Text="{loc:Tr NavAbout}" VerticalAlignment="Center"/>
             </StackPanel>
           </Button>
 
@@ -149,23 +150,9 @@
       <Border Grid.Row="0"
               Background="#F8FAFC" BorderBrush="#E3E7EC" BorderThickness="0,0,0,1"
               Padding="16,10">
-        <Grid ColumnDefinitions="*,Auto,Auto">
+        <Grid ColumnDefinitions="*">
           <TextBlock Text="{Binding ActivePage}"
                      FontSize="24" FontWeight="SemiBold" VerticalAlignment="Center"/>
-          <Button Grid.Column="1" Margin="0,0,8,0"
-                  Theme="{StaticResource OutlinedButtonTheme}"
-                  Padding="10,6">
-            <StackPanel Orientation="Horizontal" Spacing="6">
-              <PathIcon Data="{StaticResource GlobeIcon}" Width="15" Height="15"/>
-              <TextBlock Text="Tiếng Việt" VerticalAlignment="Center" FontSize="13"/>
-              <TextBlock Text="∨" VerticalAlignment="Center" FontSize="11" Foreground="#6B7280"/>
-            </StackPanel>
-          </Button>
-          <Button Grid.Column="2"
-                  Theme="{StaticResource OutlinedButtonTheme}"
-                  Padding="8,6" ToolTip.Tip="Chế độ tối">
-            <TextBlock Text="☾" FontSize="13"/>
-          </Button>
         </Grid>
       </Border>
 

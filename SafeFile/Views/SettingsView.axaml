@@ -1,6 +1,8 @@
 ﻿<UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:SafeFile.ViewModels"
+             xmlns:loc="using:SafeFile.Markup"
+             xmlns:models="using:SafeFile.Models"
              x:Class="SafeFile.Views.SettingsView"
              x:DataType="vm:SettingsViewModel"
              Foreground="#1F2937">
@@ -8,18 +10,56 @@
     <StackPanel Margin="24" Spacing="16" MaxWidth="1100"
                 HorizontalAlignment="Stretch">
 
+      <!-- Appearance -->
+      <Border Background="White" CornerRadius="8" Padding="18">
+        <StackPanel Spacing="16">
+          <StackPanel Spacing="3">
+            <TextBlock Text="{loc:Tr Appearance}" FontSize="15" FontWeight="SemiBold"/>
+            <TextBlock Text="{loc:Tr AppearanceHint}"
+                       FontSize="11" Foreground="#6B7280"/>
+          </StackPanel>
+          <Grid ColumnDefinitions="*,24,*">
+            <StackPanel Grid.Column="0" Spacing="8">
+              <TextBlock Text="{loc:Tr Language}" FontWeight="Medium"/>
+              <ComboBox ItemsSource="{Binding Languages}"
+                        SelectedItem="{Binding SelectedLanguage}">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate x:DataType="models:LanguageOption">
+                    <TextBlock Text="{Binding DisplayName}"/>
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+            </StackPanel>
+            <StackPanel Grid.Column="2" Spacing="8">
+              <TextBlock Text="{loc:Tr Theme}" FontWeight="Medium"/>
+              <StackPanel Orientation="Horizontal" Spacing="22"
+                          MinHeight="32" VerticalAlignment="Center">
+                <RadioButton Content="{loc:Tr LightTheme}"
+                             IsChecked="{Binding IsLightTheme}"
+                             GroupName="ApplicationTheme"/>
+                <RadioButton Content="{loc:Tr DarkTheme}"
+                             IsChecked="{Binding IsDarkTheme}"
+                             GroupName="ApplicationTheme"/>
+              </StackPanel>
+            </StackPanel>
+          </Grid>
+          <TextBlock Text="{loc:Tr AppearanceApplyHint}"
+                     FontSize="11" Foreground="#6B7280"/>
+        </StackPanel>
+      </Border>
+
       <!-- Performance -->
       <Border Background="White" CornerRadius="8" Padding="18">
         <StackPanel Spacing="16">
           <StackPanel Spacing="3">
-            <TextBlock Text="Hiệu năng" FontSize="15" FontWeight="SemiBold"/>
-            <TextBlock Text="Điều chỉnh tài nguyên dùng cho quá trình mã hoá và giải mã."
+            <TextBlock Text="{loc:Tr Performance}" FontSize="15" FontWeight="SemiBold"/>
+            <TextBlock Text="{loc:Tr PerformanceHint}"
                        FontSize="11" Foreground="#6B7280"/>
           </StackPanel>
 
           <Grid ColumnDefinitions="*,24,*">
             <StackPanel Grid.Column="0" Spacing="8">
-              <TextBlock Text="Kích thước Chunk" FontWeight="Medium"/>
+              <TextBlock Text="{loc:Tr ChunkSize}" FontWeight="Medium"/>
               <ComboBox ItemsSource="{Binding ChunkSizeOptions}"
                         SelectedItem="{Binding DefaultChunkSizeMb}">
                 <ComboBox.ItemTemplate>
@@ -28,32 +68,32 @@
                   </DataTemplate>
                 </ComboBox.ItemTemplate>
               </ComboBox>
-              <TextBlock Text="Chunk lớn hơn có thể tăng tốc độ nhưng sử dụng thêm bộ nhớ."
+              <TextBlock Text="{loc:Tr ChunkSizeHint}"
                          FontSize="11" Foreground="#6B7280" TextWrapping="Wrap"/>
             </StackPanel>
 
             <StackPanel Grid.Column="2" Spacing="8">
               <Grid ColumnDefinitions="*,Auto">
-                <TextBlock Text="Số luồng xử lý" FontWeight="Medium"/>
+                <TextBlock Text="{loc:Tr WorkerThreads}" FontWeight="Medium"/>
                 <TextBlock Grid.Column="1" Text="{Binding MaxThreads}"
                            Foreground="#2563EB" FontWeight="SemiBold"/>
               </Grid>
               <Slider Value="{Binding MaxThreads}" Minimum="1"
                       Maximum="{Binding MaxThreadsLimit}"
                       TickFrequency="1" IsSnapToTickEnabled="True"/>
-              <TextBlock Text="Giới hạn theo số bộ xử lý logic của thiết bị."
+              <TextBlock Text="{loc:Tr WorkerThreadsHint}"
                          FontSize="11" Foreground="#6B7280"/>
             </StackPanel>
           </Grid>
 
           <StackPanel Spacing="8">
-            <TextBlock Text="Mức ưu tiên CPU" FontWeight="Medium"/>
+            <TextBlock Text="{loc:Tr CpuPriority}" FontWeight="Medium"/>
             <StackPanel Orientation="Horizontal" Spacing="22">
-              <RadioButton Content="Thấp" IsChecked="{Binding IsCpuLow}"
+              <RadioButton Content="{loc:Tr Low}" IsChecked="{Binding IsCpuLow}"
                            GroupName="CpuPriority"/>
-              <RadioButton Content="Bình thường" IsChecked="{Binding IsCpuNormal}"
+              <RadioButton Content="{loc:Tr Normal}" IsChecked="{Binding IsCpuNormal}"
                            GroupName="CpuPriority"/>
-              <RadioButton Content="Cao" IsChecked="{Binding IsCpuHigh}"
+              <RadioButton Content="{loc:Tr High}" IsChecked="{Binding IsCpuHigh}"
                            GroupName="CpuPriority"/>
             </StackPanel>
           </StackPanel>
@@ -64,16 +104,16 @@
       <Border Background="White" CornerRadius="8" Padding="18">
         <StackPanel Spacing="16">
           <StackPanel Spacing="3">
-            <TextBlock Text="Bảo mật" FontSize="15" FontWeight="SemiBold"/>
-            <TextBlock Text="Thiết lập chính sách mật khẩu và tham số dẫn xuất khoá Argon2id."
+            <TextBlock Text="{loc:Tr Security}" FontSize="15" FontWeight="SemiBold"/>
+            <TextBlock Text="{loc:Tr SecuritySettingsHint}"
                        FontSize="11" Foreground="#6B7280"/>
           </StackPanel>
 
           <Grid ColumnDefinitions="*,24,*">
             <StackPanel Grid.Column="0" Spacing="12">
-              <TextBlock Text="Chính sách mật khẩu" FontWeight="Medium"/>
+              <TextBlock Text="{loc:Tr PasswordPolicy}" FontWeight="Medium"/>
               <Grid ColumnDefinitions="*,110">
-                <TextBlock Text="Độ dài mật khẩu tối thiểu" VerticalAlignment="Center"/>
+                <TextBlock Text="{loc:Tr MinimumPasswordLength}" VerticalAlignment="Center"/>
                 <NumericUpDown Grid.Column="1"
                                Value="{Binding MinPasswordLength}"
                                Minimum="6" Maximum="128"
@@ -81,7 +121,7 @@
                                TextAlignment="Center"
                                HorizontalAlignment="Stretch"/>
               </Grid>
-              <CheckBox Content="Yêu cầu nhập lại mật khẩu để xác nhận"
+              <CheckBox Content="{loc:Tr RequirePasswordConfirmation}"
                         IsChecked="{Binding ConfirmPasswordToggle}"/>
             </StackPanel>
 
@@ -90,7 +130,7 @@
               <Grid ColumnDefinitions="*,110"
                     RowDefinitions="32,32,32"
                     RowSpacing="8">
-                <TextBlock Grid.Row="0" Text="Bộ nhớ (MB)" VerticalAlignment="Center"/>
+                <TextBlock Grid.Row="0" Text="{loc:Tr MemoryMb}" VerticalAlignment="Center"/>
                 <NumericUpDown Grid.Row="0" Grid.Column="1"
                                Value="{Binding Argon2MemoryMb}"
                                Minimum="{Binding Argon2MemoryMinMb}"
@@ -98,14 +138,14 @@
                                Increment="16" FormatString="0"
                                TextAlignment="Center"
                                HorizontalAlignment="Stretch"/>
-                <TextBlock Grid.Row="1" Text="Số vòng lặp" VerticalAlignment="Center"/>
+                <TextBlock Grid.Row="1" Text="{loc:Tr Iterations}" VerticalAlignment="Center"/>
                 <NumericUpDown Grid.Row="1" Grid.Column="1"
                                Value="{Binding Argon2Iterations}"
                                Minimum="1" Maximum="{Binding Argon2IterationsMax}"
                                Increment="1" FormatString="0"
                                TextAlignment="Center"
                                HorizontalAlignment="Stretch"/>
-                <TextBlock Grid.Row="2" Text="Mức song song" VerticalAlignment="Center"/>
+                <TextBlock Grid.Row="2" Text="{loc:Tr Parallelism}" VerticalAlignment="Center"/>
                 <NumericUpDown Grid.Row="2" Grid.Column="1"
                                Value="{Binding Argon2Parallelism}"
                                Minimum="1" Maximum="{Binding Argon2ParallelismMax}"
@@ -113,7 +153,7 @@
                                TextAlignment="Center"
                                HorizontalAlignment="Stretch"/>
               </Grid>
-              <TextBlock Text="Giá trị cao hơn tăng khả năng chống dò mật khẩu, đồng thời cần nhiều tài nguyên hơn."
+              <TextBlock Text="{loc:Tr KdfHint}"
                          FontSize="11" Foreground="#6B7280" TextWrapping="Wrap"/>
             </StackPanel>
           </Grid>
@@ -124,38 +164,38 @@
       <Border Background="White" CornerRadius="8" Padding="18">
         <StackPanel Spacing="14">
           <StackPanel Spacing="3">
-            <TextBlock Text="Đầu ra" FontSize="15" FontWeight="SemiBold"/>
-            <TextBlock Text="Chọn riêng vị trí lưu dữ liệu mã hoá và dữ liệu giải mã."
+            <TextBlock Text="{loc:Tr Output}" FontSize="15" FontWeight="SemiBold"/>
+            <TextBlock Text="{loc:Tr OutputSettingsHint}"
                        FontSize="11" Foreground="#6B7280"/>
           </StackPanel>
 
           <StackPanel Spacing="7">
-            <TextBlock Text="Thư mục lưu dữ liệu mã hoá" FontWeight="Medium"/>
+            <TextBlock Text="{loc:Tr EncryptedOutputFolder}" FontWeight="Medium"/>
             <Grid ColumnDefinitions="*,Auto">
               <TextBox Grid.Column="0" Text="{Binding DefaultOutputPath}"
-                       PlaceholderText="Chọn thư mục lưu dữ liệu mã hoá"/>
+                       PlaceholderText="{loc:Tr SelectEncryptedOutputFolder}"/>
               <Button Grid.Column="1" Margin="8,0,0,0"
                       Theme="{StaticResource OutlinedButtonTheme}"
                       Command="{Binding BrowseOutputPathCommand}">
                 <StackPanel Orientation="Horizontal" Spacing="6">
                   <PathIcon Data="{StaticResource FolderIcon}" Width="15" Height="15"/>
-                  <TextBlock Text="Duyệt..." VerticalAlignment="Center"/>
+                  <TextBlock Text="{loc:Tr Browse}" VerticalAlignment="Center"/>
                 </StackPanel>
               </Button>
             </Grid>
           </StackPanel>
 
           <StackPanel Spacing="7">
-            <TextBlock Text="Thư mục lưu dữ liệu giải mã" FontWeight="Medium"/>
+            <TextBlock Text="{loc:Tr DecryptedOutputFolder}" FontWeight="Medium"/>
             <Grid ColumnDefinitions="*,Auto">
               <TextBox Grid.Column="0" Text="{Binding DefaultDecryptOutputPath}"
-                       PlaceholderText="Chọn thư mục lưu dữ liệu giải mã"/>
+                       PlaceholderText="{loc:Tr SelectDecryptedOutputFolder}"/>
               <Button Grid.Column="1" Margin="8,0,0,0"
                       Theme="{StaticResource OutlinedButtonTheme}"
                       Command="{Binding BrowseDecryptOutputPathCommand}">
                 <StackPanel Orientation="Horizontal" Spacing="6">
                   <PathIcon Data="{StaticResource FolderIcon}" Width="15" Height="15"/>
-                  <TextBlock Text="Duyệt..." VerticalAlignment="Center"/>
+                  <TextBlock Text="{loc:Tr Browse}" VerticalAlignment="Center"/>
                 </StackPanel>
               </Button>
             </Grid>
@@ -174,12 +214,12 @@
                 Command="{Binding RestoreDefaultsCommand}">
           <StackPanel Orientation="Horizontal" Spacing="6">
             <PathIcon Data="{StaticResource RefreshIcon}" Width="15" Height="15"/>
-            <TextBlock Text="Khôi phục mặc định" VerticalAlignment="Center"/>
+            <TextBlock Text="{loc:Tr RestoreDefaults}" VerticalAlignment="Center"/>
           </StackPanel>
         </Button>
         <Button Grid.Column="2" Theme="{StaticResource PrimaryButtonTheme}"
                 Command="{Binding SaveCommand}">
-          <TextBlock Text="Lưu thiết lập"/>
+          <TextBlock Text="{loc:Tr SaveSettings}"/>
         </Button>
       </Grid>
     </StackPanel>

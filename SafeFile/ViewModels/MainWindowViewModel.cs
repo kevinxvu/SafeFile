@@ -1,4 +1,5 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+﻿using System;
+using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SafeFile.Core.Services;
 using SafeFile.Services;
@@ -18,11 +19,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private readonly DecryptViewModel _decryptPage;
     private readonly LogViewModel _logsPage;
     private readonly SettingsViewModel _settingsPage;
-    private readonly PlaceholderViewModel _aboutPage = new("Về ứng dụng");
+    private readonly AboutViewModel _aboutPage;
 
     // ── Navigation ────────────────────────────────────────────────
     [ObservableProperty] private ViewModelBase _currentPage;
-    [ObservableProperty] private string _activePage = "Mã hoá dữ liệu";
+    [ObservableProperty] private string _activePage = "";
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsEncryptActive))]
@@ -49,7 +50,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         IFilePickerService filePicker,
         SettingsService settingsService,
         IErrorDialogService errorDialog,
-        LogService logService)
+        LogService logService,
+        IClipboardService clipboard)
     {
         _settingsService = settingsService;
         _errorDialog = errorDialog;
@@ -60,12 +62,16 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         _settingsPage = new SettingsViewModel(
             settingsService, filePicker, errorDialog);
         _logsPage = new LogViewModel(logService, filePicker, errorDialog);
+        _aboutPage = new AboutViewModel(
+            clipboard, filePicker, errorDialog, logService);
         _currentPage = _encryptPage;
+        RefreshLocalizedPageTitle();
+        LocalizationService.Instance.CultureChanged += OnCultureChanged;
 
         NavigateToEncryptCommand = new RelayCommand(() =>
         {
             ActiveNav = NavItem.Encrypt;
-            ActivePage = "Mã hoá dữ liệu";
+            RefreshLocalizedPageTitle();
             _encryptPage.RefreshSettings();
             CurrentPage = _encryptPage;
             Logger.Debug("Navigated to Encrypt page");
@@ -73,7 +79,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         NavigateToDecryptCommand = new RelayCommand(() =>
         {
             ActiveNav = NavItem.Decrypt;
-            ActivePage = "Giải mã dữ liệu";
+            RefreshLocalizedPageTitle();
             _decryptPage.RefreshSettings();
             CurrentPage = _decryptPage;
             Logger.Debug("Navigated to Decrypt page");
@@ -81,23 +87,42 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         NavigateToLogsCommand = new RelayCommand(() =>
         {
             ActiveNav = NavItem.Logs;
-            ActivePage = "Nhật ký";
+            RefreshLocalizedPageTitle();
             CurrentPage = _logsPage;
             Logger.Debug("Navigated to Logs page");
         });
         NavigateToSettingsCommand = new RelayCommand(() =>
         {
             ActiveNav = NavItem.Settings;
-            ActivePage = "Thiết lập";
+            RefreshLocalizedPageTitle();
             CurrentPage = _settingsPage;
             Logger.Debug("Navigated to Settings page");
         });
         NavigateToAboutCommand = new RelayCommand(() =>
         {
             ActiveNav = NavItem.About;
-            ActivePage = "Về ứng dụng";
+            RefreshLocalizedPageTitle();
             CurrentPage = _aboutPage;
             Logger.Debug("Navigated to About page");
         });
+    }
+
+    private void OnCultureChanged(object? sender, EventArgs e)
+    {
+        RefreshLocalizedPageTitle();
+    }
+
+    private void RefreshLocalizedPageTitle()
+    {
+        var key = ActiveNav switch
+        {
+            NavItem.Encrypt => "PageEncrypt",
+            NavItem.Decrypt => "PageDecrypt",
+            NavItem.Logs => "PageLogs",
+            NavItem.Settings => "PageSettings",
+            NavItem.About => "PageAbout",
+            _ => "PageEncrypt"
+        };
+        ActivePage = LocalizationService.Instance.Get(key);
     }
 }

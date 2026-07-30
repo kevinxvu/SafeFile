@@ -1,5 +1,6 @@
 using System;
 using CommunityToolkit.Mvvm.ComponentModel;
+using SafeFile.Services;
 using CommunityToolkit.Mvvm.Input;
 using SafeFile.Core.Format;
 
@@ -18,8 +19,8 @@ public sealed partial class DecryptQueueItem : ObservableObject
     public VaultHeader? Header { get; }
     public bool IsValid => Header is not null;
 
-    [ObservableProperty] private string _originalFileName = "🔒 Chưa xác thực";
-    [ObservableProperty] private string _status = "Sẵn sàng";
+    [ObservableProperty] private string _originalFileName = L("NotVerified");
+    [ObservableProperty] private string _status = L("Ready");
     [ObservableProperty] private string _statusForeground = "#4B5563";
     [ObservableProperty] private string _errorMessage = "";
     [ObservableProperty] private double _progress;
@@ -52,7 +53,7 @@ public sealed partial class DecryptQueueItem : ObservableObject
         Header = header;
         Status = initialStatus;
         ErrorMessage = initialError;
-        OriginalFileName = header is null ? "—" : "🔒 Chưa xác thực";
+        OriginalFileName = header is null ? "—" : L("NotVerified");
         StatusForeground = header is null ? "#DC2626" : "#4B5563";
         _remove = remove;
         RemoveCommand = new RelayCommand(() => _remove(this));
@@ -69,11 +70,13 @@ public sealed partial class DecryptQueueItem : ObservableObject
         if (!IsValid)
             return;
 
-        OriginalFileName = "🔒 Chưa xác thực";
+        OriginalFileName = L("NotVerified");
         HasVerifiedMetadata = false;
         ErrorMessage = "";
         Progress = 0;
-        Status = "Sẵn sàng";
+        Status = L("Ready");
         StatusForeground = "#4B5563";
     }
+
+    private static string L(string key) => LocalizationService.Instance.Get(key);
 }

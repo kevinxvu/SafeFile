@@ -1,6 +1,7 @@
 ﻿<UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:SafeFile.ViewModels"
+             xmlns:loc="using:SafeFile.Markup"
              x:Class="SafeFile.Views.EncryptView"
              x:DataType="vm:EncryptViewModel"
              Foreground="#1F2937">
@@ -9,19 +10,19 @@
     <StackPanel Margin="24" Spacing="16">
       <Border Background="White" CornerRadius="8" Padding="16">
         <StackPanel Spacing="10">
-          <TextBlock Text="Nguồn dữ liệu" FontSize="15" FontWeight="SemiBold"/>
+          <TextBlock Text="{loc:Tr SourceData}" FontSize="15" FontWeight="SemiBold"/>
           <StackPanel Orientation="Horizontal" Spacing="20">
-            <RadioButton Content="Tập tin (File)" IsChecked="{Binding IsFileSource}" GroupName="SourceType"/>
-            <RadioButton Content="Thư mục (Folder)" IsChecked="{Binding IsFolderSource}" GroupName="SourceType"/>
+            <RadioButton Content="{loc:Tr File}" IsChecked="{Binding IsFileSource}" GroupName="SourceType"/>
+            <RadioButton Content="{loc:Tr Folder}" IsChecked="{Binding IsFolderSource}" GroupName="SourceType"/>
           </StackPanel>
           <Grid ColumnDefinitions="*,Auto">
-            <TextBox Grid.Column="0" Text="{Binding SourcePath}" Watermark="Nhập đường dẫn"/>
+            <TextBox Grid.Column="0" Text="{Binding SourcePath}" PlaceholderText="{loc:Tr EnterPath}"/>
             <Button Grid.Column="1" Margin="8,0,0,0"
                     Theme="{StaticResource OutlinedButtonTheme}"
                     Command="{Binding BrowseSourceCommand}">
               <StackPanel Orientation="Horizontal" Spacing="6">
                 <PathIcon Data="{StaticResource SearchIcon}" Width="15" Height="15"/>
-                <TextBlock Text="Duyệt..." VerticalAlignment="Center"/>
+                <TextBlock Text="{loc:Tr Browse}" VerticalAlignment="Center"/>
               </StackPanel>
             </Button>
           </Grid>
@@ -32,7 +33,7 @@
                   DragDrop.DragLeave="OnSourceDragLeave"
                   DragDrop.DragOver="OnSourceDragOver"
                   DragDrop.Drop="OnSourceDrop">
-            <TextBlock Text="Kéo thả file hoặc thư mục vào đây" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#888"/>
+            <TextBlock Text="{loc:Tr DropEncryptSource}" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#888"/>
           </Border>
         </StackPanel>
       </Border>
@@ -40,19 +41,19 @@
       <Grid ColumnDefinitions="*,16,*">
         <Border Grid.Column="0" Background="White" CornerRadius="8" Padding="16">
           <StackPanel Spacing="8">
-            <TextBlock Text="Bảo mật" FontSize="15" FontWeight="SemiBold"/>
-            <TextBlock Text="Mật khẩu"/>
+            <TextBlock Text="{loc:Tr Security}" FontSize="15" FontWeight="SemiBold"/>
+            <TextBlock Text="{loc:Tr Password}"/>
             <Grid ColumnDefinitions="*,Auto">
               <TextBox Grid.Column="0" Text="{Binding Password}"
                        PasswordChar="{Binding PasswordChar}"/>
               <Button Grid.Column="1" Margin="6,0,0,0" Width="38"
                       Padding="8" Theme="{StaticResource OutlinedButtonTheme}"
                       Command="{Binding TogglePasswordVisibilityCommand}"
-                      ToolTip.Tip="Hiện hoặc ẩn mật khẩu">
+                      ToolTip.Tip="{loc:Tr TogglePassword}">
                 <PathIcon Data="{StaticResource EyeIcon}" Width="17" Height="17"/>
               </Button>
             </Grid>
-            <TextBlock Text="Xác nhận mật khẩu"
+            <TextBlock Text="{loc:Tr ConfirmPassword}"
                        IsVisible="{Binding IsPasswordConfirmationRequired}"/>
             <Grid ColumnDefinitions="*,Auto"
                   IsVisible="{Binding IsPasswordConfirmationRequired}">
@@ -61,7 +62,7 @@
               <Button Grid.Column="1" Margin="6,0,0,0" Width="38"
                       Padding="8" Theme="{StaticResource OutlinedButtonTheme}"
                       Command="{Binding ToggleConfirmPasswordVisibilityCommand}"
-                      ToolTip.Tip="Hiện hoặc ẩn mật khẩu xác nhận">
+                      ToolTip.Tip="{loc:Tr ToggleConfirmPassword}">
                 <PathIcon Data="{StaticResource EyeIcon}" Width="17" Height="17"/>
               </Button>
             </Grid>
@@ -74,18 +75,18 @@
 
         <Border Grid.Column="2" Background="White" CornerRadius="8" Padding="16">
           <StackPanel Spacing="10">
-            <TextBlock Text="Tuỳ chọn mã hoá" FontSize="15" FontWeight="SemiBold"/>
-            <CheckBox Content="Mã hoá tên tập tin"
+            <TextBlock Text="{loc:Tr EncryptionOptions}" FontSize="15" FontWeight="SemiBold"/>
+            <CheckBox Content="{loc:Tr EncryptFileNames}"
                       IsChecked="{Binding EncryptFileNames}"/>
-            <CheckBox Content="Ghi đè file .safe nếu đã tồn tại"
+            <CheckBox Content="{loc:Tr OverwriteSafe}"
                       IsChecked="{Binding OverwriteExisting}"
                       IsEnabled="{Binding IsSingleVaultOutput}"/>
-            <TextBlock Text="Tên đầu ra sẽ được mã hoá và khôi phục khi giải mã."
+            <TextBlock Text="{loc:Tr EncryptedNameHint}"
                        FontSize="11" Foreground="#6B7280" TextWrapping="Wrap"/>
-            <TextBlock Text="Xử lý thư mục" FontWeight="Medium" Margin="0,4,0,0"/>
+            <TextBlock Text="{loc:Tr FolderProcessing}" FontWeight="Medium" Margin="0,4,0,0"/>
             <StackPanel Orientation="Horizontal" Spacing="16">
-              <RadioButton Content="Nén thành 1 file (Zip)" IsChecked="{Binding IsFolderModeZip}" IsEnabled="{Binding IsFolderSource}" GroupName="FolderMode"/>
-              <RadioButton Content="Từng file riêng lẻ" IsChecked="{Binding IsFolderModePerFile}" IsEnabled="{Binding IsFolderSource}" GroupName="FolderMode"/>
+              <RadioButton Content="{loc:Tr FolderModeZip}" IsChecked="{Binding IsFolderModeZip}" IsEnabled="{Binding IsFolderSource}" GroupName="FolderMode"/>
+              <RadioButton Content="{loc:Tr FolderModePerFile}" IsChecked="{Binding IsFolderModePerFile}" IsEnabled="{Binding IsFolderSource}" GroupName="FolderMode"/>
             </StackPanel>
           </StackPanel>
         </Border>
@@ -95,7 +96,7 @@
         <Grid ColumnDefinitions="*,Auto,Auto,Auto"
               RowDefinitions="Auto,Auto">
           <StackPanel Grid.Column="0" Spacing="2">
-            <TextBlock Text="Đầu ra dự kiến" FontSize="11"/>
+            <TextBlock Text="{loc:Tr EstimatedOutput}" FontSize="11"/>
             <TextBlock Text="{Binding EstimatedOutputName}"
                        FontWeight="SemiBold"
                        TextTrimming="CharacterEllipsis"/>
@@ -105,7 +106,7 @@
                   Command="{Binding ResetCommand}">
             <StackPanel Orientation="Horizontal" Spacing="6">
               <PathIcon Data="{StaticResource RefreshIcon}" Width="15" Height="15"/>
-              <TextBlock Text="Reset" VerticalAlignment="Center"/>
+              <TextBlock Text="{loc:Tr Reset}" VerticalAlignment="Center"/>
             </StackPanel>
           </Button>
           <Button Grid.Column="2" Margin="0,0,8,0"
@@ -113,7 +114,7 @@
                   Command="{Binding OpenOutputFolderCommand}">
             <StackPanel Orientation="Horizontal" Spacing="6">
               <PathIcon Data="{StaticResource FolderIcon}" Width="15" Height="15"/>
-              <TextBlock Text="Mở thư mục output" VerticalAlignment="Center"/>
+              <TextBlock Text="{loc:Tr OpenOutputFolder}" VerticalAlignment="Center"/>
             </StackPanel>
           </Button>
           <Button Grid.Column="3"
@@ -121,7 +122,7 @@
                   Command="{Binding EncryptCommand}">
             <StackPanel Orientation="Horizontal" Spacing="7">
               <PathIcon Data="{StaticResource LockIcon}" Width="15" Height="15"/>
-              <TextBlock Text="Mã hoá ngay" VerticalAlignment="Center"/>
+              <TextBlock Text="{loc:Tr EncryptNow}" VerticalAlignment="Center"/>
             </StackPanel>
           </Button>
           <TextBlock Grid.Row="1" Grid.ColumnSpan="4"
@@ -159,7 +160,7 @@
       <Button Grid.Column="3" VerticalAlignment="Center"
               Theme="{StaticResource CancelButtonTheme}"
               Command="{Binding CloseStatusCommand}"
-              ToolTip.Tip="Huỷ khi đang mã hoá, đóng khi đã hoàn tất">
+              ToolTip.Tip="{loc:Tr CancelEncryptionTooltip}">
         <PathIcon Data="{StaticResource CancelCircleIcon}" Width="18" Height="18"/>
       </Button>
     </Grid>

@@ -90,10 +90,10 @@ public sealed partial class EncryptViewModel : ViewModelBase
         PasswordStrength switch
         {
             0 => "",
-            < 30 => "Yếu",
-            < 60 => "Trung bình",
-            < 80 => "Mạnh",
-            _ => "Rất mạnh"
+            < 30 => L("Weak"),
+            < 60 => L("Medium"),
+            < 80 => L("Strong"),
+            _ => L("VeryStrong")
         };
 
     public string PasswordStrengthForeground =>
@@ -142,14 +142,14 @@ public sealed partial class EncryptViewModel : ViewModelBase
             {
                 var folderName = sourceName + "_encrypted";
                 return EncryptFileNames
-                    ? $"{folderName} (tên các tập tin sẽ được mã hoá)"
+                    ? F("EncryptedFileNamesSuffix", folderName)
                     : folderName;
             }
 
             return EncryptFileNames
                 ? IsFileSource
-                    ? "[Tên tập tin đã mã hoá].safe"
-                    : "[Tên thư mục đã mã hoá].safe"
+                    ? L("EncryptedFileNamePlaceholder")
+                    : L("EncryptedFolderNamePlaceholder")
                 : sourceName + ".safe";
         }
     }
@@ -230,8 +230,8 @@ public sealed partial class EncryptViewModel : ViewModelBase
     private async Task BrowseAsync()
     {
         string? path = IsFileSource
-            ? await _filePicker.PickFileAsync("Chọn tập tin nguồn")
-            : await _filePicker.PickFolderAsync("Chọn thư mục nguồn");
+            ? await _filePicker.PickFileAsync(L("SelectSourceFile"))
+            : await _filePicker.PickFolderAsync(L("SelectSourceFolder"));
 
         if (path is not null)
             SourcePath = path;
@@ -244,17 +244,17 @@ public sealed partial class EncryptViewModel : ViewModelBase
 
         if (string.IsNullOrWhiteSpace(SourcePath))
         {
-            await ShowSubmitErrorAsync("Vui lòng chọn tập tin hoặc thư mục nguồn.");
+            await ShowSubmitErrorAsync(L("SourceRequired"));
             return;
         }
         if (string.IsNullOrEmpty(Password))
         {
-            await ShowSubmitErrorAsync("Vui lòng nhập mật khẩu.");
+            await ShowSubmitErrorAsync(L("PasswordRequired"));
             return;
         }
         if (IsPasswordConfirmationRequired && Password != ConfirmPassword)
         {
-            await ShowSubmitErrorAsync("Mật khẩu xác nhận không khớp.");
+            await ShowSubmitErrorAsync(L("PasswordsDoNotMatch"));
             return;
         }
 
@@ -270,7 +270,7 @@ public sealed partial class EncryptViewModel : ViewModelBase
 
         var cts = new CancellationTokenSource();
         _activeCts = cts;
-        StatusAction = "Đang mã hoá";
+        StatusAction = L("Encrypting");
         StatusCurrentFile = Path.GetFileName(SourcePath.TrimEnd(Path.DirectorySeparatorChar));
         StatusProgress = 0;
         StatusBytes = "";
@@ -385,10 +385,10 @@ public sealed partial class EncryptViewModel : ViewModelBase
             }
 
             StatusProgress = 1.0;
-            StatusAction = "Mã hoá hoàn tất";
+            StatusAction = L("EncryptionCompleted");
             StatusCurrentFile = Path.GetFileName(actualOutputPath);
             StatusEta = "";
-            StatusMessage = $"✓ Mã hoá thành công: {Path.GetFileName(actualOutputPath)}";
+            StatusMessage = F("EncryptionSucceeded", Path.GetFileName(actualOutputPath));
             HasError = false;
             Logger.Information(
                 "Encryption completed successfully: {OutputPath}",
@@ -396,33 +396,33 @@ public sealed partial class EncryptViewModel : ViewModelBase
         }
         catch (OperationCanceledException)
         {
-            StatusAction = "Đã huỷ mã hoá";
+            StatusAction = L("EncryptionCancelled");
             StatusEta = "";
-            StatusMessage = "Đã huỷ thao tác.";
+            StatusMessage = L("OperationCancelled");
             HasError = false;
             Logger.Warning("Encryption cancelled for {SourcePath}", SourcePath);
         }
         catch (InvalidOperationException ex)
         {
-            StatusAction = "Mã hoá thất bại";
+            StatusAction = L("EncryptionFailed");
             StatusEta = "";
             Logger.Error(
                 ex,
                 "Encryption failed for {SourcePath}",
                 SourcePath);
             await ShowSubmitErrorAsync(
-                $"Sai mật khẩu hoặc dữ liệu bị hỏng: {ex.Message}",
-                "Mã hoá thất bại");
+                F("CorruptData", ex.Message),
+                L("EncryptionFailed"));
         }
         catch (Exception ex)
         {
-            StatusAction = "Mã hoá thất bại";
+            StatusAction = L("EncryptionFailed");
             StatusEta = "";
             Logger.Error(
                 ex,
                 "Encryption failed for {SourcePath}",
                 SourcePath);
-            await ShowSubmitErrorAsync(ex.Message, "Mã hoá thất bại");
+            await ShowSubmitErrorAsync(ex.Message, L("EncryptionFailed"));
         }
         finally
         {
@@ -436,11 +436,11 @@ public sealed partial class EncryptViewModel : ViewModelBase
 
     private async Task ShowSubmitErrorAsync(
         string message,
-        string title = "Không thể mã hoá")
+        string? title = null)
     {
         StatusMessage = "";
         HasError = false;
-        await _errorDialog.ShowErrorAsync(message, title);
+        await _errorDialog.ShowErrorAsync(message, title ?? L("CannotEncrypt"));
     }
 
     private void CloseOrCancelStatus()
@@ -483,7 +483,7 @@ public sealed partial class EncryptViewModel : ViewModelBase
         catch (Exception ex)
         {
             Logger.Error(ex, "Failed to open encrypted output directory");
-            StatusMessage = $"Không thể mở thư mục đầu ra: {ex.Message}";
+            StatusMessage = $"{L("CannotOpenOutput")}: {ex.Message}";
             HasError = true;
         }
     }
@@ -545,4 +545,8 @@ public sealed partial class EncryptViewModel : ViewModelBase
             ? $"{(int)ts.TotalHours:D2}:{ts.Minutes:D2}:{ts.Seconds:D2}"
             : $"{ts.Minutes:D2}:{ts.Seconds:D2}";
     }
+
+    private static string L(string key) => LocalizationService.Instance.Get(key);
+    private static string F(string key, params object?[] args) =>
+        LocalizationService.Instance.Format(key, args);
 }
