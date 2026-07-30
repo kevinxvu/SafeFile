@@ -1,6 +1,5 @@
 using Avalonia.Controls;
 using Avalonia.Input;
-using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using SafeFile.ViewModels;
 using System;
@@ -11,11 +10,6 @@ namespace SafeFile.Views;
 
 public partial class DecryptView : UserControl
 {
-    private static readonly IBrush DefaultBackground = Brush.Parse("#F8FAFC");
-    private static readonly IBrush ActiveBackground = Brush.Parse("#DBEAFE");
-    private static readonly IBrush DefaultBorder = Brush.Parse("#CBD5E1");
-    private static readonly IBrush ActiveBorder = Brush.Parse("#2563EB");
-
     public DecryptView()
     {
         InitializeComponent();
@@ -68,8 +62,15 @@ public partial class DecryptView : UserControl
             .Select(item => item.TryGetLocalPath())
             .Any(IsAcceptedPath) == true;
         e.DragEffects = accepted ? DragDropEffects.Copy : DragDropEffects.None;
-        DropZone.Background = accepted ? ActiveBackground : DefaultBackground;
-        DropZone.BorderBrush = accepted ? ActiveBorder : DefaultBorder;
+        if (accepted)
+        {
+            DropZone.Background = FindBrush("AccentHoverBrush");
+            DropZone.BorderBrush = FindBrush("AccentBrush");
+        }
+        else
+        {
+            ResetDragState();
+        }
         e.Handled = true;
     }
 
@@ -83,7 +84,12 @@ public partial class DecryptView : UserControl
 
     private void ResetDragState()
     {
-        DropZone.Background = DefaultBackground;
-        DropZone.BorderBrush = DefaultBorder;
+        DropZone.ClearValue(Border.BackgroundProperty);
+        DropZone.ClearValue(Border.BorderBrushProperty);
     }
+
+    private Avalonia.Media.IBrush? FindBrush(string resourceKey) =>
+        DropZone.TryFindResource(resourceKey, out var resource)
+            ? resource as Avalonia.Media.IBrush
+            : null;
 }

@@ -1,6 +1,5 @@
 using Avalonia.Controls;
 using Avalonia.Input;
-using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using SafeFile.ViewModels;
 
@@ -8,11 +7,6 @@ namespace SafeFile.Views;
 
 public partial class EncryptView : UserControl
 {
-    private static readonly IBrush DefaultDropBackground = Brush.Parse("#F5F5F5");
-    private static readonly IBrush ActiveDropBackground = Brush.Parse("#DBEAFE");
-    private static readonly IBrush DefaultDropBorder = Brush.Parse("#BDBDBD");
-    private static readonly IBrush ActiveDropBorder = Brush.Parse("#2563EB");
-
     public EncryptView()
     {
         InitializeComponent();
@@ -63,8 +57,15 @@ public partial class EncryptView : UserControl
 
         if (border is not null)
         {
-            border.Background = acceptsDrop ? ActiveDropBackground : DefaultDropBackground;
-            border.BorderBrush = acceptsDrop ? ActiveDropBorder : DefaultDropBorder;
+            if (acceptsDrop)
+            {
+                border.Background = FindBrush(border, "AccentHoverBrush");
+                border.BorderBrush = FindBrush(border, "AccentBrush");
+            }
+            else
+            {
+                ResetDragState(border);
+            }
         }
 
         e.Handled = true;
@@ -75,7 +76,14 @@ public partial class EncryptView : UserControl
         if (border is null)
             return;
 
-        border.Background = DefaultDropBackground;
-        border.BorderBrush = DefaultDropBorder;
+        border.ClearValue(Border.BackgroundProperty);
+        border.ClearValue(Border.BorderBrushProperty);
     }
+
+    private static Avalonia.Media.IBrush? FindBrush(
+        Control control,
+        string resourceKey) =>
+        control.TryFindResource(resourceKey, out var resource)
+            ? resource as Avalonia.Media.IBrush
+            : null;
 }

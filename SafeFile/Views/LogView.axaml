@@ -5,9 +5,9 @@
              xmlns:models="using:SafeFile.Models"
              x:Class="SafeFile.Views.LogView"
              x:DataType="vm:LogViewModel"
-             Foreground="#1F2937">
+             Foreground="{DynamicResource PrimaryTextBrush}">
   <Grid Margin="24" RowDefinitions="Auto,12,*">
-    <Border Background="White" CornerRadius="8" Padding="14">
+    <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="14">
       <Grid ColumnDefinitions="Auto,Auto,Auto,20,180,220,*,Auto"
             ColumnSpacing="8">
         <Button Grid.Column="0" Theme="{StaticResource OutlinedButtonTheme}"
@@ -40,7 +40,7 @@
         <TextBox Grid.Column="5" Text="{Binding SearchText}"
                  PlaceholderText="{loc:Tr SearchLogs}"/>
         <TextBlock Grid.Column="6" Text="{Binding EntryCountText}"
-                   Foreground="#6B7280" FontSize="11"
+                   Foreground="{DynamicResource SecondaryTextBrush}" FontSize="11"
                    VerticalAlignment="Center"
                    HorizontalAlignment="Right"/>
         <CheckBox Grid.Column="7" Content="{loc:Tr AutoScroll}"
@@ -52,10 +52,11 @@
     <Border Grid.Row="2" Background="#171717" BorderBrush="#374151"
             BorderThickness="1" CornerRadius="8" ClipToBounds="True">
       <Grid RowDefinitions="34,*">
-        <Border Background="#E5E7EB" Padding="12,7">
+        <Border Background="#24262B" BorderBrush="#374151"
+                BorderThickness="0,0,0,1" Padding="12,7">
           <Grid>
             <TextBlock Text="safefile-.log" FontFamily="Consolas"
-                       FontSize="11" Foreground="#374151"/>
+                       FontSize="11" Foreground="#CBD5E1"/>
           </Grid>
         </Border>
 

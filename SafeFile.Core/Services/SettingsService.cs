@@ -83,7 +83,7 @@ public sealed class SettingsService
             settings.Language = "en";
 
         if (settings.Theme is not ("Light" or "Dark"))
-            settings.Theme = "Light";
+            settings.Theme = "Dark";
 
         if (settings.DefaultChunkSizeMb < 1 || settings.DefaultChunkSizeMb > 16)
             settings.DefaultChunkSizeMb = 1;

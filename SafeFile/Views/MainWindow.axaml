@@ -12,15 +12,15 @@
         Width="1280"
         Height="720"
         WindowStartupLocation="CenterScreen"
-        Background="#F4F6F8"
-        Foreground="#1F2937">
+        Background="{DynamicResource AppBackgroundBrush}"
+        Foreground="{DynamicResource PrimaryTextBrush}">
 
   <Window.Resources>
 
     <!-- ── Nav button ControlTheme ───────────────────────────────────────── -->
     <ControlTheme x:Key="NavButtonTheme" TargetType="Button">
       <Setter Property="Background"              Value="Transparent"/>
-      <Setter Property="Foreground"              Value="#4B5563"/>
+      <Setter Property="Foreground"              Value="{DynamicResource TertiaryTextBrush}"/>
       <Setter Property="BorderBrush"             Value="Transparent"/>
       <Setter Property="BorderThickness"         Value="3,0,0,0"/>
       <Setter Property="CornerRadius"            Value="0"/>
@@ -45,22 +45,22 @@
         </ControlTemplate>
       </Setter>
       <Style Selector="^:pointerover /template/ Border#PART_Border">
-        <Setter Property="Background" Value="#F3F4F6"/>
+        <Setter Property="Background" Value="{DynamicResource HoverSurfaceBrush}"/>
       </Style>
       <Style Selector="^:pressed /template/ Border#PART_Border">
-        <Setter Property="Background" Value="#E5E7EB"/>
+        <Setter Property="Background" Value="{DynamicResource PressedSurfaceBrush}"/>
       </Style>
       <Style Selector="^.active">
-        <Setter Property="Background"  Value="#EFF6FF"/>
-        <Setter Property="BorderBrush" Value="#2563EB"/>
-        <Setter Property="Foreground"  Value="#2563EB"/>
+        <Setter Property="Background"  Value="{DynamicResource AccentSubtleBrush}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+        <Setter Property="Foreground"  Value="{DynamicResource AccentBrush}"/>
         <Setter Property="FontWeight"  Value="Medium"/>
       </Style>
       <Style Selector="^.active:pointerover /template/ Border#PART_Border">
-        <Setter Property="Background" Value="#DBEAFE"/>
+        <Setter Property="Background" Value="{DynamicResource AccentHoverBrush}"/>
       </Style>
       <Style Selector="^.active:pressed /template/ Border#PART_Border">
-        <Setter Property="Background" Value="#BFDBFE"/>
+        <Setter Property="Background" Value="{DynamicResource AccentPressedBrush}"/>
       </Style>
     </ControlTheme>
 
@@ -70,21 +70,25 @@
 
     <!-- ═══════════════════════════ SIDEBAR ══════════════════════════════════ -->
     <Border Grid.Column="0"
-            Background="White"
-            BorderBrush="#E3E7EC" BorderThickness="0,0,1,0">
+            Background="{DynamicResource SurfaceBrush}"
+            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,1,0">
       <DockPanel>
 
         <!-- Logo -->
         <StackPanel DockPanel.Dock="Top"
                     Orientation="Horizontal" Spacing="12"
                     Margin="16,22,16,28">
-          <Border Width="42" Height="42" CornerRadius="10" Background="#1D4ED8"
+          <Border Width="42" Height="42" CornerRadius="10"
+                  Background="{DynamicResource AccentStrongBrush}"
                   VerticalAlignment="Center">
-            <PathIcon Data="{StaticResource LockIcon}" Width="22" Height="22" Foreground="White"/>
+            <PathIcon Data="{StaticResource LockIcon}" Width="22" Height="22"
+                      Foreground="{DynamicResource OnAccentBrush}"/>
           </Border>
           <StackPanel VerticalAlignment="Center" Spacing="1">
-            <TextBlock Text="SafeFile" FontSize="17" FontWeight="Bold" Foreground="#111827"/>
-            <TextBlock Text="{loc:Tr AppSubtitle}" FontSize="11" Foreground="#6B7280"/>
+            <TextBlock Text="SafeFile" FontSize="17" FontWeight="Bold"
+                       Foreground="{DynamicResource StrongTextBrush}"/>
+            <TextBlock Text="{loc:Tr AppSubtitle}" FontSize="11"
+                       Foreground="{DynamicResource SecondaryTextBrush}"/>
           </StackPanel>
         </StackPanel>
 
@@ -148,7 +152,8 @@
     <!-- ═══════════════════════ MAIN CONTENT ═════════════════════════════════ -->
     <Grid Grid.Column="1" RowDefinitions="Auto,*">
       <Border Grid.Row="0"
-              Background="#F8FAFC" BorderBrush="#E3E7EC" BorderThickness="0,0,0,1"
+              Background="{DynamicResource ShellHeaderBrush}"
+              BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1"
               Padding="16,10">
         <Grid ColumnDefinitions="*">
           <TextBlock Text="{Binding ActivePage}"
@@ -156,7 +161,7 @@
         </Grid>
       </Border>
 
-      <Border Grid.Row="1" Background="#F4F6F8">
+      <Border Grid.Row="1" Background="{DynamicResource AppBackgroundBrush}">
         <ContentControl Content="{Binding CurrentPage}"/>
       </Border>
     </Grid>

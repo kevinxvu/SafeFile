@@ -15,12 +15,78 @@
             <Setter Property="FontSize" Value="13"/>
         </Style>
         <Style Selector="ProgressBar">
-            <Setter Property="Foreground" Value="#2563EB"/>
+            <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
         </Style>
     </Application.Styles>
 
     <Application.Resources>
         <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="AppBackgroundBrush">#F4F6F8</SolidColorBrush>
+                    <SolidColorBrush x:Key="ShellHeaderBrush">#F8FAFC</SolidColorBrush>
+                    <SolidColorBrush x:Key="SurfaceBrush">#FFFFFF</SolidColorBrush>
+                    <SolidColorBrush x:Key="SubtleSurfaceBrush">#F8FAFC</SolidColorBrush>
+                    <SolidColorBrush x:Key="ElevatedSurfaceBrush">#FFFFFF</SolidColorBrush>
+                    <SolidColorBrush x:Key="PrimaryTextBrush">#1F2937</SolidColorBrush>
+                    <SolidColorBrush x:Key="StrongTextBrush">#111827</SolidColorBrush>
+                    <SolidColorBrush x:Key="SecondaryTextBrush">#6B7280</SolidColorBrush>
+                    <SolidColorBrush x:Key="TertiaryTextBrush">#4B5563</SolidColorBrush>
+                    <SolidColorBrush x:Key="DisabledTextBrush">#94A3B8</SolidColorBrush>
+                    <SolidColorBrush x:Key="BorderBrush">#E3E7EC</SolidColorBrush>
+                    <SolidColorBrush x:Key="StrongBorderBrush">#D1D5DB</SolidColorBrush>
+                    <SolidColorBrush x:Key="HoverSurfaceBrush">#F3F4F6</SolidColorBrush>
+                    <SolidColorBrush x:Key="PressedSurfaceBrush">#E5E7EB</SolidColorBrush>
+                    <SolidColorBrush x:Key="AccentBrush">#2563EB</SolidColorBrush>
+                    <SolidColorBrush x:Key="AccentStrongBrush">#1D4ED8</SolidColorBrush>
+                    <SolidColorBrush x:Key="AccentSubtleBrush">#EFF6FF</SolidColorBrush>
+                    <SolidColorBrush x:Key="AccentHoverBrush">#DBEAFE</SolidColorBrush>
+                    <SolidColorBrush x:Key="AccentPressedBrush">#BFDBFE</SolidColorBrush>
+                    <SolidColorBrush x:Key="OnAccentBrush">#FFFFFF</SolidColorBrush>
+                    <SolidColorBrush x:Key="DropZoneBrush">#F5F5F5</SolidColorBrush>
+                    <SolidColorBrush x:Key="DropZoneBorderBrush">#BDBDBD</SolidColorBrush>
+                    <SolidColorBrush x:Key="SuccessBrush">#16A34A</SolidColorBrush>
+                    <SolidColorBrush x:Key="ErrorBrush">#B91C1C</SolidColorBrush>
+                    <SolidColorBrush x:Key="ErrorSubtleBrush">#FEF2F2</SolidColorBrush>
+                    <SolidColorBrush x:Key="WarningBrush">#92400E</SolidColorBrush>
+                    <SolidColorBrush x:Key="WarningSubtleBrush">#FFFBEB</SolidColorBrush>
+                    <SolidColorBrush x:Key="SuccessSubtleBrush">#ECFDF5</SolidColorBrush>
+                    <SolidColorBrush x:Key="OrangeBrush">#EA580C</SolidColorBrush>
+                    <SolidColorBrush x:Key="OrangeSubtleBrush">#FFF7ED</SolidColorBrush>
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="AppBackgroundBrush">#0F172A</SolidColorBrush>
+                    <SolidColorBrush x:Key="ShellHeaderBrush">#111827</SolidColorBrush>
+                    <SolidColorBrush x:Key="SurfaceBrush">#182235</SolidColorBrush>
+                    <SolidColorBrush x:Key="SubtleSurfaceBrush">#111C2E</SolidColorBrush>
+                    <SolidColorBrush x:Key="ElevatedSurfaceBrush">#1E293B</SolidColorBrush>
+                    <SolidColorBrush x:Key="PrimaryTextBrush">#E5E7EB</SolidColorBrush>
+                    <SolidColorBrush x:Key="StrongTextBrush">#F8FAFC</SolidColorBrush>
+                    <SolidColorBrush x:Key="SecondaryTextBrush">#AAB6C8</SolidColorBrush>
+                    <SolidColorBrush x:Key="TertiaryTextBrush">#CBD5E1</SolidColorBrush>
+                    <SolidColorBrush x:Key="DisabledTextBrush">#718096</SolidColorBrush>
+                    <SolidColorBrush x:Key="BorderBrush">#2D3A4F</SolidColorBrush>
+                    <SolidColorBrush x:Key="StrongBorderBrush">#475569</SolidColorBrush>
+                    <SolidColorBrush x:Key="HoverSurfaceBrush">#243247</SolidColorBrush>
+                    <SolidColorBrush x:Key="PressedSurfaceBrush">#334155</SolidColorBrush>
+                    <SolidColorBrush x:Key="AccentBrush">#60A5FA</SolidColorBrush>
+                    <SolidColorBrush x:Key="AccentStrongBrush">#3B82F6</SolidColorBrush>
+                    <SolidColorBrush x:Key="AccentSubtleBrush">#172554</SolidColorBrush>
+                    <SolidColorBrush x:Key="AccentHoverBrush">#1E3A5F</SolidColorBrush>
+                    <SolidColorBrush x:Key="AccentPressedBrush">#1E4976</SolidColorBrush>
+                    <SolidColorBrush x:Key="OnAccentBrush">#FFFFFF</SolidColorBrush>
+                    <SolidColorBrush x:Key="DropZoneBrush">#111C2E</SolidColorBrush>
+                    <SolidColorBrush x:Key="DropZoneBorderBrush">#475569</SolidColorBrush>
+                    <SolidColorBrush x:Key="SuccessBrush">#4ADE80</SolidColorBrush>
+                    <SolidColorBrush x:Key="ErrorBrush">#FCA5A5</SolidColorBrush>
+                    <SolidColorBrush x:Key="ErrorSubtleBrush">#451A1A</SolidColorBrush>
+                    <SolidColorBrush x:Key="WarningBrush">#FCD34D</SolidColorBrush>
+                    <SolidColorBrush x:Key="WarningSubtleBrush">#422006</SolidColorBrush>
+                    <SolidColorBrush x:Key="SuccessSubtleBrush">#052E24</SolidColorBrush>
+                    <SolidColorBrush x:Key="OrangeBrush">#FB923C</SolidColorBrush>
+                    <SolidColorBrush x:Key="OrangeSubtleBrush">#431407</SolidColorBrush>
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
 
             <!-- ── Icon geometries (Material Design 24 × 24) ──────────────────── -->
             <StreamGeometry x:Key="LockIcon">M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z</StreamGeometry>
@@ -37,7 +103,7 @@
             <!-- ── Cancel (circle ✕) button ────────────────────────────────── -->
             <ControlTheme x:Key="CancelButtonTheme" TargetType="Button">
                 <Setter Property="Background"                 Value="Transparent"/>
-                <Setter Property="Foreground"                 Value="#9CA3AF"/>
+                <Setter Property="Foreground"                 Value="{DynamicResource DisabledTextBrush}"/>
                 <Setter Property="BorderBrush"                Value="Transparent"/>
                 <Setter Property="BorderThickness"            Value="0"/>
                 <Setter Property="CornerRadius"               Value="50"/>
@@ -68,18 +134,18 @@
                     <Setter Property="Foreground" Value="#EF4444"/>
                 </Style>
                 <Style Selector="^:pointerover /template/ Border#PART_Border">
-                    <Setter Property="Background" Value="#FEE2E2"/>
+                    <Setter Property="Background" Value="{DynamicResource ErrorSubtleBrush}"/>
                 </Style>
                 <Style Selector="^:pressed /template/ Border#PART_Border">
-                    <Setter Property="Background" Value="#FECACA"/>
+                    <Setter Property="Background" Value="{DynamicResource ErrorSubtleBrush}"/>
                 </Style>
             </ControlTheme>
 
             <!-- ── Outlined button (border, transparent bg) ───────────────────── -->
             <ControlTheme x:Key="OutlinedButtonTheme" TargetType="Button">
                 <Setter Property="Background"                 Value="Transparent"/>
-                <Setter Property="Foreground"                 Value="#374151"/>
-                <Setter Property="BorderBrush"                Value="#D1D5DB"/>
+                <Setter Property="Foreground"                 Value="{DynamicResource TertiaryTextBrush}"/>
+                <Setter Property="BorderBrush"                Value="{DynamicResource StrongBorderBrush}"/>
                 <Setter Property="BorderThickness"            Value="1"/>
                 <Setter Property="CornerRadius"               Value="8"/>
                 <Setter Property="Padding"                    Value="14,8"/>
@@ -103,11 +169,11 @@
                     </ControlTemplate>
                 </Setter>
                 <Style Selector="^:pointerover /template/ Border#PART_Border">
-                    <Setter Property="Background"   Value="#F9FAFB"/>
-                    <Setter Property="BorderBrush"  Value="#9CA3AF"/>
+                    <Setter Property="Background"   Value="{DynamicResource HoverSurfaceBrush}"/>
+                    <Setter Property="BorderBrush"  Value="{DynamicResource StrongBorderBrush}"/>
                 </Style>
                 <Style Selector="^:pressed /template/ Border#PART_Border">
-                    <Setter Property="Background" Value="#F3F4F6"/>
+                    <Setter Property="Background" Value="{DynamicResource PressedSurfaceBrush}"/>
                 </Style>
                 <Style Selector="^:disabled">
                     <Setter Property="Opacity" Value="0.45"/>
@@ -116,8 +182,8 @@
 
             <!-- ── Primary (solid blue) button ────────────────────────────────── -->
             <ControlTheme x:Key="PrimaryButtonTheme" TargetType="Button">
-                <Setter Property="Background"                 Value="#2563EB"/>
-                <Setter Property="Foreground"                 Value="White"/>
+                <Setter Property="Background"                 Value="{DynamicResource AccentStrongBrush}"/>
+                <Setter Property="Foreground"                 Value="{DynamicResource OnAccentBrush}"/>
                 <Setter Property="BorderBrush"                Value="Transparent"/>
                 <Setter Property="BorderThickness"            Value="0"/>
                 <Setter Property="CornerRadius"               Value="8"/>

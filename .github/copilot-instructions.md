@@ -126,6 +126,9 @@
   in Settings and take effect only after **Save settings**. Do not place these
   controls back in the header. Restoring defaults only populates the form; Save
   is still required.
+- On the first run (no `settings.json`), initialize Theme from Avalonia platform
+  color settings. Use Dark when the platform preference is unavailable. Persist
+  that initial choice; subsequent launches honor the saved Theme.
 - UI text belongs in neutral-English `Resources/Strings.resx` and Vietnamese
   `Resources/Strings.vi.resx`. Use `{loc:Tr Key}` in AXAML and
   `LocalizationService` for runtime strings. Both resource files must have

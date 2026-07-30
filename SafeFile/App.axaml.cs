@@ -1,7 +1,10 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Avalonia.Platform;
 using Avalonia.Styling;
+using System;
+using System.IO;
 using SafeFile.Services;
 using SafeFile.Core.Services;
 using SafeFile.ViewModels;
@@ -24,7 +27,22 @@ namespace SafeFile
                 var errorDialog = new ErrorDialogService();
                 var clipboard = new ClipboardService();
                 var settingsService = new SettingsService();
+                var isFirstRun = !File.Exists(settingsService.GetSettingsPath());
                 var settings = settingsService.Load();
+                if (isFirstRun)
+                {
+                    settings.Theme = GetInitialTheme();
+                    try
+                    {
+                        settingsService.Save(settings);
+                    }
+                    catch (Exception ex)
+                    {
+                        Serilog.Log.Warning(
+                            ex,
+                            "Unable to persist first-run application settings");
+                    }
+                }
                 LocalizationService.Instance.SetLanguage(settings.Language);
                 RequestedThemeVariant = settings.Theme == "Dark"
                     ? ThemeVariant.Dark
@@ -39,6 +57,24 @@ namespace SafeFile
             }
 
             base.OnFrameworkInitializationCompleted();
+        }
+
+        private string GetInitialTheme()
+        {
+            try
+            {
+                return PlatformSettings?.GetColorValues().ThemeVariant ==
+                       PlatformThemeVariant.Light
+                    ? "Light"
+                    : "Dark";
+            }
+            catch (Exception ex)
+            {
+                Serilog.Log.Warning(
+                    ex,
+                    "Unable to detect the system theme; using Dark");
+                return "Dark";
+            }
         }
     }
 }

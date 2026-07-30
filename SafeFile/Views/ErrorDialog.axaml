@@ -12,15 +12,16 @@
         Title="{loc:Tr ErrorTitle}">
   <Grid Margin="24" RowDefinitions="Auto,*,Auto">
     <Grid ColumnDefinitions="Auto,*">
-      <Border Width="38" Height="38" CornerRadius="19" Background="#FEE2E2">
-        <TextBlock Text="!" Foreground="#DC2626" FontSize="22"
+      <Border Width="38" Height="38" CornerRadius="19"
+              Background="{DynamicResource ErrorSubtleBrush}">
+        <TextBlock Text="!" Foreground="{DynamicResource ErrorBrush}" FontSize="22"
                    FontWeight="Bold" HorizontalAlignment="Center"
                    VerticalAlignment="Center"/>
       </Border>
       <StackPanel Grid.Column="1" Margin="14,0,0,0" Spacing="8">
         <TextBlock x:Name="DialogTitle" FontSize="17" FontWeight="SemiBold"/>
         <TextBlock x:Name="DialogMessage" TextWrapping="Wrap"
-                   Foreground="#4B5563"/>
+                   Foreground="{DynamicResource TertiaryTextBrush}"/>
       </StackPanel>
     </Grid>
 

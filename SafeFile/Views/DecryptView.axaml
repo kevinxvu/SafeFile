@@ -4,13 +4,13 @@
              xmlns:loc="using:SafeFile.Markup"
              x:Class="SafeFile.Views.DecryptView"
              x:DataType="vm:DecryptViewModel"
-             Foreground="#1F2937">
+             Foreground="{DynamicResource PrimaryTextBrush}">
   <Grid RowDefinitions="*,Auto">
     <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
       <StackPanel Margin="24" Spacing="16">
 
         <!-- Unified file/folder picker -->
-        <Border Background="White" CornerRadius="8" Padding="16"
+        <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="16"
                 IsEnabled="{Binding !IsDecrypting}">
           <StackPanel Spacing="10">
             <Grid ColumnDefinitions="*,Auto">
@@ -18,16 +18,16 @@
                 <TextBlock Text="{loc:Tr DecryptData}"
                            FontSize="16" FontWeight="SemiBold"/>
                 <TextBlock Text="{loc:Tr DecryptSelectionHint}"
-                           FontSize="12" Foreground="#6B7280"/>
+                           FontSize="12" Foreground="{DynamicResource SecondaryTextBrush}"/>
               </StackPanel>
               <TextBlock Grid.Column="1" Text="{Binding SelectionSummary}"
-                         VerticalAlignment="Center" Foreground="#4B5563"
+                         VerticalAlignment="Center" Foreground="{DynamicResource TertiaryTextBrush}"
                          FontWeight="Medium"/>
             </Grid>
 
             <Border x:Name="DropZone"
-                    Height="122" BorderBrush="#CBD5E1" BorderThickness="2"
-                    CornerRadius="6" Background="#F8FAFC"
+                    Height="122" BorderBrush="{DynamicResource StrongBorderBrush}" BorderThickness="2"
+                    CornerRadius="6" Background="{DynamicResource SubtleSurfaceBrush}"
                     DragDrop.AllowDrop="True"
                     DragDrop.DragEnter="OnDragEnter"
                     DragDrop.DragLeave="OnDragLeave"
@@ -37,12 +37,13 @@
                 <StackPanel VerticalAlignment="Center" Spacing="5">
                   <StackPanel Orientation="Horizontal" Spacing="10">
                     <PathIcon Data="{StaticResource FolderIcon}"
-                              Width="28" Height="28" Foreground="#64748B"/>
+                              Width="28" Height="28"
+                              Foreground="{DynamicResource SecondaryTextBrush}"/>
                     <StackPanel VerticalAlignment="Center">
                       <TextBlock Text="{loc:Tr DropDecryptSources}"
                                  FontSize="13" FontWeight="Medium"/>
                       <TextBlock Text="{loc:Tr DuplicatesIgnored}"
-                                 FontSize="11" Foreground="#6B7280"/>
+                                 FontSize="11" Foreground="{DynamicResource SecondaryTextBrush}"/>
                     </StackPanel>
                   </StackPanel>
                 </StackPanel>
@@ -63,16 +64,16 @@
         </Border>
 
         <!-- Batch queue -->
-        <Border Background="White" CornerRadius="8" Padding="16">
+        <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="16">
           <Grid RowDefinitions="Auto,Auto,*">
             <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,12">
               <StackPanel Orientation="Horizontal" Spacing="10">
                 <TextBlock Text="{loc:Tr VaultList}" FontSize="16"
                            FontWeight="SemiBold" VerticalAlignment="Center"/>
-                <Border Background="#EFF6FF" CornerRadius="10" Padding="8,2"
+                <Border Background="{DynamicResource AccentSubtleBrush}" CornerRadius="10" Padding="8,2"
                         IsVisible="{Binding HasItems}">
                   <TextBlock Text="{Binding SelectionSummary}"
-                             FontSize="11" Foreground="#2563EB"/>
+                             FontSize="11" Foreground="{DynamicResource AccentBrush}"/>
                 </Border>
               </StackPanel>
               <Button Grid.Column="1" Theme="{StaticResource OutlinedButtonTheme}"
@@ -87,8 +88,8 @@
               </Button>
             </Grid>
 
-            <Border Grid.Row="1" Background="#F8FAFC"
-                    BorderBrush="#E5E7EB" BorderThickness="1"
+            <Border Grid.Row="1" Background="{DynamicResource SubtleSurfaceBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
                     CornerRadius="5,5,0,0" Padding="10,8">
               <Grid ColumnDefinitions="2*,12,2*,12,85,12,145,12,110,36"
                     ClipToBounds="True">
@@ -105,24 +106,24 @@
             </Border>
 
             <Grid Grid.Row="2">
-              <Border BorderBrush="#E5E7EB" BorderThickness="1,0,1,1"
+              <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1,0,1,1"
                       CornerRadius="0,0,5,5" Height="224"
                       IsVisible="{Binding !HasItems}">
                 <StackPanel HorizontalAlignment="Center"
                             VerticalAlignment="Center" Spacing="7">
                   <PathIcon Data="{StaticResource FolderIcon}" Width="30"
-                            Height="30" Foreground="#94A3B8"/>
+                            Height="30" Foreground="{DynamicResource DisabledTextBrush}"/>
                   <TextBlock Text="{loc:Tr NoVaults}"
-                             Foreground="#64748B"/>
+                             Foreground="{DynamicResource SecondaryTextBrush}"/>
                   <TextBlock Text="{loc:Tr SelectToBegin}"
-                             FontSize="11" Foreground="#94A3B8"/>
+                             FontSize="11" Foreground="{DynamicResource DisabledTextBrush}"/>
                 </StackPanel>
               </Border>
 
               <ListBox ItemsSource="{Binding Items}"
                        SelectedItem="{Binding SelectedItem}"
                        Height="224"
-                       BorderBrush="#E5E7EB" BorderThickness="1,0,1,1"
+                       BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1,0,1,1"
                        IsVisible="{Binding HasItems}">
                 <ListBox.Styles>
                   <Style Selector="ListBoxItem">
@@ -148,7 +149,7 @@
                                  Text="{Binding VaultSizeText}"
                                  ClipToBounds="True"
                                  VerticalAlignment="Center"
-                                 Foreground="#4B5563"/>
+                                 Foreground="{DynamicResource TertiaryTextBrush}"/>
                       <StackPanel Grid.Column="6" Spacing="3"
                                   VerticalAlignment="Center"
                                   ClipToBounds="True">
@@ -186,7 +187,7 @@
 
         <!-- Password, options and selected-item details -->
         <Grid ColumnDefinitions="3*,16,2*">
-          <Border Grid.Column="0" Background="White" CornerRadius="8" Padding="16"
+          <Border Grid.Column="0" Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="16"
                   VerticalAlignment="Top"
                   IsEnabled="{Binding !IsDecrypting}">
             <StackPanel Spacing="14">
@@ -218,7 +219,8 @@
                            Foreground="{Binding PasswordCheckForeground}"/>
               </Grid>
 
-              <Border Background="#F8FAFC" BorderBrush="#E5E7EB"
+              <Border Background="{DynamicResource SubtleSurfaceBrush}"
+                      BorderBrush="{DynamicResource BorderBrush}"
                       BorderThickness="1" CornerRadius="6" Padding="12">
                 <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
                   <CheckBox Content="{loc:Tr OverwriteExisting}"
@@ -231,7 +233,7 @@
               <Separator/>
 
               <TextBlock Text="{Binding StatusMessage}"
-                         TextWrapping="Wrap" Foreground="#16A34A"
+                         TextWrapping="Wrap" Foreground="{DynamicResource SuccessBrush}"
                          IsVisible="{Binding HasStatusMessage}"/>
 
               <StackPanel Orientation="Horizontal" Spacing="8"
@@ -270,14 +272,14 @@
             </StackPanel>
           </Border>
 
-          <Border Grid.Column="2" Background="White"
-                  BorderBrush="#D1D5DB" BorderThickness="1"
+          <Border Grid.Column="2" Background="{DynamicResource SurfaceBrush}"
+                  BorderBrush="{DynamicResource StrongBorderBrush}" BorderThickness="1"
                   CornerRadius="8" Padding="10">
             <TabControl>
               <TabItem Header="{loc:Tr FileDetails}">
                 <Grid Margin="8" MinHeight="245">
                   <TextBlock Text="{loc:Tr SelectVaultForDetails}"
-                             Foreground="#6B7280" TextWrapping="Wrap"
+                             Foreground="{DynamicResource SecondaryTextBrush}" TextWrapping="Wrap"
                              HorizontalAlignment="Center"
                              VerticalAlignment="Center"
                              IsVisible="{Binding !HasSelectedItem}"/>
@@ -328,9 +330,9 @@
                       <TextBlock Grid.Column="1" Text="{Binding DetailStatus}"
                                  FontWeight="SemiBold"/>
                     </Grid>
-                    <Border Background="#FEF2F2" CornerRadius="4" Padding="8"
+                    <Border Background="{DynamicResource ErrorSubtleBrush}" CornerRadius="4" Padding="8"
                             IsVisible="{Binding HasDetailError}">
-                      <TextBlock Text="{Binding DetailError}" Foreground="#B91C1C"
+                      <TextBlock Text="{Binding DetailError}" Foreground="{DynamicResource ErrorBrush}"
                                  TextWrapping="Wrap" FontSize="11"/>
                     </Border>
                   </StackPanel>
@@ -345,11 +347,11 @@
                              TextWrapping="Wrap"/>
                   <Separator/>
                   <TextBlock Text="{loc:Tr OutputFolder}" FontSize="11"
-                             Foreground="#6B7280"/>
+                             Foreground="{DynamicResource SecondaryTextBrush}"/>
                   <TextBlock Text="{Binding OutputPath}"
                              FontWeight="Medium" TextWrapping="Wrap"/>
                   <TextBlock Text="{loc:Tr BatchDetailsHint}"
-                             FontSize="11" Foreground="#6B7280"
+                             FontSize="11" Foreground="{DynamicResource SecondaryTextBrush}"
                              TextWrapping="Wrap"/>
                 </StackPanel>
               </TabItem>
@@ -360,17 +362,18 @@
     </ScrollViewer>
 
     <Border Grid.Row="1" IsVisible="{Binding IsStatusBarVisible}"
-            Background="White" BorderBrush="#E3E7EC"
+            Background="{DynamicResource SurfaceBrush}"
+            BorderBrush="{DynamicResource BorderBrush}"
             BorderThickness="0,1,0,0" Padding="20,10">
       <Grid ColumnDefinitions="250,*,56,Auto" VerticalAlignment="Center">
         <StackPanel Grid.Column="0" Spacing="3">
           <TextBlock Text="{Binding StatusAction}"
                      FontSize="12" FontWeight="SemiBold"/>
           <TextBlock Text="{Binding StatusCurrentFile}" FontSize="11"
-                     Foreground="#4B5563"
+                     Foreground="{DynamicResource TertiaryTextBrush}"
                      TextTrimming="CharacterEllipsis"/>
           <TextBlock Text="{Binding StatusDetails}" FontSize="11"
-                     Foreground="#6B7280"/>
+                     Foreground="{DynamicResource SecondaryTextBrush}"/>
         </StackPanel>
         <ProgressBar Grid.Column="1" Height="8" Margin="16,0"
                      Minimum="0" Maximum="1"

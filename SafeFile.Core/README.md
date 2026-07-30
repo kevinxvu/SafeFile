@@ -62,7 +62,7 @@ Relevant `AppSettings` values:
 | Setting | UI purpose |
 |---|---|
 | `Language` | UI culture: `en` or `vi`; defaults to English |
-| `Theme` | Avalonia theme: `Light` or `Dark` |
+| `Theme` | Avalonia theme: `Light` or `Dark`; first run follows the system and falls back to Dark |
 | `DefaultChunkSizeMb` | Chunk-size selector, valid range 1–16 MiB |
 | `MaxThreads` | Encryption worker count |
 | `Argon2MemorySizeKb` | KDF memory setting |
@@ -391,6 +391,9 @@ Settings owns the language, theme, performance, password/KDF, encrypted-output,
 and decrypted-output values. Language and theme are staged in the form and are
 applied only after **Save settings**. Restoring defaults populates the form but
 does not apply or persist the values until Save.
+On the first run, the desktop app detects the platform Light/Dark preference and
+stores it as the initial selection. If the platform cannot report a preference,
+Dark is used. Later launches always honor the saved setting.
 
 The complete original filename is independently encrypted in the vault filename chunk and is never shortened there.
 

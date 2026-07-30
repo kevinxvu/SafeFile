@@ -6,7 +6,7 @@ This document tracks the full implementation plan for the SafeFile app (.NET 10 
 
 ## Progress Summary
 
-- Overall progress: **10 / 14 main tasks completed** (Task 6 integrated into Task 7)
+- Overall progress: **14 / 14 main tasks completed**
 - Status legend:
   - `[ ]` Not started
   - `[-]` In progress
@@ -80,7 +80,7 @@ This document tracks the full implementation plan for the SafeFile app (.NET 10 
 - [x] Consumers encrypt/decrypt chunks in parallel via `System.Threading.Channels`
 - [x] Writer ensures ordered output using in-memory ordering buffer (`PriorityQueue`/map)
 - [x] Add cancellation support (`CancellationToken`) across all stages
-- [x] Ensure partial output cleanup on cancellation/error
+- [x] Enforce mode-specific failure behavior: clean incomplete encryption output and preserve decryption output
 
 **Deliverable**
 - High-throughput, ordered, corruption-safe processing pipeline.
@@ -94,7 +94,7 @@ This document tracks the full implementation plan for the SafeFile app (.NET 10 
 - [x] Implement mode `ZipFolder` (single output `.safe`)
 - [x] Decryption with on-the-fly zip extraction
 - [x] Validate stream-based zip operations
-- [~] Per-file mode (advanced feature, deferred)
+- [x] Per-file mode with independent vaults, filename restoration, and progress
 
 **Deliverable**
 - Full Zip folder encryption/decryption strategy aligned with spec.
@@ -102,7 +102,8 @@ This document tracks the full implementation plan for the SafeFile app (.NET 10 
 **Implementation Notes:**
 - `StreamZipper.CreateZipStreamAsync()`: in-memory zip creation from folder (no temp files)
 - `StreamZipper.ExtractZipStreamAsync()`: restores folder structure on decrypt
-- Integrated into `FileEncryptor`: `EncryptFolderZipAsync()` and `DecryptFolderZipAsync()`
+- Integrated into `FileEncryptor`: ZIP and PerFile encrypt/decrypt workflows.
+- ZIP decryption preserves partial extracted output on failure or cancellation.
 
 ---
 
@@ -141,7 +142,9 @@ This document tracks the full implementation plan for the SafeFile app (.NET 10 
   - Settings validation (bounds checking, enum validation)
   - Caching for performance
   - `RestoreDefaults()` on-demand
-- Settings include: chunk size, threads, Argon2 params (memory/iterations/parallelism), output path, naming policy, secure delete toggle, password confirm toggle, min password length
+- Settings include: language, theme, chunk size, threads, CPU priority,
+  Argon2 parameters, distinct encrypted/decrypted output paths, password
+  confirmation toggle, and minimum password length.
 - **NO password/key/secret data persisted**
 
 ---
@@ -151,7 +154,7 @@ This document tracks the full implementation plan for the SafeFile app (.NET 10 
 **Checklist**
 - [x] Redesign `MainWindow.axaml` with sidebar + content region
 - [x] Add menu items: Encrypt, Decrypt, Logs, Settings, About
-- [x] Add top-right controls (language/theme placeholders)
+- [x] Add localized current-page header; language/theme controls live in Settings
 - [x] Add bottom status bar (file, progress %, speed, ETA, cancel)
 - [x] Implement navigation state in `MainWindowViewModel`
 
@@ -228,7 +231,7 @@ This document tracks the full implementation plan for the SafeFile app (.NET 10 
 **Checklist**
 - [x] Create `Views/SettingsView.axaml`
 - [x] Create `ViewModels/SettingsViewModel.cs`
-- [x] Performance section (chunk/thread/CPU profile placeholders)
+- [x] Performance section (chunk size, thread count, CPU priority)
 - [x] Security section (KDF + policy toggles)
 - [x] Output section (paths; naming policy is operation-specific)
 - [x] Save + Restore Defaults actions
@@ -240,6 +243,9 @@ This document tracks the full implementation plan for the SafeFile app (.NET 10 
 - Encrypted and decrypted output paths are configured independently.
 - Filename encryption is selected per encryption operation and is intentionally
   not persisted as a global naming-policy setting.
+- English/Vietnamese language and Light/Dark theme are applied only after Save.
+- On first run, theme follows the system preference and falls back to Dark.
+- Restore Defaults stages values in the form and requires Save to apply them.
 
 ---
 
@@ -272,15 +278,39 @@ This document tracks the full implementation plan for the SafeFile app (.NET 10 
 ## Task 14 — Integration, Validation, and UI Polish
 
 **Checklist**
-- [ ] Connect all ViewModels to core services
-- [ ] End-to-end manual test: encrypt/decrypt file and folder modes
-- [ ] Verify cancellation behavior and partial file cleanup
-- [ ] Verify wrong password fail-fast path
-- [ ] Apply visual polish (spacing, cards, buttons, theme consistency)
-- [ ] Run full build and fix compile issues
+- [x] Connect all ViewModels to core services
+- [x] End-to-end manual test: encrypt/decrypt file and folder modes
+- [x] Verify cancellation behavior and partial file cleanup
+- [x] Verify wrong password fail-fast path
+- [x] Apply visual polish (spacing, cards, buttons, theme consistency)
+- [x] Run full build and fix compile issues
 
 **Deliverable**
 - Working, build-clean MVP aligned with technical specification.
+
+**Integration and Validation Notes**
+- `MainWindowViewModel` retains one instance of Encrypt, Decrypt, Logs,
+  Settings, and About. Encrypt/Decrypt create one `FileEncryptor` per active
+  operation and use persisted chunk, thread, KDF, and output settings.
+- File, ZIP-folder, and PerFile workflows are wired end to end. Decrypt accepts
+  one file, multiple files, folders, and drag-and-drop, with per-vault and
+  aggregate progress.
+- Cancellation is propagated through linked tokens. UI-owned password byte
+  arrays and Core-owned key material are zeroed in `finally` blocks.
+- Failed encryption removes only output created by that encryption operation.
+  Failed or cancelled decryption never cleans the configured output folder;
+  completed and partial outputs are preserved.
+- The header key verifier rejects a wrong password before full payload
+  decryption. Authentication and malformed-vault errors are reported through
+  the shared error dialog without logging secrets.
+- Submit errors use modal dialogs across Encrypt, Decrypt, Settings, and Logs.
+  Inputs and drop zones are locked during active decrypt operations.
+- All user-facing text is available in neutral English and Vietnamese resources
+  with live binding refresh. Light/Dark semantic brushes cover the shell,
+  cards, dialogs, controls, status bars, and drag/drop states.
+- Windows full-solution build completed successfully with zero warnings and
+  zero errors. The Core test project was compiled but its test suite was not
+  executed, per project workflow.
 
 ---
 

@@ -5,18 +5,18 @@
              xmlns:models="using:SafeFile.Models"
              x:Class="SafeFile.Views.SettingsView"
              x:DataType="vm:SettingsViewModel"
-             Foreground="#1F2937">
+             Foreground="{DynamicResource PrimaryTextBrush}">
   <ScrollViewer VerticalScrollBarVisibility="Auto">
     <StackPanel Margin="24" Spacing="16" MaxWidth="1100"
                 HorizontalAlignment="Stretch">
 
       <!-- Appearance -->
-      <Border Background="White" CornerRadius="8" Padding="18">
+      <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="18">
         <StackPanel Spacing="16">
           <StackPanel Spacing="3">
             <TextBlock Text="{loc:Tr Appearance}" FontSize="15" FontWeight="SemiBold"/>
             <TextBlock Text="{loc:Tr AppearanceHint}"
-                       FontSize="11" Foreground="#6B7280"/>
+                       FontSize="11" Foreground="{DynamicResource SecondaryTextBrush}"/>
           </StackPanel>
           <Grid ColumnDefinitions="*,24,*">
             <StackPanel Grid.Column="0" Spacing="8">
@@ -44,17 +44,17 @@
             </StackPanel>
           </Grid>
           <TextBlock Text="{loc:Tr AppearanceApplyHint}"
-                     FontSize="11" Foreground="#6B7280"/>
+                     FontSize="11" Foreground="{DynamicResource SecondaryTextBrush}"/>
         </StackPanel>
       </Border>
 
       <!-- Performance -->
-      <Border Background="White" CornerRadius="8" Padding="18">
+      <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="18">
         <StackPanel Spacing="16">
           <StackPanel Spacing="3">
             <TextBlock Text="{loc:Tr Performance}" FontSize="15" FontWeight="SemiBold"/>
             <TextBlock Text="{loc:Tr PerformanceHint}"
-                       FontSize="11" Foreground="#6B7280"/>
+                       FontSize="11" Foreground="{DynamicResource SecondaryTextBrush}"/>
           </StackPanel>
 
           <Grid ColumnDefinitions="*,24,*">
@@ -69,20 +69,20 @@
                 </ComboBox.ItemTemplate>
               </ComboBox>
               <TextBlock Text="{loc:Tr ChunkSizeHint}"
-                         FontSize="11" Foreground="#6B7280" TextWrapping="Wrap"/>
+                         FontSize="11" Foreground="{DynamicResource SecondaryTextBrush}" TextWrapping="Wrap"/>
             </StackPanel>
 
             <StackPanel Grid.Column="2" Spacing="8">
               <Grid ColumnDefinitions="*,Auto">
                 <TextBlock Text="{loc:Tr WorkerThreads}" FontWeight="Medium"/>
                 <TextBlock Grid.Column="1" Text="{Binding MaxThreads}"
-                           Foreground="#2563EB" FontWeight="SemiBold"/>
+                           Foreground="{DynamicResource AccentBrush}" FontWeight="SemiBold"/>
               </Grid>
               <Slider Value="{Binding MaxThreads}" Minimum="1"
                       Maximum="{Binding MaxThreadsLimit}"
                       TickFrequency="1" IsSnapToTickEnabled="True"/>
               <TextBlock Text="{loc:Tr WorkerThreadsHint}"
-                         FontSize="11" Foreground="#6B7280"/>
+                         FontSize="11" Foreground="{DynamicResource SecondaryTextBrush}"/>
             </StackPanel>
           </Grid>
 
@@ -101,12 +101,12 @@
       </Border>
 
       <!-- Security -->
-      <Border Background="White" CornerRadius="8" Padding="18">
+      <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="18">
         <StackPanel Spacing="16">
           <StackPanel Spacing="3">
             <TextBlock Text="{loc:Tr Security}" FontSize="15" FontWeight="SemiBold"/>
             <TextBlock Text="{loc:Tr SecuritySettingsHint}"
-                       FontSize="11" Foreground="#6B7280"/>
+                       FontSize="11" Foreground="{DynamicResource SecondaryTextBrush}"/>
           </StackPanel>
 
           <Grid ColumnDefinitions="*,24,*">
@@ -154,19 +154,19 @@
                                HorizontalAlignment="Stretch"/>
               </Grid>
               <TextBlock Text="{loc:Tr KdfHint}"
-                         FontSize="11" Foreground="#6B7280" TextWrapping="Wrap"/>
+                         FontSize="11" Foreground="{DynamicResource SecondaryTextBrush}" TextWrapping="Wrap"/>
             </StackPanel>
           </Grid>
         </StackPanel>
       </Border>
 
       <!-- Output -->
-      <Border Background="White" CornerRadius="8" Padding="18">
+      <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="18">
         <StackPanel Spacing="14">
           <StackPanel Spacing="3">
             <TextBlock Text="{loc:Tr Output}" FontSize="15" FontWeight="SemiBold"/>
             <TextBlock Text="{loc:Tr OutputSettingsHint}"
-                       FontSize="11" Foreground="#6B7280"/>
+                       FontSize="11" Foreground="{DynamicResource SecondaryTextBrush}"/>
           </StackPanel>
 
           <StackPanel Spacing="7">
