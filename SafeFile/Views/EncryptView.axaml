@@ -9,7 +9,7 @@
     <StackPanel Margin="24" Spacing="16">
       <Border Background="White" CornerRadius="8" Padding="16">
         <StackPanel Spacing="10">
-          <TextBlock Text="Nguồn dữ liệu" FontSize="16" FontWeight="SemiBold"/>
+          <TextBlock Text="Nguồn dữ liệu" FontSize="15" FontWeight="SemiBold"/>
           <StackPanel Orientation="Horizontal" Spacing="20">
             <RadioButton Content="Tập tin (File)" IsChecked="{Binding IsFileSource}" GroupName="SourceType"/>
             <RadioButton Content="Thư mục (Folder)" IsChecked="{Binding IsFolderSource}" GroupName="SourceType"/>
@@ -40,7 +40,7 @@
       <Grid ColumnDefinitions="*,16,*">
         <Border Grid.Column="0" Background="White" CornerRadius="8" Padding="16">
           <StackPanel Spacing="8">
-            <TextBlock Text="Bảo mật" FontSize="16" FontWeight="SemiBold"/>
+            <TextBlock Text="Bảo mật" FontSize="15" FontWeight="SemiBold"/>
             <TextBlock Text="Mật khẩu"/>
             <Grid ColumnDefinitions="*,Auto">
               <TextBox Grid.Column="0" Text="{Binding Password}"
@@ -74,7 +74,7 @@
 
         <Border Grid.Column="2" Background="White" CornerRadius="8" Padding="16">
           <StackPanel Spacing="10">
-            <TextBlock Text="Tuỳ chọn mã hoá" FontSize="16" FontWeight="SemiBold"/>
+            <TextBlock Text="Tuỳ chọn mã hoá" FontSize="15" FontWeight="SemiBold"/>
             <CheckBox Content="Mã hoá tên tập tin"
                       IsChecked="{Binding EncryptFileNames}"/>
             <CheckBox Content="Ghi đè file .safe nếu đã tồn tại"
@@ -140,7 +140,7 @@
     <Grid ColumnDefinitions="250,*,56,Auto" VerticalAlignment="Center">
       <StackPanel Grid.Column="0" Spacing="3" VerticalAlignment="Center">
         <TextBlock Text="{Binding StatusAction}"
-                   FontSize="13" FontWeight="SemiBold" Foreground="#1F2937"/>
+                   FontSize="12" FontWeight="SemiBold" Foreground="#1F2937"/>
         <TextBlock Text="{Binding StatusCurrentFile}"
                    FontSize="11" Foreground="#4B5563"
                    TextTrimming="CharacterEllipsis" MaxWidth="230"/>
@@ -154,7 +154,7 @@
 
       <TextBlock Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Center"
                  Text="{Binding StatusProgress, StringFormat={}{0:P0}}"
-                 FontSize="13" FontWeight="SemiBold" Foreground="#374151"/>
+                 FontSize="12" FontWeight="SemiBold" Foreground="#374151"/>
 
       <Button Grid.Column="3" VerticalAlignment="Center"
               Theme="{StaticResource CancelButtonTheme}"

@@ -4,7 +4,7 @@
              x:Class="SafeFile.Views.PlaceholderView"
              x:DataType="vm:PlaceholderViewModel">
     <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
-        <TextBlock Text="{Binding Title}" FontSize="24" FontWeight="SemiBold" Foreground="#1565C0" HorizontalAlignment="Center"/>
+        <TextBlock Text="{Binding Title}" FontSize="22" FontWeight="SemiBold" Foreground="#1565C0" HorizontalAlignment="Center"/>
         <TextBlock Text="Tính năng đang được phát triển." Foreground="#757575" HorizontalAlignment="Center"/>
     </StackPanel>
 </UserControl>

@@ -315,7 +315,7 @@ public sealed class FileEncryptor
                             throw new InvalidDataException("Vault is truncated or has no final data chunk.");
 
                         tempZipStream.Position = 0;
-                        await ExtractFolderAtomicallyAsync(
+                        await ExtractFolderPreservingPartialOutputAsync(
                             tempZipStream, destinationFolder, cancellationToken).ConfigureAwait(false);
                     }
                 }
@@ -634,7 +634,6 @@ public sealed class FileEncryptor
         }
         catch
         {
-            TryDeleteDirectory(destinationFolderPath);
             throw;
         }
     }
@@ -838,7 +837,6 @@ public sealed class FileEncryptor
         EnsureDistinctPaths(sourcePath, destinationPath);
 
         var actualDestinationPath = destinationPath;
-        var destinationOpened = false;
         try
         {
             using var sourceStream = new FileStream(sourcePath, FileMode.Open, FileAccess.Read, FileShare.Read);
@@ -885,7 +883,6 @@ public sealed class FileEncryptor
                     : FileMode.CreateNew;
                 using var destStream = new FileStream(
                     actualDestinationPath, destinationMode, FileAccess.Write, FileShare.None);
-                destinationOpened = true;
 
                 long expectedChunkIndex = 1;  // Data chunks start at index 1
                 var sawLastChunk = false;
@@ -923,17 +920,6 @@ public sealed class FileEncryptor
         }
         catch
         {
-            if (destinationOpened && File.Exists(actualDestinationPath))
-            {
-                try
-                {
-                    File.Delete(actualDestinationPath);
-                }
-                catch
-                {
-                }
-            }
-
             throw;
         }
 
@@ -1273,7 +1259,7 @@ public sealed class FileEncryptor
     private static bool IsReparsePoint(FileSystemInfo item) =>
         (item.Attributes & FileAttributes.ReparsePoint) != 0;
 
-    private static async Task ExtractFolderAtomicallyAsync(
+    private static async Task ExtractFolderPreservingPartialOutputAsync(
         Stream zipStream,
         string destinationFolder,
         CancellationToken cancellationToken)
@@ -1281,23 +1267,9 @@ public sealed class FileEncryptor
         if (Directory.Exists(destinationFolder) || File.Exists(destinationFolder))
             throw new IOException($"Destination already exists: {destinationFolder}");
 
-        var parent = Path.GetDirectoryName(Path.GetFullPath(destinationFolder))
-            ?? throw new InvalidOperationException("Destination folder has no parent directory.");
-        Directory.CreateDirectory(parent);
-        var stagingFolder = Path.Combine(parent, $".safefile-extract-{Guid.NewGuid():N}");
-
-        try
-        {
-            Directory.CreateDirectory(stagingFolder);
-            await StreamZipper.ExtractZipStreamAsync(
-                zipStream, stagingFolder, cancellationToken).ConfigureAwait(false);
-            Directory.Move(stagingFolder, destinationFolder);
-        }
-        catch
-        {
-            TryDeleteDirectory(stagingFolder);
-            throw;
-        }
+        Directory.CreateDirectory(destinationFolder);
+        await StreamZipper.ExtractZipStreamAsync(
+            zipStream, destinationFolder, cancellationToken).ConfigureAwait(false);
     }
 
     private static void TryDeleteFile(string path)

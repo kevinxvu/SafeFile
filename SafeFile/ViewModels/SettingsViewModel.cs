@@ -6,11 +6,14 @@ using SafeFile.Core.Crypto;
 using SafeFile.Core.Models;
 using SafeFile.Core.Services;
 using SafeFile.Services;
+using Serilog;
 
 namespace SafeFile.ViewModels;
 
 public sealed partial class SettingsViewModel : ViewModelBase
 {
+    private static readonly ILogger Logger =
+        Log.ForContext<SettingsViewModel>();
     private readonly SettingsService _settingsService;
     private readonly IFilePickerService _filePicker;
     private readonly IErrorDialogService _errorDialog;
@@ -122,9 +125,11 @@ public sealed partial class SettingsViewModel : ViewModelBase
             _settingsService.Save(s);
             StatusMessage = "✓ Đã lưu cài đặt thành công.";
             HasError = false;
+            Logger.Information("Application settings saved");
         }
         catch (Exception ex)
         {
+            Logger.Error(ex, "Failed to save application settings");
             StatusMessage = "";
             HasError = false;
             await _errorDialog.ShowErrorAsync(ex.Message, "Không thể lưu thiết lập");
@@ -137,6 +142,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
         LoadFromService();
         StatusMessage = "✓ Đã khôi phục cài đặt mặc định.";
         HasError = false;
+        Logger.Information("Application settings restored to defaults");
     }
 
     private async Task BrowseOutputPathAsync()

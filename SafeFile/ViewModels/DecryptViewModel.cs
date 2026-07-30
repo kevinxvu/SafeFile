@@ -16,11 +16,14 @@ using SafeFile.Core.IO;
 using SafeFile.Core.Models;
 using SafeFile.Core.Services;
 using SafeFile.Services;
+using Serilog;
 
 namespace SafeFile.ViewModels;
 
 public sealed partial class DecryptViewModel : ViewModelBase
 {
+    private static readonly ILogger Logger =
+        Log.ForContext<DecryptViewModel>();
     private static readonly FilePickerFileType SafeFileType = new("SafeFile vault")
     {
         Patterns = ["*.safe"]
@@ -28,7 +31,8 @@ public sealed partial class DecryptViewModel : ViewModelBase
 
     private readonly IFilePickerService _filePicker;
     private readonly IErrorDialogService _errorDialog;
-    private readonly AppSettings _settings;
+    private readonly SettingsService _settingsService;
+    private AppSettings _settings;
     private readonly HashSet<string> _sourcePaths = new(
         OperatingSystem.IsWindows()
             ? StringComparer.OrdinalIgnoreCase
@@ -140,11 +144,13 @@ public sealed partial class DecryptViewModel : ViewModelBase
 
     public DecryptViewModel(
         IFilePickerService filePicker,
-        IErrorDialogService errorDialog)
+        IErrorDialogService errorDialog,
+        SettingsService settingsService)
     {
         _filePicker = filePicker;
         _errorDialog = errorDialog;
-        _settings = new SettingsService().Load();
+        _settingsService = settingsService;
+        _settings = _settingsService.Load();
 
         BrowseSourceCommand = new AsyncRelayCommand(BrowseSourceAsync);
         BrowseSourceFolderCommand = new AsyncRelayCommand(BrowseSourceFolderAsync);
@@ -156,6 +162,15 @@ public sealed partial class DecryptViewModel : ViewModelBase
             () => ShowPassword = !ShowPassword);
         OpenOutputFolderCommand = new RelayCommand(OpenOutputFolder);
         CloseStatusCommand = new RelayCommand(CloseOrCancelStatus);
+    }
+
+    public void RefreshSettings()
+    {
+        if (IsDecrypting)
+            return;
+
+        _settings = _settingsService.Load();
+        OnPropertyChanged(nameof(OutputPath));
     }
 
     partial void OnPasswordChanged(string value)
@@ -170,6 +185,9 @@ public sealed partial class DecryptViewModel : ViewModelBase
 
     public async Task AddDroppedSourcesAsync(IEnumerable<string> paths)
     {
+        if (IsDecrypting)
+            return;
+
         try
         {
             AddSources(paths);
@@ -236,6 +254,9 @@ public sealed partial class DecryptViewModel : ViewModelBase
         SelectedItem ??= Items.FirstOrDefault();
         PasswordCheckMessage = "";
         NotifySummaries();
+        Logger.Information(
+            "Added decryption sources; queue now contains {VaultCount} vaults",
+            Items.Count);
     }
 
     private void AddVault(
@@ -285,6 +306,10 @@ public sealed partial class DecryptViewModel : ViewModelBase
         }
 
         IsDecrypting = true;
+        Logger.Information(
+            "Password verification started for {VaultCount} vaults",
+            Items.Count(item => item.IsValid));
+        SetQueueLocked(true);
         IsStatusBarVisible = true;
         StatusAction = "Đang kiểm tra mật khẩu";
         StatusProgress = 0;
@@ -320,17 +345,23 @@ public sealed partial class DecryptViewModel : ViewModelBase
             IsPasswordCheckError = failed > 0;
             StatusAction = "Kiểm tra hoàn tất";
             StatusDetails = PasswordCheckMessage;
+            Logger.Information(
+                "Password verification completed: {VerifiedCount} verified, {FailedCount} failed",
+                verified,
+                failed);
         }
         catch (OperationCanceledException)
         {
             StatusAction = "Đã huỷ kiểm tra";
             PasswordCheckMessage = "Đã huỷ thao tác kiểm tra.";
+            Logger.Warning("Password verification cancelled");
         }
         finally
         {
             if (passwordBytes is not null)
                 CryptographicOperations.ZeroMemory(passwordBytes);
             IsDecrypting = false;
+            SetQueueLocked(false);
             _activeCts?.Dispose();
             _activeCts = null;
             RefreshSelectionDetails();
@@ -370,6 +401,10 @@ public sealed partial class DecryptViewModel : ViewModelBase
             item.ErrorMessage = ex is InvalidOperationException or CryptographicException
                 ? "Mật khẩu không đúng hoặc vault đã bị thay đổi."
                 : ex.Message;
+            Logger.Warning(
+                ex,
+                "Vault verification failed for {VaultPath}",
+                item.SourcePath);
             return false;
         }
     }
@@ -394,7 +429,12 @@ public sealed partial class DecryptViewModel : ViewModelBase
         }
 
         Directory.CreateDirectory(Path.GetFullPath(OutputPath));
+        Logger.Information(
+            "Batch decryption started for {VaultCount} vaults into {OutputDirectory}",
+            Items.Count,
+            OutputPath);
         IsDecrypting = true;
+        SetQueueLocked(true);
         IsStatusBarVisible = true;
         StatusAction = "Đang giải mã";
         StatusProgress = 0;
@@ -455,11 +495,17 @@ public sealed partial class DecryptViewModel : ViewModelBase
                     item.Status = "Thành công";
                     item.StatusForeground = "#16A34A";
                     success++;
+                    Logger.Information(
+                        "Vault decrypted successfully: {VaultPath}",
+                        item.SourcePath);
                 }
                 catch (OperationCanceledException)
                 {
                     item.Status = "Đã huỷ";
                     item.StatusForeground = "#6B7280";
+                    Logger.Warning(
+                        "Vault decryption cancelled: {VaultPath}",
+                        item.SourcePath);
                     throw;
                 }
                 catch (Exception ex)
@@ -468,6 +514,10 @@ public sealed partial class DecryptViewModel : ViewModelBase
                     item.StatusForeground = "#DC2626";
                     item.ErrorMessage = GetFriendlyError(ex);
                     failed++;
+                    Logger.Error(
+                        ex,
+                        "Vault decryption failed: {VaultPath}",
+                        item.SourcePath);
                 }
                 finally
                 {
@@ -483,6 +533,10 @@ public sealed partial class DecryptViewModel : ViewModelBase
             StatusDetails = $"{success:N0} thành công • {failed:N0} thất bại";
             StatusMessage = $"✓ Hoàn tất: {success:N0} thành công" +
                             (failed > 0 ? $" • {failed:N0} thất bại" : "");
+            Logger.Information(
+                "Batch decryption completed: {SuccessCount} succeeded, {FailedCount} failed",
+                success,
+                failed);
 
             if (failed > 0)
             {
@@ -498,12 +552,17 @@ public sealed partial class DecryptViewModel : ViewModelBase
         {
             StatusAction = "Đã huỷ giải mã";
             StatusMessage = "Đã huỷ thao tác.";
+            Logger.Warning(
+                "Batch decryption cancelled after {SuccessCount} successful and {FailedCount} failed vaults",
+                success,
+                failed);
         }
         finally
         {
             if (passwordBytes is not null)
                 CryptographicOperations.ZeroMemory(passwordBytes);
             IsDecrypting = false;
+            SetQueueLocked(false);
             _activeCts?.Dispose();
             _activeCts = null;
             NotifySummaries();
@@ -656,9 +715,13 @@ public sealed partial class DecryptViewModel : ViewModelBase
         {
             Directory.CreateDirectory(OutputPath);
             _filePicker.OpenFolder(OutputPath);
+            Logger.Debug(
+                "Opened decrypted output directory {OutputDirectory}",
+                OutputPath);
         }
         catch (Exception ex)
         {
+            Logger.Error(ex, "Failed to open decrypted output directory");
             _ = _errorDialog.ShowErrorAsync(
                 ex.Message, "Không thể mở thư mục đầu ra");
         }
@@ -691,6 +754,12 @@ public sealed partial class DecryptViewModel : ViewModelBase
         OnPropertyChanged(nameof(HasItems));
         OnPropertyChanged(nameof(SelectionSummary));
         OnPropertyChanged(nameof(ResultSummary));
+    }
+
+    private void SetQueueLocked(bool isLocked)
+    {
+        foreach (var item in Items)
+            item.IsLocked = isLocked;
     }
 
     private void RefreshSelectionDetails()

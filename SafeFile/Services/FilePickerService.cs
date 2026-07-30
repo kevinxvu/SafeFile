@@ -58,6 +58,26 @@ public sealed class FilePickerService : IFilePickerService
         return results.Count > 0 ? results[0].Path.LocalPath : null;
     }
 
+    public async Task<string?> PickSaveFileAsync(
+        string title,
+        string suggestedFileName,
+        IReadOnlyList<FilePickerFileType>? filters = null)
+    {
+        var window = GetMainWindow();
+        if (window is null)
+            return null;
+
+        var result = await window.StorageProvider.SaveFilePickerAsync(
+            new FilePickerSaveOptions
+            {
+                Title = title,
+                SuggestedFileName = suggestedFileName,
+                FileTypeChoices = filters,
+                ShowOverwritePrompt = true
+            });
+        return result?.Path.LocalPath;
+    }
+
     public void OpenFolder(string path)
     {
         if (Directory.Exists(path))

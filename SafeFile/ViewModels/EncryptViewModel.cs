@@ -11,14 +11,18 @@ using SafeFile.Core.IO;
 using SafeFile.Core.Models;
 using SafeFile.Core.Services;
 using SafeFile.Services;
+using Serilog;
 
 namespace SafeFile.ViewModels;
 
 public sealed partial class EncryptViewModel : ViewModelBase
 {
+    private static readonly ILogger Logger =
+        Log.ForContext<EncryptViewModel>();
     private readonly IFilePickerService _filePicker;
     private readonly IErrorDialogService _errorDialog;
-    private readonly AppSettings _settings;
+    private readonly SettingsService _settingsService;
+    private AppSettings _settings;
     private CancellationTokenSource? _activeCts;
 
     // ── Source ────────────────────────────────────────────────────
@@ -62,7 +66,8 @@ public sealed partial class EncryptViewModel : ViewModelBase
 
     public char PasswordChar => ShowPassword ? '\0' : '•';
     public char ConfirmPasswordChar => ShowConfirmPassword ? '\0' : '•';
-    public bool IsPasswordConfirmationRequired { get; }
+    public bool IsPasswordConfirmationRequired =>
+        _settings.ConfirmPasswordToggle;
 
     public double PasswordStrength
     {
@@ -193,14 +198,14 @@ public sealed partial class EncryptViewModel : ViewModelBase
 
     public EncryptViewModel(
         IFilePickerService filePicker,
-        IErrorDialogService errorDialog)
+        IErrorDialogService errorDialog,
+        SettingsService settingsService)
     {
         _filePicker = filePicker;
         _errorDialog = errorDialog;
-        var settingsService = new SettingsService();
-        _settings = settingsService.Load();
+        _settingsService = settingsService;
+        _settings = _settingsService.Load();
         _encryptFileNames = false;
-        IsPasswordConfirmationRequired = _settings.ConfirmPasswordToggle;
 
         BrowseSourceCommand = new AsyncRelayCommand(BrowseAsync);
         EncryptCommand = new AsyncRelayCommand(EncryptAsync);
@@ -211,6 +216,15 @@ public sealed partial class EncryptViewModel : ViewModelBase
             () => ShowPassword = !ShowPassword);
         ToggleConfirmPasswordVisibilityCommand = new RelayCommand(
             () => ShowConfirmPassword = !ShowConfirmPassword);
+    }
+
+    public void RefreshSettings()
+    {
+        if (IsEncrypting)
+            return;
+
+        _settings = _settingsService.Load();
+        OnPropertyChanged(nameof(IsPasswordConfirmationRequired));
     }
 
     private async Task BrowseAsync()
@@ -246,6 +260,11 @@ public sealed partial class EncryptViewModel : ViewModelBase
 
         HasError = false;
         StatusMessage = "";
+        Logger.Information(
+            "Encryption started for {SourcePath} using {SourceType} mode {FolderMode}",
+            SourcePath,
+            IsFileSource ? "File" : "Folder",
+            IsFileSource ? "File" : IsFolderModeZip ? "Zip" : "PerFile");
         IsEncrypting = true;
         IsStatusBarVisible = true;
 
@@ -260,6 +279,11 @@ public sealed partial class EncryptViewModel : ViewModelBase
 
         var startTime = DateTime.UtcNow;
         long? sourceSize = TryGetSourceSize();
+        var perFileTotal = !IsFileSource && !IsFolderModeZip
+            ? TryGetSourceFileCount()
+            : 0;
+        var completedPerFileCount = 0;
+        string? activePerFilePath = null;
 
         var progress = new Progress<double>(p =>
         {
@@ -281,8 +305,28 @@ public sealed partial class EncryptViewModel : ViewModelBase
 
         var perFileProgress = new Progress<PerFileProgress>(p =>
         {
+            if (activePerFilePath is null)
+            {
+                activePerFilePath = p.SourceFilePath;
+            }
+            else if (!string.Equals(
+                         activePerFilePath,
+                         p.SourceFilePath,
+                         OperatingSystem.IsWindows()
+                             ? StringComparison.OrdinalIgnoreCase
+                             : StringComparison.Ordinal))
+            {
+                completedPerFileCount++;
+                activePerFilePath = p.SourceFilePath;
+            }
+
             StatusCurrentFile = Path.GetFileName(p.SourceFilePath);
-            StatusProgress = p.Progress;
+            StatusProgress = perFileTotal > 0
+                ? Math.Clamp(
+                    (completedPerFileCount + p.Progress) / perFileTotal,
+                    0,
+                    1)
+                : p.Progress;
         });
 
         byte[]? passwordBytes = null;
@@ -346,6 +390,9 @@ public sealed partial class EncryptViewModel : ViewModelBase
             StatusEta = "";
             StatusMessage = $"✓ Mã hoá thành công: {Path.GetFileName(actualOutputPath)}";
             HasError = false;
+            Logger.Information(
+                "Encryption completed successfully: {OutputPath}",
+                actualOutputPath);
         }
         catch (OperationCanceledException)
         {
@@ -353,11 +400,16 @@ public sealed partial class EncryptViewModel : ViewModelBase
             StatusEta = "";
             StatusMessage = "Đã huỷ thao tác.";
             HasError = false;
+            Logger.Warning("Encryption cancelled for {SourcePath}", SourcePath);
         }
         catch (InvalidOperationException ex)
         {
             StatusAction = "Mã hoá thất bại";
             StatusEta = "";
+            Logger.Error(
+                ex,
+                "Encryption failed for {SourcePath}",
+                SourcePath);
             await ShowSubmitErrorAsync(
                 $"Sai mật khẩu hoặc dữ liệu bị hỏng: {ex.Message}",
                 "Mã hoá thất bại");
@@ -366,6 +418,10 @@ public sealed partial class EncryptViewModel : ViewModelBase
         {
             StatusAction = "Mã hoá thất bại";
             StatusEta = "";
+            Logger.Error(
+                ex,
+                "Encryption failed for {SourcePath}",
+                SourcePath);
             await ShowSubmitErrorAsync(ex.Message, "Mã hoá thất bại");
         }
         finally
@@ -420,9 +476,13 @@ public sealed partial class EncryptViewModel : ViewModelBase
         {
             Directory.CreateDirectory(_settings.DefaultOutputPath);
             _filePicker.OpenFolder(_settings.DefaultOutputPath);
+            Logger.Debug(
+                "Opened encrypted output directory {OutputDirectory}",
+                _settings.DefaultOutputPath);
         }
         catch (Exception ex)
         {
+            Logger.Error(ex, "Failed to open encrypted output directory");
             StatusMessage = $"Không thể mở thư mục đầu ra: {ex.Message}";
             HasError = true;
         }
@@ -441,6 +501,23 @@ public sealed partial class EncryptViewModel : ViewModelBase
         }
         catch { }
         return null;
+    }
+
+    private int TryGetSourceFileCount()
+    {
+        try
+        {
+            return Directory.Exists(SourcePath)
+                ? new DirectoryInfo(SourcePath)
+                    .EnumerateFiles("*", SearchOption.AllDirectories)
+                    .Count(file =>
+                        (file.Attributes & FileAttributes.ReparsePoint) == 0)
+                : 0;
+        }
+        catch
+        {
+            return 0;
+        }
     }
 
     private static string FormatBytes(long bytes) =>

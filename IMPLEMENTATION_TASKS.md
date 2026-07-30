@@ -149,14 +149,20 @@ This document tracks the full implementation plan for the SafeFile app (.NET 10 
 ## Task 9 — Main Shell UI (Layout + Navigation + Status Bar)
 
 **Checklist**
-- [ ] Redesign `MainWindow.axaml` with sidebar + content region
-- [ ] Add menu items: Encrypt, Decrypt, Logs, Settings, About
-- [ ] Add top-right controls (language/theme placeholders)
-- [ ] Add bottom status bar (file, progress %, speed, ETA, cancel)
-- [ ] Implement navigation state in `MainWindowViewModel`
+- [x] Redesign `MainWindow.axaml` with sidebar + content region
+- [x] Add menu items: Encrypt, Decrypt, Logs, Settings, About
+- [x] Add top-right controls (language/theme placeholders)
+- [x] Add bottom status bar (file, progress %, speed, ETA, cancel)
+- [x] Implement navigation state in `MainWindowViewModel`
 
 **Deliverable**
 - Full application shell matching target UX direction.
+
+**Implementation Notes**
+- Encrypt and Decrypt own their status bars so operation-specific state,
+  progress, and cancellation remain isolated within each workflow.
+- Navigation keeps one instance of each page. Switching pages no longer loses
+  the running operation's progress or cancellation state.
 
 ---
 
@@ -204,42 +210,62 @@ This document tracks the full implementation plan for the SafeFile app (.NET 10 
 - Functional decrypt flow with metadata-aware UX.
 
 **Implementation Notes**
-- Metadata is read only after the user presses **Check password**; password
-  changes do not automatically run Argon2id.
+- Metadata is read when the user presses **Check password**. If verification
+  was skipped, each vault is authenticated automatically immediately before
+  its decryption starts. Password changes do not automatically run Argon2id.
 - Successful verification displays the complete authenticated filename, vault
   size/time, format version, mode, chunk size, KDF parameters, and algorithm.
 - `DecryptFileAsync` defaults `overwriteExisting` to `false`; an existing
   plaintext file is preserved unless overwrite is explicitly enabled.
 - The removed automatic-rename option is not part of the current decrypt UI.
+- The source queue accepts one file, multiple files, or folders recursively;
+  every vault reports its own verification result, progress, and final status.
 
 ---
 
 ## Task 12 — Settings Screen (View + ViewModel)
 
 **Checklist**
-- [ ] Create `Views/SettingsView.axaml`
-- [ ] Create `ViewModels/SettingsViewModel.cs`
-- [ ] Performance section (chunk/thread/CPU profile placeholders)
-- [ ] Security section (KDF + policy toggles)
-- [ ] Output section (path + naming policy)
-- [ ] Save + Restore Defaults actions
+- [x] Create `Views/SettingsView.axaml`
+- [x] Create `ViewModels/SettingsViewModel.cs`
+- [x] Performance section (chunk/thread/CPU profile placeholders)
+- [x] Security section (KDF + policy toggles)
+- [x] Output section (paths; naming policy is operation-specific)
+- [x] Save + Restore Defaults actions
 
 **Deliverable**
 - Editable settings screen integrated with persisted settings.
+
+**Implementation Notes**
+- Encrypted and decrypted output paths are configured independently.
+- Filename encryption is selected per encryption operation and is intentionally
+  not persisted as a global naming-policy setting.
 
 ---
 
 ## Task 13 — Logs + Utility Services
 
 **Checklist**
-- [ ] Create `Views/LogView.axaml`
-- [ ] Create `Services/LogService.cs`
-- [ ] Add in-memory log collection with level/timestamp
-- [ ] Add clear/filter capability
-- [ ] Create file/folder picker abstraction using Avalonia `StorageProvider`
+- [x] Create `Views/LogView.axaml`
+- [x] Create `Services/LogService.cs`
+- [x] Add in-memory log collection with level/timestamp
+- [x] Add clear/filter capability
+- [x] Create file/folder picker abstraction using Avalonia `StorageProvider`
 
 **Deliverable**
 - Basic operational logs and reusable platform-safe picker services.
+
+**Implementation Notes**
+- Serilog writes structured events to both a bounded in-memory UI sink and an
+  asynchronous rolling file sink.
+- Log files roll daily and at 10 MB, with the latest 30 files retained under
+  the platform-local application data directory.
+- The log screen supports level filtering, text search, auto-scroll, clearing
+  the in-memory view, exporting the filtered view, and opening the log folder.
+- File picker utilities support single/multiple files, folders, and save-file
+  selection through Avalonia `StorageProvider`.
+- Passwords, derived keys, salts, checksums, and other secret material are
+  never included in application log events.
 
 ---
 

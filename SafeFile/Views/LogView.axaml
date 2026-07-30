@@ -1,0 +1,97 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:SafeFile.ViewModels"
+             xmlns:models="using:SafeFile.Models"
+             x:Class="SafeFile.Views.LogView"
+             x:DataType="vm:LogViewModel"
+             Foreground="#1F2937">
+  <Grid Margin="24" RowDefinitions="Auto,12,*">
+    <Border Background="White" CornerRadius="8" Padding="14">
+      <Grid ColumnDefinitions="Auto,Auto,Auto,20,180,220,*,Auto"
+            ColumnSpacing="8">
+        <Button Grid.Column="0" Theme="{StaticResource OutlinedButtonTheme}"
+                Command="{Binding ClearCommand}">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <PathIcon Data="{StaticResource CancelCircleIcon}"
+                      Width="14" Height="14"/>
+            <TextBlock Text="Xóa nhật ký"/>
+          </StackPanel>
+        </Button>
+        <Button Grid.Column="1" Theme="{StaticResource OutlinedButtonTheme}"
+                Command="{Binding ExportCommand}">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <TextBlock Text="⇩" FontSize="16"/>
+            <TextBlock Text="Xuất ra file"/>
+          </StackPanel>
+        </Button>
+        <Button Grid.Column="2" Theme="{StaticResource OutlinedButtonTheme}"
+                Command="{Binding OpenLogFolderCommand}">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <PathIcon Data="{StaticResource FolderIcon}"
+                      Width="14" Height="14"/>
+            <TextBlock Text="Mở thư mục log"/>
+          </StackPanel>
+        </Button>
+
+        <ComboBox Grid.Column="4" ItemsSource="{Binding LevelOptions}"
+                  SelectedItem="{Binding SelectedLevel}"
+                  PlaceholderText="Mức log"/>
+        <TextBox Grid.Column="5" Text="{Binding SearchText}"
+                 PlaceholderText="Tìm trong nhật ký..."/>
+        <TextBlock Grid.Column="6" Text="{Binding EntryCountText}"
+                   Foreground="#6B7280" FontSize="11"
+                   VerticalAlignment="Center"
+                   HorizontalAlignment="Right"/>
+        <CheckBox Grid.Column="7" Content="Tự cuộn"
+                  IsChecked="{Binding AutoScroll}"
+                  VerticalAlignment="Center"/>
+      </Grid>
+    </Border>
+
+    <Border Grid.Row="2" Background="#171717" BorderBrush="#374151"
+            BorderThickness="1" CornerRadius="8" ClipToBounds="True">
+      <Grid RowDefinitions="34,*">
+        <Border Background="#E5E7EB" Padding="12,7">
+          <Grid>
+            <TextBlock Text="safefile-.log" FontFamily="Consolas"
+                       FontSize="11" Foreground="#374151"/>
+          </Grid>
+        </Border>
+
+        <ScrollViewer x:Name="LogScrollViewer" Grid.Row="1"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Auto"
+                      Padding="12,10">
+          <ItemsControl ItemsSource="{Binding FilteredEntries}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="models:LogEntry">
+                <Grid ColumnDefinitions="178,48,*" Margin="0,2">
+                  <TextBlock Text="{Binding TimestampText}"
+                             FontFamily="Consolas" FontSize="11"
+                             Foreground="#94A3B8"/>
+                  <TextBlock Grid.Column="1" Text="{Binding LevelText}"
+                             FontFamily="Consolas" FontSize="11"
+                             FontWeight="SemiBold"
+                             Foreground="{Binding LevelForeground}"/>
+                  <TextBlock Grid.Column="2" Text="{Binding FullMessage}"
+                             FontFamily="Consolas" FontSize="11"
+                             Foreground="#F3F4F6"
+                             TextWrapping="NoWrap"/>
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+      </Grid>
+    </Border>
+
+    <Border Grid.Row="2" Background="#171717" CornerRadius="8"
+            IsHitTestVisible="False"
+            IsVisible="{Binding !HasEntries}">
+      <TextBlock Text="Chưa có sự kiện nhật ký."
+                 Foreground="#94A3B8"
+                 HorizontalAlignment="Center"
+                 VerticalAlignment="Center"/>
+    </Border>
+  </Grid>
+</UserControl>

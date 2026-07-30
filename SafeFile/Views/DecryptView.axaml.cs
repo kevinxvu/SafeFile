@@ -28,6 +28,13 @@ public partial class DecryptView : UserControl
     private async void OnDrop(object? sender, DragEventArgs e)
     {
         ResetDragState();
+        if (DataContext is DecryptViewModel { IsDecrypting: true })
+        {
+            e.DragEffects = DragDropEffects.None;
+            e.Handled = true;
+            return;
+        }
+
         var paths = e.DataTransfer.TryGetFiles()?
             .Select(item => item.TryGetLocalPath())
             .Where(path => IsAcceptedPath(path))
@@ -49,6 +56,14 @@ public partial class DecryptView : UserControl
 
     private void UpdateDragState(DragEventArgs e)
     {
+        if (DataContext is DecryptViewModel { IsDecrypting: true })
+        {
+            e.DragEffects = DragDropEffects.None;
+            ResetDragState();
+            e.Handled = true;
+            return;
+        }
+
         var accepted = e.DataTransfer.TryGetFiles()?
             .Select(item => item.TryGetLocalPath())
             .Any(IsAcceptedPath) == true;

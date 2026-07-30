@@ -9,12 +9,13 @@
       <StackPanel Margin="24" Spacing="16">
 
         <!-- Unified file/folder picker -->
-        <Border Background="White" CornerRadius="8" Padding="16">
+        <Border Background="White" CornerRadius="8" Padding="16"
+                IsEnabled="{Binding !IsDecrypting}">
           <StackPanel Spacing="10">
             <Grid ColumnDefinitions="*,Auto">
               <StackPanel Spacing="2">
                 <TextBlock Text="Dữ liệu cần giải mã"
-                           FontSize="17" FontWeight="SemiBold"/>
+                           FontSize="16" FontWeight="SemiBold"/>
                 <TextBlock Text="Chọn một file, nhiều file hoặc toàn bộ thư mục vault."
                            FontSize="12" Foreground="#6B7280"/>
               </StackPanel>
@@ -38,7 +39,7 @@
                               Width="28" Height="28" Foreground="#64748B"/>
                     <StackPanel VerticalAlignment="Center">
                       <TextBlock Text="Kéo thả các file .safe hoặc thư mục vào đây"
-                                 FontSize="14" FontWeight="Medium"/>
+                                 FontSize="13" FontWeight="Medium"/>
                       <TextBlock Text="Các file trùng sẽ tự động được bỏ qua."
                                  FontSize="11" Foreground="#6B7280"/>
                     </StackPanel>
@@ -65,7 +66,7 @@
           <Grid RowDefinitions="Auto,Auto,*">
             <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,12">
               <StackPanel Orientation="Horizontal" Spacing="10">
-                <TextBlock Text="Danh sách vault" FontSize="17"
+                <TextBlock Text="Danh sách vault" FontSize="16"
                            FontWeight="SemiBold" VerticalAlignment="Center"/>
                 <Border Background="#EFF6FF" CornerRadius="10" Padding="8,2"
                         IsVisible="{Binding HasItems}">
@@ -75,6 +76,7 @@
               </StackPanel>
               <Button Grid.Column="1" Theme="{StaticResource OutlinedButtonTheme}"
                       Command="{Binding ClearItemsCommand}"
+                      IsEnabled="{Binding !IsDecrypting}"
                       IsVisible="{Binding HasItems}">
                 <StackPanel Orientation="Horizontal" Spacing="6">
                   <PathIcon Data="{StaticResource CancelCircleIcon}"
@@ -168,6 +170,7 @@
                       <Button Grid.Column="9" Width="28" Height="28"
                               Padding="0" Background="Transparent"
                               Command="{Binding RemoveCommand}"
+                              IsEnabled="{Binding !IsLocked}"
                               VerticalAlignment="Center"
                               ToolTip.Tip="Xóa khỏi danh sách">
                         <TextBlock Text="×" FontSize="18"/>
@@ -183,10 +186,11 @@
         <!-- Password, options and selected-item details -->
         <Grid ColumnDefinitions="3*,16,2*">
           <Border Grid.Column="0" Background="White" CornerRadius="8" Padding="16"
-                  VerticalAlignment="Top">
+                  VerticalAlignment="Top"
+                  IsEnabled="{Binding !IsDecrypting}">
             <StackPanel Spacing="14">
               <TextBlock Text="Bảo mật và tuỳ chọn"
-                         FontSize="17" FontWeight="SemiBold"/>
+                         FontSize="16" FontWeight="SemiBold"/>
               <Grid ColumnDefinitions="*,Auto">
                 <TextBox Text="{Binding Password}"
                          PasswordChar="{Binding PasswordChar}"
@@ -216,7 +220,7 @@
               <Border Background="#F8FAFC" BorderBrush="#E5E7EB"
                       BorderThickness="1" CornerRadius="6" Padding="12">
                 <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
-                  <CheckBox Content="Ghi đè đầu ra đã tồn tại"
+                  <CheckBox Content="Ghi đè file đã tồn tại"
                             IsChecked="{Binding OverwriteExisting}"/>
                   <CheckBox Grid.Column="1" Content="Mở thư mục khi hoàn tất"
                             IsChecked="{Binding OpenFolderWhenDone}"/>
@@ -334,7 +338,7 @@
 
               <TabItem Header="Tổng quan">
                 <StackPanel Margin="8" MinHeight="245" Spacing="14">
-                  <TextBlock Text="Kết quả batch" FontSize="15"
+                  <TextBlock Text="Kết quả batch" FontSize="14"
                              FontWeight="SemiBold"/>
                   <TextBlock Text="{Binding ResultSummary}"
                              TextWrapping="Wrap"/>
@@ -360,7 +364,7 @@
       <Grid ColumnDefinitions="250,*,56,Auto" VerticalAlignment="Center">
         <StackPanel Grid.Column="0" Spacing="3">
           <TextBlock Text="{Binding StatusAction}"
-                     FontSize="13" FontWeight="SemiBold"/>
+                     FontSize="12" FontWeight="SemiBold"/>
           <TextBlock Text="{Binding StatusCurrentFile}" FontSize="11"
                      Foreground="#4B5563"
                      TextTrimming="CharacterEllipsis"/>

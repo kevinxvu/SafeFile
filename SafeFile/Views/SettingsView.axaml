@@ -12,9 +12,9 @@
       <Border Background="White" CornerRadius="8" Padding="18">
         <StackPanel Spacing="16">
           <StackPanel Spacing="3">
-            <TextBlock Text="Hiệu năng" FontSize="16" FontWeight="SemiBold"/>
+            <TextBlock Text="Hiệu năng" FontSize="15" FontWeight="SemiBold"/>
             <TextBlock Text="Điều chỉnh tài nguyên dùng cho quá trình mã hoá và giải mã."
-                       FontSize="12" Foreground="#6B7280"/>
+                       FontSize="11" Foreground="#6B7280"/>
           </StackPanel>
 
           <Grid ColumnDefinitions="*,24,*">
@@ -64,9 +64,9 @@
       <Border Background="White" CornerRadius="8" Padding="18">
         <StackPanel Spacing="16">
           <StackPanel Spacing="3">
-            <TextBlock Text="Bảo mật" FontSize="16" FontWeight="SemiBold"/>
+            <TextBlock Text="Bảo mật" FontSize="15" FontWeight="SemiBold"/>
             <TextBlock Text="Thiết lập chính sách mật khẩu và tham số dẫn xuất khoá Argon2id."
-                       FontSize="12" Foreground="#6B7280"/>
+                       FontSize="11" Foreground="#6B7280"/>
           </StackPanel>
 
           <Grid ColumnDefinitions="*,24,*">
@@ -124,9 +124,9 @@
       <Border Background="White" CornerRadius="8" Padding="18">
         <StackPanel Spacing="14">
           <StackPanel Spacing="3">
-            <TextBlock Text="Đầu ra" FontSize="16" FontWeight="SemiBold"/>
+            <TextBlock Text="Đầu ra" FontSize="15" FontWeight="SemiBold"/>
             <TextBlock Text="Chọn riêng vị trí lưu dữ liệu mã hoá và dữ liệu giải mã."
-                       FontSize="12" Foreground="#6B7280"/>
+                       FontSize="11" Foreground="#6B7280"/>
           </StackPanel>
 
           <StackPanel Spacing="7">

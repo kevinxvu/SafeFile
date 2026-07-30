@@ -22,10 +22,11 @@ namespace SafeFile
                 var filePicker = new FilePickerService();
                 var errorDialog = new ErrorDialogService();
                 var settingsService = new SettingsService();
+                var logService = LogService.Instance;
                 desktop.MainWindow = new MainWindow
                 {
                     DataContext = new MainWindowViewModel(
-                        filePicker, settingsService, errorDialog),
+                        filePicker, settingsService, errorDialog, logService),
                 };
             }
 

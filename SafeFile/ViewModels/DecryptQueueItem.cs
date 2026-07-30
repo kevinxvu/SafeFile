@@ -25,6 +25,7 @@ public sealed partial class DecryptQueueItem : ObservableObject
     [ObservableProperty] private double _progress;
     [ObservableProperty] private bool _hasVerifiedMetadata;
     [ObservableProperty] private bool _isProcessing;
+    [ObservableProperty] private bool _isLocked;
 
     public string ProgressText => $"{Progress:P0}";
     public bool HasError => !string.IsNullOrWhiteSpace(ErrorMessage);

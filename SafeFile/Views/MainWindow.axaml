@@ -27,7 +27,7 @@
       <Setter Property="HorizontalAlignment"     Value="Stretch"/>
       <Setter Property="HorizontalContentAlignment" Value="Left"/>
       <Setter Property="VerticalContentAlignment"   Value="Center"/>
-      <Setter Property="FontSize"                Value="14"/>
+      <Setter Property="FontSize"                Value="13"/>
       <Setter Property="Cursor"                  Value="Hand"/>
       <Setter Property="Template">
         <ControlTemplate>
@@ -82,7 +82,7 @@
             <PathIcon Data="{StaticResource LockIcon}" Width="22" Height="22" Foreground="White"/>
           </Border>
           <StackPanel VerticalAlignment="Center" Spacing="1">
-            <TextBlock Text="SafeFile" FontSize="18" FontWeight="Bold" Foreground="#111827"/>
+            <TextBlock Text="SafeFile" FontSize="17" FontWeight="Bold" Foreground="#111827"/>
             <TextBlock Text="Enterprise Encryption" FontSize="11" Foreground="#6B7280"/>
           </StackPanel>
         </StackPanel>
@@ -126,6 +126,17 @@
             </StackPanel>
           </Button>
 
+          <Button Theme="{StaticResource NavButtonTheme}"
+                  Classes.active="{Binding IsAboutActive}"
+                  Command="{Binding NavigateToAboutCommand}">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+              <TextBlock Text="ⓘ" Width="18" FontSize="16"
+                         HorizontalAlignment="Center"
+                         VerticalAlignment="Center"/>
+              <TextBlock Text="Về ứng dụng" VerticalAlignment="Center"/>
+            </StackPanel>
+          </Button>
+
         </StackPanel>
 
         <!-- Filler -->
@@ -140,7 +151,7 @@
               Padding="16,10">
         <Grid ColumnDefinitions="*,Auto,Auto">
           <TextBlock Text="{Binding ActivePage}"
-                     FontSize="26" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                     FontSize="24" FontWeight="SemiBold" VerticalAlignment="Center"/>
           <Button Grid.Column="1" Margin="0,0,8,0"
                   Theme="{StaticResource OutlinedButtonTheme}"
                   Padding="10,6">
@@ -153,7 +164,7 @@
           <Button Grid.Column="2"
                   Theme="{StaticResource OutlinedButtonTheme}"
                   Padding="8,6" ToolTip.Tip="Chế độ tối">
-            <TextBlock Text="☾" FontSize="14"/>
+            <TextBlock Text="☾" FontSize="13"/>
           </Button>
         </Grid>
       </Border>
