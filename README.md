@@ -246,15 +246,3 @@ is available.
 ## License
 
 SafeFile is available under the [MIT License](LICENSE).
-
-```text
-Copyright (c) 2026 kevinxvu
-```
-
----
-
-<div align="center">
-
-**Your files stay yours. Your password is the key.**
-
-</div>
