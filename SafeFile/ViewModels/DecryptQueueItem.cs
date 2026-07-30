@@ -19,6 +19,7 @@ public sealed partial class DecryptQueueItem : ObservableObject
     public VaultHeader? Header { get; }
     public bool IsValid => Header is not null;
 
+    [ObservableProperty] private int _sequenceNumber;
     [ObservableProperty] private string _originalFileName = L("NotVerified");
     [ObservableProperty] private string _status = L("Ready");
     [ObservableProperty] private string _statusForeground = "#4B5563";

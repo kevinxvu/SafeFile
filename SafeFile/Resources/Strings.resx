@@ -59,6 +59,7 @@
   <data name="VaultList" xml:space="preserve"><value>Vault list</value></data>
   <data name="ClearAll" xml:space="preserve"><value>Clear all</value></data>
   <data name="Vault" xml:space="preserve"><value>Vault</value></data>
+  <data name="Number" xml:space="preserve"><value>No.</value></data>
   <data name="OriginalFileName" xml:space="preserve"><value>Original file name</value></data>
   <data name="Size" xml:space="preserve"><value>Size</value></data>
   <data name="Progress" xml:space="preserve"><value>Progress</value></data>

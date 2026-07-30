@@ -295,6 +295,7 @@ public sealed partial class DecryptViewModel : ViewModelBase
             initialStatus,
             initialError,
             RemoveItem));
+        RenumberItems();
     }
 
     private async Task CheckPasswordAsync()
@@ -672,12 +673,19 @@ public sealed partial class DecryptViewModel : ViewModelBase
         if (index < 0)
             return;
         Items.RemoveAt(index);
+        RenumberItems();
         _sourcePaths.Remove(item.SourcePath);
         if (ReferenceEquals(SelectedItem, item))
             SelectedItem = Items.Count == 0
                 ? null
                 : Items[Math.Min(index, Items.Count - 1)];
         NotifySummaries();
+    }
+
+    private void RenumberItems()
+    {
+        for (var index = 0; index < Items.Count; index++)
+            Items[index].SequenceNumber = index + 1;
     }
 
     private void ClearItems()
