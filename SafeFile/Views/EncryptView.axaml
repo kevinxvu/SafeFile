@@ -31,7 +31,7 @@
           </Grid>
 
           <Border Classes="source-drop-zone"
-                  BorderThickness="2" CornerRadius="6" Height="122"
+                  BorderThickness="2" CornerRadius="6" Height="142"
                   DragDrop.AllowDrop="True"
                   DragDrop.DragEnter="OnSourceDragEnter"
                   DragDrop.DragLeave="OnSourceDragLeave"
@@ -47,10 +47,35 @@
                                FontSize="13" FontWeight="Medium"/>
                     <TextBlock Text="{loc:Tr EncryptDropHint}" FontSize="11"
                                Foreground="{DynamicResource SecondaryTextBrush}"/>
-                    <TextBlock Text="{Binding SourcePath}" FontSize="11"
-                               MaxWidth="520" TextTrimming="CharacterEllipsis"
+                    <TextBlock Text="{Binding SourceDisplayName}" FontSize="12"
+                               FontWeight="SemiBold" MaxWidth="520"
+                               TextTrimming="CharacterEllipsis"
                                Foreground="{DynamicResource AccentBrush}"
+                               IsVisible="{Binding HasSourceInfo}"
                                ToolTip.Tip="{Binding SourcePath}"/>
+                    <TextBlock Text="{Binding SourcePath}" FontSize="10"
+                               MaxWidth="520" TextTrimming="CharacterEllipsis"
+                               Foreground="{DynamicResource SecondaryTextBrush}"
+                               IsVisible="{Binding HasSourceInfo}"
+                               ToolTip.Tip="{Binding SourcePath}"/>
+                    <StackPanel Orientation="Horizontal" Spacing="6"
+                                IsVisible="{Binding HasSourceInfo}">
+                      <Border Background="{DynamicResource AccentSubtleBrush}"
+                              CornerRadius="9" Padding="8,2">
+                        <TextBlock Text="{Binding SourceTypeText}" FontSize="10"
+                                   Foreground="{DynamicResource AccentBrush}"/>
+                      </Border>
+                      <Border Background="{DynamicResource SurfaceBrush}"
+                              BorderBrush="{DynamicResource BorderBrush}"
+                              BorderThickness="1" CornerRadius="9" Padding="8,2">
+                        <TextBlock Text="{Binding SourceSizeText}" FontSize="10"/>
+                      </Border>
+                      <Border Background="{DynamicResource SurfaceBrush}"
+                              BorderBrush="{DynamicResource BorderBrush}"
+                              BorderThickness="1" CornerRadius="9" Padding="8,2">
+                        <TextBlock Text="{Binding SourceFileCountText}" FontSize="10"/>
+                      </Border>
+                    </StackPanel>
                   </StackPanel>
                 </StackPanel>
               </StackPanel>

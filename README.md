@@ -4,11 +4,13 @@
 
 # SafeFile
 
-### Private, authenticated file encryption — without sending your data anywhere.
+### Private, authenticated file encryption and decryption — without sending your data anywhere.
 
-SafeFile is a modern desktop application for protecting files and folders with
-**AES-256-GCM** and password keys derived through **Argon2id**. Everything runs
-locally: no account, no cloud, and no remote service.
+SafeFile is a modern desktop application for encrypting files and folders into
+secure `.safe` vaults with **AES-256-GCM** and password keys derived through
+**Argon2id**. It also decrypts those vaults to restore the original files,
+folders, and encrypted filenames. Everything runs locally: no account, no
+cloud, and no remote service.
 
 [![.NET](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet)](https://dotnet.microsoft.com/)
 [![Avalonia](https://img.shields.io/badge/Avalonia-12.0-8B44AC)](https://avaloniaui.net/)
@@ -20,12 +22,7 @@ locally: no account, no cloud, and no remote service.
 
 ---
 
-<!--
-Add the main screenshot at docs/images/safefile-overview.png, then use:
-![SafeFile overview](docs/images/safefile-overview.png)
--->
-
-> 📷 **Screenshot placeholder — Main application overview**
+![SafeFile application overview](docs/images/safefile-overview.jpg)
 
 ## Why SafeFile?
 
@@ -76,8 +73,7 @@ Choose a file or folder, enter a password, and select an output mode:
 | Folder | `ZIP` | One streamed folder vault |
 | Folder | `PerFile` | One independent vault per regular file |
 
-<!-- Add: docs/images/encrypt-screen.png -->
-> 📷 **Screenshot placeholder — Encrypt screen**
+![SafeFile Encrypt screen](docs/images/encrypt-screen.png)
 
 ### Decrypt
 
@@ -86,8 +82,7 @@ vault's sequence number, name, authenticated original filename, size, progress,
 and final status. One failed vault does not prevent later valid vaults from
 being processed.
 
-<!-- Add: docs/images/decrypt-screen.png -->
-> 📷 **Screenshot placeholder — Batch decrypt and vault details**
+![SafeFile batch decrypt and vault details](docs/images/decrypt-screen.png)
 
 ### Settings, logs, and About
 
@@ -96,8 +91,7 @@ parameters, and separate encrypted/decrypted output locations. Logs provides an
 in-app operational console. About presents version, runtime, privacy, licensing,
 and diagnostic information.
 
-<!-- Add: docs/images/settings-screen.png -->
-> 📷 **Screenshot placeholder — Settings and Dark theme**
+![SafeFile Settings screen](docs/images/settings-screen.png)
 
 ## Security at a glance
 

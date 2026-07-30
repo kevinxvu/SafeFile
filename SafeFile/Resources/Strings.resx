@@ -38,6 +38,9 @@
   <data name="EncryptSelectionHint" xml:space="preserve"><value>Select a file or an entire folder to encrypt.</value></data>
   <data name="EncryptDropHint" xml:space="preserve"><value>The selected source will be ready for encryption.</value></data>
   <data name="SelectFile" xml:space="preserve"><value>Select file</value></data>
+  <data name="CalculatingSourceInfo" xml:space="preserve"><value>Calculating...</value></data>
+  <data name="SourceFileCount" xml:space="preserve"><value>{0} file(s)</value></data>
+  <data name="SourceInfoUnavailable" xml:space="preserve"><value>Info unavailable</value></data>
   <data name="Security" xml:space="preserve"><value>Security</value></data>
   <data name="Password" xml:space="preserve"><value>Password</value></data>
   <data name="ConfirmPassword" xml:space="preserve"><value>Confirm password</value></data>

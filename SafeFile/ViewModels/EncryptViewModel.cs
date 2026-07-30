@@ -24,6 +24,7 @@ public sealed partial class EncryptViewModel : ViewModelBase
     private readonly SettingsService _settingsService;
     private AppSettings _settings;
     private CancellationTokenSource? _activeCts;
+    private CancellationTokenSource? _sourceInfoCts;
 
     // ── Source ────────────────────────────────────────────────────
     [ObservableProperty]
@@ -36,12 +37,103 @@ public sealed partial class EncryptViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(EstimatedOutputName))]
     private string _sourcePath = "";
 
+    [ObservableProperty] private bool _hasSourceInfo;
+    [ObservableProperty] private string _sourceDisplayName = "";
+    [ObservableProperty] private string _sourceTypeText = "";
+    [ObservableProperty] private string _sourceSizeText = "";
+    [ObservableProperty] private string _sourceFileCountText = "";
+
     public bool IsFolderSource => !IsFileSource;
 
     partial void OnIsFileSourceChanged(bool value)
     {
         OnPropertyChanged(nameof(IsFolderSource));
         SourcePath = "";
+    }
+
+    partial void OnSourcePathChanged(string value)
+    {
+        _sourceInfoCts?.Cancel();
+        _sourceInfoCts?.Dispose();
+        _sourceInfoCts = new CancellationTokenSource();
+        _ = RefreshSourceInfoAsync(value, _sourceInfoCts.Token);
+    }
+
+    private async Task RefreshSourceInfoAsync(
+        string path,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            HasSourceInfo = false;
+            SourceDisplayName = "";
+            SourceTypeText = "";
+            SourceSizeText = "";
+            SourceFileCountText = "";
+            return;
+        }
+
+        var normalizedPath = path.TrimEnd(
+            Path.DirectorySeparatorChar,
+            Path.AltDirectorySeparatorChar);
+        var isFile = File.Exists(path);
+        var isFolder = Directory.Exists(path);
+        if (!isFile && !isFolder)
+        {
+            HasSourceInfo = false;
+            return;
+        }
+
+        HasSourceInfo = true;
+        SourceDisplayName = Path.GetFileName(normalizedPath);
+        SourceTypeText = L(isFile ? "File" : "Folder");
+        SourceSizeText = L("CalculatingSourceInfo");
+        SourceFileCountText = L("CalculatingSourceInfo");
+
+        try
+        {
+            var result = await Task.Run(() =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (isFile)
+                    return (Size: new FileInfo(path).Length, FileCount: 1);
+
+                long size = 0;
+                var fileCount = 0;
+                var options = new EnumerationOptions
+                {
+                    RecurseSubdirectories = true,
+                    IgnoreInaccessible = true,
+                    AttributesToSkip = FileAttributes.ReparsePoint
+                };
+
+                foreach (var file in new DirectoryInfo(path).EnumerateFiles("*", options))
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    size += file.Length;
+                    fileCount++;
+                }
+
+                return (Size: size, FileCount: fileCount);
+            }, cancellationToken);
+
+            if (SourcePath != path)
+                return;
+
+            SourceSizeText = FormatBytes(result.Size);
+            SourceFileCountText = F("SourceFileCount", result.FileCount);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch
+        {
+            if (SourcePath == path)
+            {
+                SourceSizeText = L("SourceInfoUnavailable");
+                SourceFileCountText = L("SourceInfoUnavailable");
+            }
+        }
     }
 
     // ── Password ──────────────────────────────────────────────────
