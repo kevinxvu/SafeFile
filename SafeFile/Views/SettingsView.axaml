@@ -6,8 +6,14 @@
              x:Class="SafeFile.Views.SettingsView"
              x:DataType="vm:SettingsViewModel"
              Foreground="{DynamicResource PrimaryTextBrush}">
+  <UserControl.Styles>
+    <Style Selector="NumericUpDown.no-direct-input /template/ TextBox">
+      <Setter Property="IsReadOnly" Value="True"/>
+    </Style>
+  </UserControl.Styles>
+
   <ScrollViewer VerticalScrollBarVisibility="Auto">
-    <StackPanel Margin="24" Spacing="16" MaxWidth="1100"
+    <StackPanel Margin="24,16,24,24" Spacing="16"
                 HorizontalAlignment="Stretch">
 
       <!-- Appearance -->
@@ -114,7 +120,7 @@
               <TextBlock Text="{loc:Tr PasswordPolicy}" FontWeight="Medium"/>
               <Grid ColumnDefinitions="*,110">
                 <TextBlock Text="{loc:Tr MinimumPasswordLength}" VerticalAlignment="Center"/>
-                <NumericUpDown Grid.Column="1"
+                <NumericUpDown Grid.Column="1" Classes="no-direct-input"
                                Value="{Binding MinPasswordLength}"
                                Minimum="6" Maximum="128"
                                Increment="1" FormatString="0"
@@ -131,7 +137,7 @@
                     RowDefinitions="32,32,32"
                     RowSpacing="8">
                 <TextBlock Grid.Row="0" Text="{loc:Tr MemoryMb}" VerticalAlignment="Center"/>
-                <NumericUpDown Grid.Row="0" Grid.Column="1"
+                <NumericUpDown Grid.Row="0" Grid.Column="1" Classes="no-direct-input"
                                Value="{Binding Argon2MemoryMb}"
                                Minimum="{Binding Argon2MemoryMinMb}"
                                Maximum="{Binding Argon2MemoryMaxMb}"
@@ -139,14 +145,14 @@
                                TextAlignment="Center"
                                HorizontalAlignment="Stretch"/>
                 <TextBlock Grid.Row="1" Text="{loc:Tr Iterations}" VerticalAlignment="Center"/>
-                <NumericUpDown Grid.Row="1" Grid.Column="1"
+                <NumericUpDown Grid.Row="1" Grid.Column="1" Classes="no-direct-input"
                                Value="{Binding Argon2Iterations}"
                                Minimum="1" Maximum="{Binding Argon2IterationsMax}"
                                Increment="1" FormatString="0"
                                TextAlignment="Center"
                                HorizontalAlignment="Stretch"/>
                 <TextBlock Grid.Row="2" Text="{loc:Tr Parallelism}" VerticalAlignment="Center"/>
-                <NumericUpDown Grid.Row="2" Grid.Column="1"
+                <NumericUpDown Grid.Row="2" Grid.Column="1" Classes="no-direct-input"
                                Value="{Binding Argon2Parallelism}"
                                Minimum="1" Maximum="{Binding Argon2ParallelismMax}"
                                Increment="1" FormatString="0"

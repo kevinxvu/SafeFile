@@ -9,6 +9,7 @@
         CanResize="False"
         ShowInTaskbar="False"
         WindowStartupLocation="CenterOwner"
+        Icon="/Assets/logo.ico"
         Title="{loc:Tr ErrorTitle}">
   <Grid Margin="24" RowDefinitions="Auto,*,Auto">
     <Grid ColumnDefinitions="Auto,*">

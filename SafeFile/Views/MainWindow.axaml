@@ -7,10 +7,12 @@
         mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="760"
         x:Class="SafeFile.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
-        Icon="/Assets/avalonia-logo.ico"
+        Icon="/Assets/logo.ico"
         Title="SafeFile"
         Width="1280"
         Height="720"
+        MinWidth="1280"
+        MinHeight="720"
         WindowStartupLocation="CenterScreen"
         Background="{DynamicResource AppBackgroundBrush}"
         Foreground="{DynamicResource PrimaryTextBrush}">
@@ -78,12 +80,8 @@
         <StackPanel DockPanel.Dock="Top"
                     Orientation="Horizontal" Spacing="12"
                     Margin="16,22,16,28">
-          <Border Width="42" Height="42" CornerRadius="10"
-                  Background="{DynamicResource AccentStrongBrush}"
-                  VerticalAlignment="Center">
-            <PathIcon Data="{StaticResource LockIcon}" Width="22" Height="22"
-                      Foreground="{DynamicResource OnAccentBrush}"/>
-          </Border>
+          <Image Source="/Assets/logo.ico" Width="42" Height="42"
+                 Stretch="Uniform" VerticalAlignment="Center"/>
           <StackPanel VerticalAlignment="Center" Spacing="1">
             <TextBlock Text="SafeFile" FontSize="17" FontWeight="Bold"
                        Foreground="{DynamicResource StrongTextBrush}"/>
@@ -157,7 +155,7 @@
               Padding="16,10">
         <Grid ColumnDefinitions="*">
           <TextBlock Text="{Binding ActivePage}"
-                     FontSize="24" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                     FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center"/>
         </Grid>
       </Border>
 

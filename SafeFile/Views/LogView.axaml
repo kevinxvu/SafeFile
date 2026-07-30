@@ -6,9 +6,9 @@
              x:Class="SafeFile.Views.LogView"
              x:DataType="vm:LogViewModel"
              Foreground="{DynamicResource PrimaryTextBrush}">
-  <Grid Margin="24" RowDefinitions="Auto,12,*">
+  <Grid Margin="24,16,24,24" RowDefinitions="Auto,12,*">
     <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="14">
-      <Grid ColumnDefinitions="Auto,Auto,Auto,20,180,220,*,Auto"
+      <Grid ColumnDefinitions="Auto,Auto,Auto,12,160,*,Auto,Auto"
             ColumnSpacing="8">
         <Button Grid.Column="0" Theme="{StaticResource OutlinedButtonTheme}"
                 Command="{Binding ClearCommand}">
@@ -37,12 +37,11 @@
         <ComboBox Grid.Column="4" ItemsSource="{Binding LevelOptions}"
                   SelectedItem="{Binding SelectedLevel}"
                   PlaceholderText="{loc:Tr LogLevel}"/>
-        <TextBox Grid.Column="5" Text="{Binding SearchText}"
+        <TextBox Grid.Column="5" Text="{Binding SearchText}" MinWidth="180"
                  PlaceholderText="{loc:Tr SearchLogs}"/>
         <TextBlock Grid.Column="6" Text="{Binding EntryCountText}"
                    Foreground="{DynamicResource SecondaryTextBrush}" FontSize="11"
-                   VerticalAlignment="Center"
-                   HorizontalAlignment="Right"/>
+                   VerticalAlignment="Center" TextWrapping="NoWrap"/>
         <CheckBox Grid.Column="7" Content="{loc:Tr AutoScroll}"
                   IsChecked="{Binding AutoScroll}"
                   VerticalAlignment="Center"/>

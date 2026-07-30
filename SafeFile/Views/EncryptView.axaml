@@ -5,37 +5,67 @@
              x:Class="SafeFile.Views.EncryptView"
              x:DataType="vm:EncryptViewModel"
              Foreground="{DynamicResource PrimaryTextBrush}">
+  <UserControl.Styles>
+    <Style Selector="Border.source-drop-zone">
+      <Setter Property="Background" Value="{DynamicResource SubtleSurfaceBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource StrongBorderBrush}"/>
+    </Style>
+    <Style Selector="Border.source-drop-zone.drag-active">
+      <Setter Property="Background" Value="{DynamicResource AccentHoverBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+    </Style>
+  </UserControl.Styles>
+
   <Grid RowDefinitions="*,Auto">
   <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
-    <StackPanel Margin="24" Spacing="16">
-      <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="16">
+    <StackPanel Margin="24,16,24,24" Spacing="16">
+      <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="16"
+              IsEnabled="{Binding !IsEncrypting}">
         <StackPanel Spacing="10">
-          <TextBlock Text="{loc:Tr SourceData}" FontSize="15" FontWeight="SemiBold"/>
-          <StackPanel Orientation="Horizontal" Spacing="20">
-            <RadioButton Content="{loc:Tr File}" IsChecked="{Binding IsFileSource}" GroupName="SourceType"/>
-            <RadioButton Content="{loc:Tr Folder}" IsChecked="{Binding IsFolderSource}" GroupName="SourceType"/>
-          </StackPanel>
-          <Grid ColumnDefinitions="*,Auto">
-            <TextBox Grid.Column="0" Text="{Binding SourcePath}" PlaceholderText="{loc:Tr EnterPath}"/>
-            <Button Grid.Column="1" Margin="8,0,0,0"
-                    Theme="{StaticResource OutlinedButtonTheme}"
-                    Command="{Binding BrowseSourceCommand}">
-              <StackPanel Orientation="Horizontal" Spacing="6">
-                <PathIcon Data="{StaticResource SearchIcon}" Width="15" Height="15"/>
-                <TextBlock Text="{loc:Tr Browse}" VerticalAlignment="Center"/>
-              </StackPanel>
-            </Button>
+          <Grid>
+            <StackPanel Spacing="2">
+              <TextBlock Text="{loc:Tr SourceData}" FontSize="16" FontWeight="SemiBold"/>
+              <TextBlock Text="{loc:Tr EncryptSelectionHint}" FontSize="12"
+                         Foreground="{DynamicResource SecondaryTextBrush}"/>
+            </StackPanel>
           </Grid>
-          <Border BorderBrush="{DynamicResource DropZoneBorderBrush}" BorderThickness="1" CornerRadius="8"
-                  Height="80" Background="{DynamicResource DropZoneBrush}"
+
+          <Border Classes="source-drop-zone"
+                  BorderThickness="2" CornerRadius="6" Height="122"
                   DragDrop.AllowDrop="True"
                   DragDrop.DragEnter="OnSourceDragEnter"
                   DragDrop.DragLeave="OnSourceDragLeave"
                   DragDrop.DragOver="OnSourceDragOver"
                   DragDrop.Drop="OnSourceDrop">
-            <TextBlock Text="{loc:Tr DropEncryptSource}" HorizontalAlignment="Center"
-                       VerticalAlignment="Center"
-                       Foreground="{DynamicResource SecondaryTextBrush}"/>
+            <Grid ColumnDefinitions="*,Auto" Margin="22,12">
+              <StackPanel VerticalAlignment="Center" Spacing="5">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                  <PathIcon Data="{StaticResource FolderIcon}" Width="28" Height="28"
+                            Foreground="{DynamicResource SecondaryTextBrush}"/>
+                  <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="{loc:Tr DropEncryptSource}"
+                               FontSize="13" FontWeight="Medium"/>
+                    <TextBlock Text="{loc:Tr EncryptDropHint}" FontSize="11"
+                               Foreground="{DynamicResource SecondaryTextBrush}"/>
+                    <TextBlock Text="{Binding SourcePath}" FontSize="11"
+                               MaxWidth="520" TextTrimming="CharacterEllipsis"
+                               Foreground="{DynamicResource AccentBrush}"
+                               ToolTip.Tip="{Binding SourcePath}"/>
+                  </StackPanel>
+                </StackPanel>
+              </StackPanel>
+              <StackPanel Grid.Column="1" Orientation="Horizontal"
+                          VerticalAlignment="Center" Spacing="8">
+                <Button Theme="{StaticResource PrimaryButtonTheme}"
+                        Command="{Binding BrowseSourceCommand}">
+                  <TextBlock Text="{loc:Tr SelectFile}"/>
+                </Button>
+                <Button Theme="{StaticResource OutlinedButtonTheme}"
+                        Command="{Binding BrowseSourceFolderCommand}">
+                  <TextBlock Text="{loc:Tr SelectFolder}"/>
+                </Button>
+              </StackPanel>
+            </Grid>
           </Border>
         </StackPanel>
       </Border>
@@ -101,7 +131,8 @@
             <TextBlock Text="{loc:Tr EstimatedOutput}" FontSize="11"/>
             <TextBlock Text="{Binding EstimatedOutputName}"
                        FontWeight="SemiBold"
-                       TextTrimming="CharacterEllipsis"/>
+                       TextTrimming="CharacterEllipsis"
+                       ToolTip.Tip="{Binding EstimatedOutputName}"/>
           </StackPanel>
           <Button Grid.Column="1" Margin="12,0,8,0"
                   Theme="{StaticResource OutlinedButtonTheme}"

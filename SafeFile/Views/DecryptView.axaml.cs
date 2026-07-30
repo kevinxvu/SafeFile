@@ -62,15 +62,7 @@ public partial class DecryptView : UserControl
             .Select(item => item.TryGetLocalPath())
             .Any(IsAcceptedPath) == true;
         e.DragEffects = accepted ? DragDropEffects.Copy : DragDropEffects.None;
-        if (accepted)
-        {
-            DropZone.Background = FindBrush("AccentHoverBrush");
-            DropZone.BorderBrush = FindBrush("AccentBrush");
-        }
-        else
-        {
-            ResetDragState();
-        }
+        DropZone.Classes.Set("drag-active", accepted);
         e.Handled = true;
     }
 
@@ -84,12 +76,6 @@ public partial class DecryptView : UserControl
 
     private void ResetDragState()
     {
-        DropZone.ClearValue(Border.BackgroundProperty);
-        DropZone.ClearValue(Border.BorderBrushProperty);
+        DropZone.Classes.Set("drag-active", false);
     }
-
-    private Avalonia.Media.IBrush? FindBrush(string resourceKey) =>
-        DropZone.TryFindResource(resourceKey, out var resource)
-            ? resource as Avalonia.Media.IBrush
-            : null;
 }

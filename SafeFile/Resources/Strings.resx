@@ -35,6 +35,9 @@
   <data name="Folder" xml:space="preserve"><value>Folder</value></data>
   <data name="EnterPath" xml:space="preserve"><value>Enter a path</value></data>
   <data name="DropEncryptSource" xml:space="preserve"><value>Drop a file or folder here</value></data>
+  <data name="EncryptSelectionHint" xml:space="preserve"><value>Select a file or an entire folder to encrypt.</value></data>
+  <data name="EncryptDropHint" xml:space="preserve"><value>The selected source will be ready for encryption.</value></data>
+  <data name="SelectFile" xml:space="preserve"><value>Select file</value></data>
   <data name="Security" xml:space="preserve"><value>Security</value></data>
   <data name="Password" xml:space="preserve"><value>Password</value></data>
   <data name="ConfirmPassword" xml:space="preserve"><value>Confirm password</value></data>

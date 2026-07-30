@@ -189,6 +189,7 @@ public sealed partial class EncryptViewModel : ViewModelBase
 
     // ── Commands ──────────────────────────────────────────────────
     public IAsyncRelayCommand BrowseSourceCommand { get; }
+    public IAsyncRelayCommand BrowseSourceFolderCommand { get; }
     public IAsyncRelayCommand EncryptCommand { get; }
     public IRelayCommand ResetCommand { get; }
     public IRelayCommand OpenOutputFolderCommand { get; }
@@ -207,7 +208,8 @@ public sealed partial class EncryptViewModel : ViewModelBase
         _settings = _settingsService.Load();
         _encryptFileNames = false;
 
-        BrowseSourceCommand = new AsyncRelayCommand(BrowseAsync);
+        BrowseSourceCommand = new AsyncRelayCommand(BrowseFileAsync);
+        BrowseSourceFolderCommand = new AsyncRelayCommand(BrowseFolderAsync);
         EncryptCommand = new AsyncRelayCommand(EncryptAsync);
         ResetCommand = new RelayCommand(Reset);
         OpenOutputFolderCommand = new RelayCommand(OpenOutputFolder);
@@ -227,14 +229,26 @@ public sealed partial class EncryptViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsPasswordConfirmationRequired));
     }
 
-    private async Task BrowseAsync()
+    private async Task BrowseFileAsync()
     {
-        string? path = IsFileSource
-            ? await _filePicker.PickFileAsync(L("SelectSourceFile"))
-            : await _filePicker.PickFolderAsync(L("SelectSourceFolder"));
+        var path = await _filePicker.PickFileAsync(L("SelectSourceFile"));
 
         if (path is not null)
+        {
+            IsFileSource = true;
             SourcePath = path;
+        }
+    }
+
+    private async Task BrowseFolderAsync()
+    {
+        var path = await _filePicker.PickFolderAsync(L("SelectSourceFolder"));
+
+        if (path is not null)
+        {
+            IsFileSource = false;
+            SourcePath = path;
+        }
     }
 
     private async Task EncryptAsync()

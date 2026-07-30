@@ -1,6 +1,8 @@
 <div align="center">
 
-# 🔐 SafeFile
+<img src="SafeFile/Assets/logo.ico" alt="SafeFile logo" width="128">
+
+# SafeFile
 
 ### Private, authenticated file encryption — without sending your data anywhere.
 
@@ -43,6 +45,15 @@ does not upload them or require an internet connection.
 
 - **Authenticated encryption** with AES-256-GCM.
 - **Memory-hard password protection** with configurable Argon2id.
+- **High-throughput, multi-core processing:** encryption and decryption run
+  through parallel workers to take advantage of modern multi-core CPUs,
+  delivering fast performance for large files and archives.
+- **Memory-efficient streaming pipeline:** data is processed in bounded chunks
+  instead of loading an entire file into memory. This keeps RAM usage
+  predictable while preserving throughput, even with very large inputs.
+- **Cross-platform desktop support:** the .NET and Avalonia-based application
+  is designed to run on Windows, Linux, and macOS with a consistent interface
+  and the same vault format.
 - **File, ZIP-folder, and PerFile workflows**.
 - **Optional filename encryption** with authenticated name restoration.
 - **Batch decryption** for one file, multiple vaults, or entire folders.
@@ -219,7 +230,6 @@ SafeFile/
 Detailed Core documentation is intentionally kept out of this landing page:
 
 - **[Core technical and UI integration guide](SafeFile.Core/README.md)**
-- **[Implementation status](IMPLEMENTATION_TASKS.md)**
 
 ## Contributing
 

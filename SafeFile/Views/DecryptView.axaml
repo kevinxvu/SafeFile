@@ -5,9 +5,20 @@
              x:Class="SafeFile.Views.DecryptView"
              x:DataType="vm:DecryptViewModel"
              Foreground="{DynamicResource PrimaryTextBrush}">
+  <UserControl.Styles>
+    <Style Selector="Border.source-drop-zone">
+      <Setter Property="Background" Value="{DynamicResource SubtleSurfaceBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource StrongBorderBrush}"/>
+    </Style>
+    <Style Selector="Border.source-drop-zone.drag-active">
+      <Setter Property="Background" Value="{DynamicResource AccentHoverBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+    </Style>
+  </UserControl.Styles>
+
   <Grid RowDefinitions="*,Auto">
     <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
-      <StackPanel Margin="24" Spacing="16">
+      <StackPanel Margin="24,16,24,24" Spacing="16">
 
         <!-- Unified file/folder picker -->
         <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="16"
@@ -25,9 +36,8 @@
                          FontWeight="Medium"/>
             </Grid>
 
-            <Border x:Name="DropZone"
-                    Height="122" BorderBrush="{DynamicResource StrongBorderBrush}" BorderThickness="2"
-                    CornerRadius="6" Background="{DynamicResource SubtleSurfaceBrush}"
+            <Border x:Name="DropZone" Classes="source-drop-zone"
+                    Height="122" BorderThickness="2" CornerRadius="6"
                     DragDrop.AllowDrop="True"
                     DragDrop.DragEnter="OnDragEnter"
                     DragDrop.DragLeave="OnDragLeave"
@@ -282,7 +292,7 @@
                   BorderBrush="{DynamicResource StrongBorderBrush}" BorderThickness="1"
                   CornerRadius="8" Padding="10">
             <TabControl>
-              <TabItem Header="{loc:Tr FileDetails}">
+              <TabItem Header="{loc:Tr FileDetails}" FontSize="13">
                 <Grid Margin="8" MinHeight="245">
                   <TextBlock Text="{loc:Tr SelectVaultForDetails}"
                              Foreground="{DynamicResource SecondaryTextBrush}" TextWrapping="Wrap"
@@ -345,7 +355,7 @@
                 </Grid>
               </TabItem>
 
-              <TabItem Header="{loc:Tr Overview}">
+              <TabItem Header="{loc:Tr Overview}" FontSize="13">
                 <StackPanel Margin="8" MinHeight="245" Spacing="14">
                   <TextBlock Text="{loc:Tr BatchResult}" FontSize="14"
                              FontWeight="SemiBold"/>

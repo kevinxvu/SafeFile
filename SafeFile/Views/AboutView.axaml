@@ -6,18 +6,15 @@
              x:DataType="vm:AboutViewModel"
              Foreground="{DynamicResource PrimaryTextBrush}">
   <ScrollViewer VerticalScrollBarVisibility="Auto">
-    <StackPanel Margin="24" Spacing="16" MaxWidth="1100"
+    <StackPanel Margin="24,16,24,24" Spacing="16"
                 HorizontalAlignment="Stretch">
 
       <!-- Product identity -->
       <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="10" Padding="24">
         <Grid ColumnDefinitions="Auto,20,*,Auto">
-          <Border Width="72" Height="72" CornerRadius="16"
-                  Background="{DynamicResource AccentStrongBrush}">
-            <PathIcon Data="{StaticResource LockIcon}" Width="38" Height="38"
-                      Foreground="{DynamicResource OnAccentBrush}" HorizontalAlignment="Center"
-                      VerticalAlignment="Center"/>
-          </Border>
+          <Image Source="/Assets/logo.ico" Width="72" Height="72"
+                 Stretch="Uniform" HorizontalAlignment="Center"
+                 VerticalAlignment="Center"/>
           <StackPanel Grid.Column="2" VerticalAlignment="Center"
                       HorizontalAlignment="Left" Spacing="4">
             <StackPanel Orientation="Horizontal" Spacing="10"

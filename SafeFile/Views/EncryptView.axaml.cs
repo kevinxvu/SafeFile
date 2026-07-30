@@ -1,3 +1,5 @@
+using System.IO;
+using System.Linq;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Platform.Storage;
@@ -31,7 +33,7 @@ public partial class EncryptView : UserControl
     {
         ResetDragState(sender as Border);
 
-        var item = e.DataTransfer.TryGetFile();
+        var item = e.DataTransfer.TryGetFiles()?.FirstOrDefault();
         var localPath = item?.TryGetLocalPath();
         if (item is null || string.IsNullOrWhiteSpace(localPath))
         {
@@ -41,7 +43,7 @@ public partial class EncryptView : UserControl
 
         if (DataContext is EncryptViewModel viewModel)
         {
-            viewModel.IsFileSource = item is IStorageFile;
+            viewModel.IsFileSource = File.Exists(localPath);
             viewModel.SourcePath = localPath;
             viewModel.StatusMessage = "";
             viewModel.HasError = false;
@@ -52,21 +54,12 @@ public partial class EncryptView : UserControl
 
     private static void UpdateDragState(Border? border, DragEventArgs e)
     {
-        var acceptsDrop = e.DataTransfer.TryGetFile() is IStorageFile or IStorageFolder;
+        var acceptsDrop = e.DataTransfer.TryGetFiles()?
+            .Any(item => !string.IsNullOrWhiteSpace(item.TryGetLocalPath())) == true;
         e.DragEffects = acceptsDrop ? DragDropEffects.Copy : DragDropEffects.None;
 
         if (border is not null)
-        {
-            if (acceptsDrop)
-            {
-                border.Background = FindBrush(border, "AccentHoverBrush");
-                border.BorderBrush = FindBrush(border, "AccentBrush");
-            }
-            else
-            {
-                ResetDragState(border);
-            }
-        }
+            border.Classes.Set("drag-active", acceptsDrop);
 
         e.Handled = true;
     }
@@ -76,14 +69,6 @@ public partial class EncryptView : UserControl
         if (border is null)
             return;
 
-        border.ClearValue(Border.BackgroundProperty);
-        border.ClearValue(Border.BorderBrushProperty);
+        border.Classes.Set("drag-active", false);
     }
-
-    private static Avalonia.Media.IBrush? FindBrush(
-        Control control,
-        string resourceKey) =>
-        control.TryFindResource(resourceKey, out var resource)
-            ? resource as Avalonia.Media.IBrush
-            : null;
 }
