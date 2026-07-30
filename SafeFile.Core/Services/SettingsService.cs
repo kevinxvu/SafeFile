@@ -7,6 +7,8 @@ namespace SafeFile.Core.Services;
 public sealed class SettingsService
 {
     private const string SettingsFileName = "settings.json";
+    private const string EncryptedOutputFolderName = "Encrypted";
+    private const string DecryptedOutputFolderName = "Decrypted";
     private readonly string _settingsDirectory;
     private readonly string _settingsPath;
     private AppSettings _cachedSettings;
@@ -108,12 +110,54 @@ public sealed class SettingsService
         if (settings.MinPasswordLength > 128)
             settings.MinPasswordLength = 128;
 
-        if (string.IsNullOrWhiteSpace(settings.DefaultOutputPath))
-            settings.DefaultOutputPath = AppSettings.GetDefaults().DefaultOutputPath;
+        if (IsLegacyDefaultOutputPath(settings.DefaultOutputPath) ||
+            IsLegacyDefaultOutputPath(settings.DefaultOutputPath, "Encrypt"))
+            settings.DefaultOutputPath = GetDefaultOutputPath(EncryptedOutputFolderName);
+        else if (string.IsNullOrWhiteSpace(settings.DefaultOutputPath))
+            settings.DefaultOutputPath = GetDefaultOutputPath(EncryptedOutputFolderName);
+
+        if (IsLegacyDefaultOutputPath(settings.DefaultDecryptOutputPath, "Decrypt"))
+            settings.DefaultDecryptOutputPath = GetDefaultOutputPath(DecryptedOutputFolderName);
+        else if (string.IsNullOrWhiteSpace(settings.DefaultDecryptOutputPath))
+            settings.DefaultDecryptOutputPath = GetDefaultOutputPath(DecryptedOutputFolderName);
 
         var validPriorities = new[] { "Low", "Normal", "High" };
         if (!validPriorities.Contains(settings.CpuPriority))
             settings.CpuPriority = "Normal";
+    }
+
+    private static bool IsLegacyDefaultOutputPath(string path, string? legacySubfolder = null)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return false;
+
+        var legacyPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+            "SafeFile");
+        if (!string.IsNullOrWhiteSpace(legacySubfolder))
+            legacyPath = Path.Combine(legacyPath, legacySubfolder);
+
+        try
+        {
+            return string.Equals(
+                Path.TrimEndingDirectorySeparator(Path.GetFullPath(path)),
+                Path.TrimEndingDirectorySeparator(Path.GetFullPath(legacyPath)),
+                OperatingSystem.IsWindows()
+                    ? StringComparison.OrdinalIgnoreCase
+                    : StringComparison.Ordinal);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static string GetDefaultOutputPath(string outputFolderName)
+    {
+        return Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+            "SafeFile",
+            outputFolderName);
     }
 
     private static string GetAppDataPath()

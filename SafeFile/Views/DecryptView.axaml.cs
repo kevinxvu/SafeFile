@@ -3,6 +3,9 @@ using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using SafeFile.ViewModels;
+using System;
+using System.IO;
+using System.Linq;
 
 namespace SafeFile.Views;
 
@@ -22,24 +25,23 @@ public partial class DecryptView : UserControl
     private void OnDragOver(object? sender, DragEventArgs e) => UpdateDragState(e);
     private void OnDragLeave(object? sender, DragEventArgs e) => ResetDragState();
 
-    private void OnDrop(object? sender, DragEventArgs e)
+    private async void OnDrop(object? sender, DragEventArgs e)
     {
         ResetDragState();
-        var item = e.DataTransfer.TryGetFile();
-        var path = item?.TryGetLocalPath();
-        var accepted = item is IStorageFolder ||
-                       item is IStorageFile && string.Equals(
-                           System.IO.Path.GetExtension(path), ".safe",
-                           System.StringComparison.OrdinalIgnoreCase);
+        var paths = e.DataTransfer.TryGetFiles()?
+            .Select(item => item.TryGetLocalPath())
+            .Where(path => IsAcceptedPath(path))
+            .Cast<string>()
+            .ToArray() ?? [];
 
-        if (!accepted || string.IsNullOrWhiteSpace(path))
+        if (paths.Length == 0)
         {
             e.DragEffects = DragDropEffects.None;
             return;
         }
 
         if (DataContext is DecryptViewModel viewModel)
-            viewModel.SelectDroppedSource(path, item is IStorageFolder);
+            await viewModel.AddDroppedSourcesAsync(paths);
 
         e.DragEffects = DragDropEffects.Copy;
         e.Handled = true;
@@ -47,17 +49,22 @@ public partial class DecryptView : UserControl
 
     private void UpdateDragState(DragEventArgs e)
     {
-        var item = e.DataTransfer.TryGetFile();
-        var path = item?.TryGetLocalPath();
-        var accepted = item is IStorageFolder ||
-                       item is IStorageFile && string.Equals(
-                           System.IO.Path.GetExtension(path), ".safe",
-                           System.StringComparison.OrdinalIgnoreCase);
+        var accepted = e.DataTransfer.TryGetFiles()?
+            .Select(item => item.TryGetLocalPath())
+            .Any(IsAcceptedPath) == true;
         e.DragEffects = accepted ? DragDropEffects.Copy : DragDropEffects.None;
         DropZone.Background = accepted ? ActiveBackground : DefaultBackground;
         DropZone.BorderBrush = accepted ? ActiveBorder : DefaultBorder;
         e.Handled = true;
     }
+
+    private static bool IsAcceptedPath(string? path) =>
+        !string.IsNullOrWhiteSpace(path) &&
+        (Directory.Exists(path) ||
+         string.Equals(
+             Path.GetExtension(path),
+             ".safe",
+             StringComparison.OrdinalIgnoreCase));
 
     private void ResetDragState()
     {

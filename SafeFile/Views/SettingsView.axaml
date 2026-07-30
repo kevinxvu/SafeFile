@@ -125,18 +125,34 @@
         <StackPanel Spacing="14">
           <StackPanel Spacing="3">
             <TextBlock Text="Đầu ra" FontSize="16" FontWeight="SemiBold"/>
-            <TextBlock Text="Chọn vị trí lưu mặc định cho dữ liệu đã mã hoá."
+            <TextBlock Text="Chọn riêng vị trí lưu dữ liệu mã hoá và dữ liệu giải mã."
                        FontSize="12" Foreground="#6B7280"/>
           </StackPanel>
 
           <StackPanel Spacing="7">
-            <TextBlock Text="Thư mục đầu ra mặc định" FontWeight="Medium"/>
+            <TextBlock Text="Thư mục lưu dữ liệu mã hoá" FontWeight="Medium"/>
             <Grid ColumnDefinitions="*,Auto">
               <TextBox Grid.Column="0" Text="{Binding DefaultOutputPath}"
-                       PlaceholderText="Chọn thư mục đầu ra"/>
+                       PlaceholderText="Chọn thư mục lưu dữ liệu mã hoá"/>
               <Button Grid.Column="1" Margin="8,0,0,0"
                       Theme="{StaticResource OutlinedButtonTheme}"
                       Command="{Binding BrowseOutputPathCommand}">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <PathIcon Data="{StaticResource FolderIcon}" Width="15" Height="15"/>
+                  <TextBlock Text="Duyệt..." VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+            </Grid>
+          </StackPanel>
+
+          <StackPanel Spacing="7">
+            <TextBlock Text="Thư mục lưu dữ liệu giải mã" FontWeight="Medium"/>
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBox Grid.Column="0" Text="{Binding DefaultDecryptOutputPath}"
+                       PlaceholderText="Chọn thư mục lưu dữ liệu giải mã"/>
+              <Button Grid.Column="1" Margin="8,0,0,0"
+                      Theme="{StaticResource OutlinedButtonTheme}"
+                      Command="{Binding BrowseDecryptOutputPathCommand}">
                 <StackPanel Orientation="Horizontal" Spacing="6">
                   <PathIcon Data="{StaticResource FolderIcon}" Width="15" Height="15"/>
                   <TextBlock Text="Duyệt..." VerticalAlignment="Center"/>

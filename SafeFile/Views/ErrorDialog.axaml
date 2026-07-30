@@ -1,0 +1,33 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="SafeFile.Views.ErrorDialog"
+        Width="440"
+        MinHeight="190"
+        MaxWidth="620"
+        SizeToContent="Height"
+        CanResize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        Title="Đã xảy ra lỗi">
+  <Grid Margin="24" RowDefinitions="Auto,*,Auto">
+    <Grid ColumnDefinitions="Auto,*">
+      <Border Width="38" Height="38" CornerRadius="19" Background="#FEE2E2">
+        <TextBlock Text="!" Foreground="#DC2626" FontSize="22"
+                   FontWeight="Bold" HorizontalAlignment="Center"
+                   VerticalAlignment="Center"/>
+      </Border>
+      <StackPanel Grid.Column="1" Margin="14,0,0,0" Spacing="8">
+        <TextBlock x:Name="DialogTitle" FontSize="18" FontWeight="SemiBold"/>
+        <TextBlock x:Name="DialogMessage" TextWrapping="Wrap"
+                   Foreground="#4B5563"/>
+      </StackPanel>
+    </Grid>
+
+    <Button Grid.Row="2" Margin="0,24,0,0"
+            HorizontalAlignment="Right" MinWidth="88"
+            Theme="{StaticResource PrimaryButtonTheme}"
+            Click="CloseDialog">
+      <TextBlock Text="Đóng"/>
+    </Button>
+  </Grid>
+</Window>

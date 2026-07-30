@@ -13,6 +13,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
 {
     private readonly SettingsService _settingsService;
     private readonly IFilePickerService _filePicker;
+    private readonly IErrorDialogService _errorDialog;
 
     // ── Performance ───────────────────────────────────────────────────────────
     [ObservableProperty] private int _defaultChunkSizeMb;
@@ -35,6 +36,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
 
     // ── Output ────────────────────────────────────────────────────────────────
     [ObservableProperty] private string _defaultOutputPath = "";
+    [ObservableProperty] private string _defaultDecryptOutputPath = "";
 
     // ── UI state ──────────────────────────────────────────────────────────────
     [ObservableProperty]
@@ -60,16 +62,22 @@ public sealed partial class SettingsViewModel : ViewModelBase
 
     // ── Commands ──────────────────────────────────────────────────────────────
     public IAsyncRelayCommand BrowseOutputPathCommand { get; }
-    public IRelayCommand SaveCommand { get; }
+    public IAsyncRelayCommand BrowseDecryptOutputPathCommand { get; }
+    public IAsyncRelayCommand SaveCommand { get; }
     public IRelayCommand RestoreDefaultsCommand { get; }
 
-    public SettingsViewModel(SettingsService settingsService, IFilePickerService filePicker)
+    public SettingsViewModel(
+        SettingsService settingsService,
+        IFilePickerService filePicker,
+        IErrorDialogService errorDialog)
     {
         _settingsService = settingsService;
         _filePicker = filePicker;
+        _errorDialog = errorDialog;
 
         BrowseOutputPathCommand = new AsyncRelayCommand(BrowseOutputPathAsync);
-        SaveCommand             = new RelayCommand(Save);
+        BrowseDecryptOutputPathCommand = new AsyncRelayCommand(BrowseDecryptOutputPathAsync);
+        SaveCommand             = new AsyncRelayCommand(SaveAsync);
         RestoreDefaultsCommand  = new RelayCommand(RestoreDefaults);
 
         LoadFromService();
@@ -89,11 +97,12 @@ public sealed partial class SettingsViewModel : ViewModelBase
         MinPasswordLength     = s.MinPasswordLength;
         ConfirmPasswordToggle = s.ConfirmPasswordToggle;
         DefaultOutputPath     = s.DefaultOutputPath;
+        DefaultDecryptOutputPath = s.DefaultDecryptOutputPath;
         StatusMessage         = "";
         HasError              = false;
     }
 
-    private void Save()
+    private async Task SaveAsync()
     {
         try
         {
@@ -108,6 +117,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
                 MinPasswordLength     = MinPasswordLength,
                 ConfirmPasswordToggle = ConfirmPasswordToggle,
                 DefaultOutputPath     = DefaultOutputPath,
+                DefaultDecryptOutputPath = DefaultDecryptOutputPath,
             };
             _settingsService.Save(s);
             StatusMessage = "✓ Đã lưu cài đặt thành công.";
@@ -115,8 +125,9 @@ public sealed partial class SettingsViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Lỗi: {ex.Message}";
-            HasError = true;
+            StatusMessage = "";
+            HasError = false;
+            await _errorDialog.ShowErrorAsync(ex.Message, "Không thể lưu thiết lập");
         }
     }
 
@@ -130,8 +141,15 @@ public sealed partial class SettingsViewModel : ViewModelBase
 
     private async Task BrowseOutputPathAsync()
     {
-        var path = await _filePicker.PickFolderAsync("Chọn thư mục đầu ra mặc định");
+        var path = await _filePicker.PickFolderAsync("Chọn thư mục lưu dữ liệu mã hoá");
         if (path is not null)
             DefaultOutputPath = path;
+    }
+
+    private async Task BrowseDecryptOutputPathAsync()
+    {
+        var path = await _filePicker.PickFolderAsync("Chọn thư mục lưu dữ liệu giải mã");
+        if (path is not null)
+            DefaultDecryptOutputPath = path;
     }
 }

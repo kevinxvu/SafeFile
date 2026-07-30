@@ -13,6 +13,7 @@ public sealed class AppSettings
     public int Argon2Parallelism { get; set; } = 2;
 
     public string DefaultOutputPath { get; set; } = string.Empty;
+    public string DefaultDecryptOutputPath { get; set; } = string.Empty;
     public bool ConfirmPasswordToggle { get; set; } = true;
     public int MinPasswordLength { get; set; } = 8;
 
@@ -40,16 +41,26 @@ public sealed class AppSettings
             Argon2MemorySizeKb = 65_536,
             Argon2Iterations = 4,
             Argon2Parallelism = 2,
-            DefaultOutputPath = GetDefaultOutputPath(),
+            DefaultOutputPath = GetDefaultEncryptOutputPath(),
+            DefaultDecryptOutputPath = GetDefaultDecryptOutputPath(),
             ConfirmPasswordToggle = true,
             MinPasswordLength = 8
         };
     }
 
-    private static string GetDefaultOutputPath()
+    private static string GetDefaultEncryptOutputPath()
     {
         return Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-            "SafeFile");
+            "SafeFile",
+            "Encrypted");
+    }
+
+    private static string GetDefaultDecryptOutputPath()
+    {
+        return Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+            "SafeFile",
+            "Decrypted");
     }
 }

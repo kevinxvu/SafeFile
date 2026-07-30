@@ -7,6 +7,9 @@ namespace SafeFile.Services;
 public interface IFilePickerService
 {
     Task<string?> PickFileAsync(string title, IReadOnlyList<FilePickerFileType>? filters = null);
+    Task<IReadOnlyList<string>> PickFilesAsync(
+        string title,
+        IReadOnlyList<FilePickerFileType>? filters = null);
     Task<string?> PickFolderAsync(string title);
     void OpenFolder(string path);
 }

@@ -804,6 +804,20 @@ public sealed class FileEncryptor
             cancellationToken,
             overwriteExisting);
 
+    public Task<string> DecryptPerFileVaultAsync(
+        string sourcePath,
+        string destinationPath,
+        byte[] passwordBytes,
+        CancellationToken cancellationToken = default,
+        bool overwriteExisting = false) =>
+        DecryptFileCoreAsync(
+            sourcePath,
+            destinationPath,
+            passwordBytes,
+            VaultMode.PerFile,
+            cancellationToken,
+            overwriteExisting);
+
     private async Task<string> DecryptFileCoreAsync(
         string sourcePath,
         string destinationPath,

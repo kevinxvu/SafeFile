@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
@@ -25,381 +27,304 @@ public sealed partial class DecryptViewModel : ViewModelBase
     };
 
     private readonly IFilePickerService _filePicker;
+    private readonly IErrorDialogService _errorDialog;
     private readonly AppSettings _settings;
+    private readonly HashSet<string> _sourcePaths = new(
+        OperatingSystem.IsWindows()
+            ? StringComparer.OrdinalIgnoreCase
+            : StringComparer.Ordinal);
     private CancellationTokenSource? _activeCts;
-    private VaultHeader? _header;
+
+    public ObservableCollection<DecryptQueueItem> Items { get; } = [];
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(SourceName))]
-    [NotifyPropertyChangedFor(nameof(HasSource))]
-    private string _sourcePath = "";
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasSource))]
-    private bool _isFolderSource;
-
-    public string SourceName => string.IsNullOrWhiteSpace(SourcePath)
-        ? "Chưa chọn file"
-        : Path.GetFileName(Path.TrimEndingDirectorySeparator(SourcePath));
-
-    public bool HasSource => !string.IsNullOrWhiteSpace(SourcePath);
+    [NotifyPropertyChangedFor(nameof(HasSelectedItem))]
+    [NotifyPropertyChangedFor(nameof(DetailVaultName))]
+    [NotifyPropertyChangedFor(nameof(DetailOriginalFileName))]
+    [NotifyPropertyChangedFor(nameof(DetailFormat))]
+    [NotifyPropertyChangedFor(nameof(DetailMode))]
+    [NotifyPropertyChangedFor(nameof(DetailChunkSize))]
+    [NotifyPropertyChangedFor(nameof(DetailKdf))]
+    [NotifyPropertyChangedFor(nameof(DetailAlgorithm))]
+    [NotifyPropertyChangedFor(nameof(DetailVaultSize))]
+    [NotifyPropertyChangedFor(nameof(DetailModifiedTime))]
+    [NotifyPropertyChangedFor(nameof(DetailStatus))]
+    [NotifyPropertyChangedFor(nameof(DetailError))]
+    [NotifyPropertyChangedFor(nameof(HasDetailError))]
+    private DecryptQueueItem? _selectedItem;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(PasswordChar))]
     private string _password = "";
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsPasswordCheckSuccess))]
-    private string _passwordCheckMessage = "";
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsPasswordCheckSuccess))]
-    private bool _isPasswordCheckError;
-
-    public bool IsPasswordCheckSuccess =>
-        !IsPasswordCheckError && !string.IsNullOrWhiteSpace(PasswordCheckMessage);
-
-    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(PasswordChar))]
     private bool _showPassword;
 
-    public char PasswordChar => ShowPassword ? '\0' : '•';
-
-    [ObservableProperty] private string _outputPath = "";
     [ObservableProperty] private bool _overwriteExisting;
     [ObservableProperty] private bool _openFolderWhenDone = true;
-
-    [ObservableProperty] private string _formatText = "—";
-    [ObservableProperty] private string _modeText = "—";
-    [ObservableProperty] private string _chunkSizeText = "—";
-    [ObservableProperty] private string _kdfText = "—";
-    [ObservableProperty] private string _algorithmText = "AES-256-GCM";
-    [ObservableProperty] private string _analysisMessage = "Chưa chọn file để phân tích";
-    [ObservableProperty] private bool _isVaultValid;
-    [ObservableProperty] private bool _hasVerifiedMetadata;
-    [ObservableProperty] private string _originalFileNameText = "🔒 Đã mã hoá";
-    [ObservableProperty] private string _vaultSizeText = "—";
-    [ObservableProperty] private string _modifiedTimeText = "—";
-    [ObservableProperty] private string _kdfMemoryText = "—";
-    [ObservableProperty] private string _kdfParallelismText = "—";
-
     [ObservableProperty] private bool _isDecrypting;
     [ObservableProperty] private bool _isStatusBarVisible;
     [ObservableProperty] private string _statusAction = "";
     [ObservableProperty] private string _statusCurrentFile = "";
     [ObservableProperty] private double _statusProgress;
     [ObservableProperty] private string _statusDetails = "";
-    [ObservableProperty] private string _statusMessage = "";
-    [ObservableProperty] private bool _hasError;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasStatusMessage))]
+    private string _statusMessage = "";
+    [ObservableProperty] private string _passwordCheckMessage = "";
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(PasswordCheckForeground))]
+    private bool _isPasswordCheckError;
+
+    public bool HasItems => Items.Count > 0;
+    public bool HasSelectedItem => SelectedItem is not null;
+    public char PasswordChar => ShowPassword ? '\0' : '•';
+    public string OutputPath => _settings.DefaultDecryptOutputPath;
+    public string PasswordCheckForeground =>
+        IsPasswordCheckError ? "#DC2626" : "#16A34A";
+    public bool HasStatusMessage => !string.IsNullOrWhiteSpace(StatusMessage);
+    public string SelectionSummary =>
+        Items.Count == 0
+            ? "Chưa chọn dữ liệu"
+            : $"{Items.Count:N0} vault • {FormatBytes(Items.Sum(item => TryGetLength(item.SourcePath)))}";
+    public string ResultSummary
+    {
+        get
+        {
+            var success = Items.Count(item => item.Status == "Thành công");
+            var failed = Items.Count(item =>
+                item.Status is "Thất bại" or "Không hợp lệ" or "Xác thực thất bại");
+            var pending = Items.Count - success - failed;
+            return $"Thành công: {success:N0}  •  Thất bại: {failed:N0}  •  Còn lại: {pending:N0}";
+        }
+    }
+
+    public string DetailVaultName => SelectedItem?.VaultName ?? "";
+    public string DetailOriginalFileName => SelectedItem?.OriginalFileName ?? "";
+    public string DetailFormat => SelectedItem?.Header is { } header
+        ? $"SafeFile v{header.Version}"
+        : "";
+    public string DetailMode => SelectedItem?.Header?.Mode switch
+    {
+        VaultMode.File => "File",
+        VaultMode.Zip => "Thư mục ZIP",
+        VaultMode.PerFile => "Per-file",
+        { } mode => mode.ToString(),
+        null => ""
+    };
+    public string DetailChunkSize => SelectedItem?.Header is { } header
+        ? FormatBytes(header.ChunkSize)
+        : "";
+    public string DetailKdf => SelectedItem?.Header is { } header
+        ? $"Argon2id • {header.KdfParameters.Iterations:N0} vòng • " +
+          $"{header.KdfParameters.MemorySizeKb / 1024:N0} MB"
+        : "";
+    public string DetailAlgorithm => SelectedItem is null ? "" : "AES-256-GCM";
+    public string DetailVaultSize => SelectedItem?.VaultSizeText ?? "";
+    public string DetailModifiedTime => SelectedItem?.LastModifiedUtc
+        .ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "";
+    public string DetailStatus => SelectedItem?.Status ?? "";
+    public string DetailError => SelectedItem?.ErrorMessage ?? "";
+    public bool HasDetailError => !string.IsNullOrWhiteSpace(DetailError);
 
     public IAsyncRelayCommand BrowseSourceCommand { get; }
     public IAsyncRelayCommand BrowseSourceFolderCommand { get; }
-    public IAsyncRelayCommand BrowseOutputCommand { get; }
     public IAsyncRelayCommand CheckPasswordCommand { get; }
     public IAsyncRelayCommand DecryptCommand { get; }
+    public IRelayCommand ClearItemsCommand { get; }
+    public IRelayCommand ResetCommand { get; }
     public IRelayCommand TogglePasswordVisibilityCommand { get; }
     public IRelayCommand OpenOutputFolderCommand { get; }
     public IRelayCommand CloseStatusCommand { get; }
 
-    public DecryptViewModel(IFilePickerService filePicker)
+    public DecryptViewModel(
+        IFilePickerService filePicker,
+        IErrorDialogService errorDialog)
     {
         _filePicker = filePicker;
+        _errorDialog = errorDialog;
         _settings = new SettingsService().Load();
-        _outputPath = GetDefaultOutputPath();
 
         BrowseSourceCommand = new AsyncRelayCommand(BrowseSourceAsync);
         BrowseSourceFolderCommand = new AsyncRelayCommand(BrowseSourceFolderAsync);
-        BrowseOutputCommand = new AsyncRelayCommand(BrowseOutputAsync);
         CheckPasswordCommand = new AsyncRelayCommand(CheckPasswordAsync);
         DecryptCommand = new AsyncRelayCommand(DecryptAsync);
-        TogglePasswordVisibilityCommand = new RelayCommand(() => ShowPassword = !ShowPassword);
+        ClearItemsCommand = new RelayCommand(ClearItems);
+        ResetCommand = new RelayCommand(Reset);
+        TogglePasswordVisibilityCommand = new RelayCommand(
+            () => ShowPassword = !ShowPassword);
         OpenOutputFolderCommand = new RelayCommand(OpenOutputFolder);
         CloseStatusCommand = new RelayCommand(CloseOrCancelStatus);
-    }
-
-    partial void OnSourcePathChanged(string value)
-    {
-        AnalyzeSource();
-        PasswordCheckMessage = "";
-        StatusMessage = "";
-        HasError = false;
     }
 
     partial void OnPasswordChanged(string value)
     {
         PasswordCheckMessage = "";
         IsPasswordCheckError = false;
-        HasVerifiedMetadata = false;
-        OriginalFileNameText = "🔒 Chưa xác thực";
-        VaultSizeText = ModifiedTimeText = KdfMemoryText = KdfParallelismText = "—";
+        foreach (var item in Items)
+            item.ResetAuthentication();
+        RefreshSelectionDetails();
+        NotifySummaries();
     }
 
-    public void SelectDroppedSource(string path, bool isFolder)
+    public async Task AddDroppedSourcesAsync(IEnumerable<string> paths)
     {
-        IsFolderSource = isFolder;
-        SourcePath = path;
+        try
+        {
+            AddSources(paths);
+        }
+        catch (Exception ex)
+        {
+            await _errorDialog.ShowErrorAsync(
+                ex.Message, "Không thể thêm dữ liệu giải mã");
+        }
     }
 
     private async Task BrowseSourceAsync()
     {
-        var path = await _filePicker.PickFileAsync("Chọn file SafeFile", [SafeFileType]);
-        if (path is null)
-            return;
-
-        IsFolderSource = false;
-        SourcePath = path;
+        var paths = await _filePicker.PickFilesAsync(
+            "Chọn một hoặc nhiều file SafeFile", [SafeFileType]);
+        await AddDroppedSourcesAsync(paths);
     }
 
     private async Task BrowseSourceFolderAsync()
     {
-        var path = await _filePicker.PickFolderAsync("Chọn thư mục chứa các file .safe");
-        if (path is null)
-            return;
-
-        IsFolderSource = true;
-        SourcePath = path;
-    }
-
-    private async Task BrowseOutputAsync()
-    {
-        var path = await _filePicker.PickFolderAsync("Chọn thư mục đích");
+        var path = await _filePicker.PickFolderAsync(
+            "Chọn thư mục chứa các file .safe");
         if (path is not null)
-            OutputPath = path;
+            await AddDroppedSourcesAsync([path]);
     }
 
-    private void AnalyzeSource()
+    private void AddSources(IEnumerable<string> paths)
     {
-        _header = null;
-        IsVaultValid = false;
-        HasVerifiedMetadata = false;
-        OriginalFileNameText = "🔒 Chưa xác thực";
-        VaultSizeText = ModifiedTimeText = KdfMemoryText = KdfParallelismText = "—";
-        FormatText = ModeText = ChunkSizeText = KdfText = "—";
-        AlgorithmText = "AES-256-GCM";
-
-        if (string.IsNullOrWhiteSpace(SourcePath))
+        var hadExistingItems = Items.Count > 0;
+        var foundVault = false;
+        foreach (var inputPath in paths.Where(path => !string.IsNullOrWhiteSpace(path)))
         {
-            AnalysisMessage = "Chưa chọn file để phân tích";
-            return;
-        }
-
-        if (IsFolderSource)
-        {
-            if (!Directory.Exists(SourcePath))
+            var fullPath = Path.GetFullPath(inputPath);
+            if (Directory.Exists(fullPath))
             {
-                AnalysisMessage = "Không tìm thấy thư mục đã chọn";
-                return;
+                foreach (var file in Directory.EnumerateFiles(
+                             fullPath, "*.safe", SearchOption.AllDirectories))
+                {
+                    foundVault = true;
+                    AddVault(
+                        file,
+                        fullPath,
+                        GetRelativeDirectory(fullPath, file));
+                }
             }
-
-            var count = Directory.EnumerateFiles(SourcePath, "*.safe", SearchOption.AllDirectories).Count();
-            IsVaultValid = count > 0;
-            FormatText = "SafeFile folder";
-            ModeText = "Per-file";
-            AnalysisMessage = count > 0
-                ? $"Sẵn sàng • {count:N0} file .safe"
-                : "Thư mục không chứa file .safe";
-            return;
+            else if (File.Exists(fullPath) &&
+                     string.Equals(
+                         Path.GetExtension(fullPath),
+                         ".safe",
+                         StringComparison.OrdinalIgnoreCase))
+            {
+                foundVault = true;
+                AddVault(
+                    fullPath,
+                    Path.GetDirectoryName(fullPath) ?? "",
+                    "");
+            }
         }
 
+        if (!foundVault && !hadExistingItems)
+            throw new InvalidDataException(
+                "Không tìm thấy file .safe trong dữ liệu đã chọn.");
+
+        SelectedItem ??= Items.FirstOrDefault();
+        PasswordCheckMessage = "";
+        NotifySummaries();
+    }
+
+    private void AddVault(
+        string sourcePath,
+        string sourceRoot,
+        string relativeDirectory)
+    {
+        sourcePath = Path.GetFullPath(sourcePath);
+        if (!_sourcePaths.Add(sourcePath))
+            return;
+
+        VaultHeader? header = null;
+        var initialStatus = "Sẵn sàng";
+        var initialError = "";
         try
         {
-            using var stream = File.Open(SourcePath, FileMode.Open, FileAccess.Read, FileShare.Read);
-            _header = VaultHeader.ReadFrom(stream);
-            IsVaultValid = true;
-            FormatText = $"v{_header.Version} (AES-256)";
-            ModeText = _header.Mode switch
-            {
-                VaultMode.File => "File",
-                VaultMode.Zip => "Thư mục ZIP",
-                VaultMode.PerFile => "Per-file",
-                _ => _header.Mode.ToString()
-            };
-            ChunkSizeText = FormatBytes(_header.ChunkSize);
-            KdfText = $"Argon2id • {_header.KdfParameters.Iterations:N0} vòng";
-            AnalysisMessage = _header.EncryptFileNames
-                ? "Hợp lệ • tên gốc sẽ được khôi phục"
-                : "File vault hợp lệ";
+            using var stream = File.Open(
+                sourcePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            header = VaultHeader.ReadFrom(stream);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex)
         {
-            AnalysisMessage = $"Không thể đọc file: {ex.Message}";
+            initialStatus = "Không hợp lệ";
+            initialError = ex.Message;
         }
+
+        var fileInfo = new FileInfo(sourcePath);
+        Items.Add(new DecryptQueueItem(
+            sourcePath,
+            sourceRoot,
+            relativeDirectory,
+            FormatBytes(fileInfo.Length),
+            fileInfo.LastWriteTimeUtc,
+            header,
+            initialStatus,
+            initialError,
+            RemoveItem));
     }
 
     private async Task CheckPasswordAsync()
     {
-        if (!ValidateInputs(requireOutput: false))
+        if (!ValidateSelectionAndPassword(out var validationError))
         {
-            PasswordCheckMessage = StatusMessage;
+            PasswordCheckMessage = validationError;
             IsPasswordCheckError = true;
-            StatusMessage = "";
             return;
         }
 
-        if (IsFolderSource)
-        {
-            PasswordCheckMessage = "Mật khẩu sẽ được kiểm tra khi giải mã thư mục.";
-            IsPasswordCheckError = false;
-            return;
-        }
-
-        byte[]? passwordBytes = null;
-        try
-        {
-            PasswordCheckMessage = "Đang kiểm tra...";
-            IsPasswordCheckError = false;
-            passwordBytes = Encoding.UTF8.GetBytes(Password);
-            var metadata = await new FileEncryptor(
-                consumerThreads: _settings.MaxThreads,
-                settings: _settings).ReadVaultMetadataAsync(SourcePath, passwordBytes);
-
-            OriginalFileNameText = metadata.OriginalFileName;
-            VaultSizeText = FormatBytes(metadata.VaultSizeBytes);
-            ModifiedTimeText = metadata.LastModifiedUtc.ToLocalTime()
-                .ToString("dd/MM/yyyy HH:mm");
-            FormatText = $"v{metadata.Version} (AES-256)";
-            ModeText = metadata.Mode switch
-            {
-                VaultMode.File => "File",
-                VaultMode.Zip => "Thư mục ZIP",
-                VaultMode.PerFile => "Per-file",
-                _ => metadata.Mode.ToString()
-            };
-            ChunkSizeText = FormatBytes(metadata.ChunkSize);
-            KdfText = $"Argon2id • {metadata.KdfParameters.Iterations:N0} vòng";
-            KdfMemoryText = FormatBytes(metadata.KdfParameters.MemorySizeKb * 1024L);
-            KdfParallelismText = metadata.KdfParameters.Parallelism.ToString("N0");
-            AlgorithmText = metadata.EncryptionAlgorithm;
-            HasVerifiedMetadata = true;
-            AnalysisMessage = "Đã xác thực và đọc metadata thành công";
-            PasswordCheckMessage = "✓ Mật khẩu chính xác";
-            IsPasswordCheckError = false;
-            StatusMessage = "";
-            HasError = false;
-        }
-        catch (Exception ex) when (ex is InvalidOperationException or CryptographicException)
-        {
-            HasVerifiedMetadata = false;
-            OriginalFileNameText = "🔒 Không thể giải mã";
-            PasswordCheckMessage = "Mật khẩu không đúng hoặc file đã bị thay đổi";
-            IsPasswordCheckError = true;
-            StatusMessage = "";
-            HasError = true;
-        }
-        catch (Exception ex)
-        {
-            PasswordCheckMessage = $"Không thể kiểm tra: {ex.Message}";
-            IsPasswordCheckError = true;
-            StatusMessage = "";
-            HasError = true;
-        }
-        finally
-        {
-            if (passwordBytes is not null) CryptographicOperations.ZeroMemory(passwordBytes);
-        }
-    }
-
-    private async Task DecryptAsync()
-    {
-        if (IsDecrypting || !ValidateInputs(requireOutput: true))
-            return;
-
-        var destination = ResolveDestinationPath(GetDestinationPath());
-        if (destination is null)
-            return;
-
-        HasError = false;
-        StatusMessage = "";
         IsDecrypting = true;
         IsStatusBarVisible = true;
-        StatusAction = "Đang giải mã";
-        StatusCurrentFile = SourceName;
+        StatusAction = "Đang kiểm tra mật khẩu";
         StatusProgress = 0;
-        StatusDetails = "";
-
         var cts = new CancellationTokenSource();
         _activeCts = cts;
-        var startedAt = DateTime.UtcNow;
-        var sourceSize = TryGetSourceSize();
-
-        var progress = new Progress<double>(value =>
-        {
-            StatusProgress = value;
-            if (sourceSize is not > 0)
-                return;
-
-            var elapsed = (DateTime.UtcNow - startedAt).TotalSeconds;
-            var processed = (long)(sourceSize.Value * value);
-            var speed = elapsed > 0.5 ? processed / elapsed : 0;
-            StatusDetails = speed > 0
-                ? $"{FormatBytes(processed)} / {FormatBytes(sourceSize.Value)} • {FormatBytes((long)speed)}/s"
-                : $"{FormatBytes(processed)} / {FormatBytes(sourceSize.Value)}";
-        });
-        var perFileProgress = new Progress<PerFileProgress>(value =>
-        {
-            StatusCurrentFile = Path.GetFileName(value.SourceFilePath);
-            StatusProgress = value.Progress;
-        });
-
         byte[]? passwordBytes = null;
+
         try
         {
             passwordBytes = Encoding.UTF8.GetBytes(Password);
-            var encryptor = new FileEncryptor(
-                _settings.MaxThreads, progress, _settings, perFileProgress);
+            var validItems = Items.Where(item => item.IsValid).ToArray();
+            var verified = 0;
+            for (var index = 0; index < validItems.Length; index++)
+            {
+                cts.Token.ThrowIfCancellationRequested();
+                var item = validItems[index];
+                StatusCurrentFile = item.VaultName;
+                item.Status = "Đang xác thực";
+                item.StatusForeground = "#2563EB";
+                item.ErrorMessage = "";
+                NotifySummaries();
 
-            string actualOutput;
-            if (IsFolderSource)
-            {
-                await encryptor.DecryptFolderPerFileAsync(
-                    SourcePath, destination, passwordBytes, cts.Token);
-                actualOutput = destination;
-            }
-            else if (_header?.Mode == VaultMode.Zip)
-            {
-                await encryptor.DecryptFolderZipAsync(
-                    SourcePath, destination, passwordBytes, cts.Token);
-                actualOutput = destination;
-            }
-            else if (_header?.Mode == VaultMode.File)
-            {
-                actualOutput = await encryptor.DecryptFileAsync(
-                    SourcePath,
-                    destination,
-                    passwordBytes,
-                    cancellationToken: cts.Token,
-                    overwriteExisting: OverwriteExisting);
-            }
-            else
-            {
-                throw new InvalidDataException("Chế độ vault này không được hỗ trợ ở nguồn đã chọn.");
+                if (await VerifyItemAsync(item, passwordBytes, cts.Token))
+                    verified++;
+
+                StatusProgress = (index + 1d) / validItems.Length;
             }
 
-            StatusProgress = 1;
-            StatusAction = "Giải mã hoàn tất";
-            StatusCurrentFile = Path.GetFileName(actualOutput);
-            StatusMessage = $"✓ Giải mã thành công: {Path.GetFileName(actualOutput)}";
-            if (OpenFolderWhenDone)
-                _filePicker.OpenFolder(Directory.Exists(actualOutput)
-                    ? actualOutput
-                    : Path.GetDirectoryName(actualOutput) ?? OutputPath);
+            var failed = validItems.Length - verified;
+            PasswordCheckMessage =
+                $"Đã xác thực {verified:N0}/{validItems.Length:N0} vault" +
+                (failed > 0 ? $" • {failed:N0} thất bại" : "");
+            IsPasswordCheckError = failed > 0;
+            StatusAction = "Kiểm tra hoàn tất";
+            StatusDetails = PasswordCheckMessage;
         }
         catch (OperationCanceledException)
         {
-            StatusAction = "Đã huỷ giải mã";
-            StatusMessage = "Đã huỷ thao tác.";
-            HasError = false;
-        }
-        catch (Exception ex) when (ex is InvalidOperationException or CryptographicException)
-        {
-            StatusAction = "Giải mã thất bại";
-            StatusMessage = "Sai mật khẩu hoặc dữ liệu vault đã bị thay đổi.";
-            HasError = true;
-        }
-        catch (Exception ex)
-        {
-            StatusAction = "Giải mã thất bại";
-            StatusMessage = $"Lỗi: {ex.Message}";
-            HasError = true;
+            StatusAction = "Đã huỷ kiểm tra";
+            PasswordCheckMessage = "Đã huỷ thao tác kiểm tra.";
         }
         finally
         {
@@ -408,67 +333,321 @@ public sealed partial class DecryptViewModel : ViewModelBase
             IsDecrypting = false;
             _activeCts?.Dispose();
             _activeCts = null;
+            RefreshSelectionDetails();
+            NotifySummaries();
         }
     }
 
-    private bool ValidateInputs(bool requireOutput)
+    private async Task<bool> VerifyItemAsync(
+        DecryptQueueItem item,
+        byte[] passwordBytes,
+        CancellationToken cancellationToken)
     {
-        if (!HasSource || !IsVaultValid)
+        try
         {
-            StatusMessage = "Vui lòng chọn file .safe hoặc thư mục vault hợp lệ.";
-            HasError = true;
+            var metadata = await new FileEncryptor(
+                consumerThreads: _settings.MaxThreads,
+                settings: _settings).ReadVaultMetadataAsync(
+                    item.SourcePath, passwordBytes, cancellationToken);
+
+            item.OriginalFileName = metadata.OriginalFileName;
+            item.HasVerifiedMetadata = true;
+            item.Status = "Sẵn sàng giải mã";
+            item.StatusForeground = "#16A34A";
+            item.ErrorMessage = "";
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            item.OriginalFileName = "—";
+            item.HasVerifiedMetadata = false;
+            item.Status = "Xác thực thất bại";
+            item.StatusForeground = "#DC2626";
+            item.ErrorMessage = ex is InvalidOperationException or CryptographicException
+                ? "Mật khẩu không đúng hoặc vault đã bị thay đổi."
+                : ex.Message;
+            return false;
+        }
+    }
+
+    private async Task DecryptAsync()
+    {
+        if (IsDecrypting)
+            return;
+
+        if (!ValidateSelectionAndPassword(out var validationError))
+        {
+            await _errorDialog.ShowErrorAsync(
+                validationError, "Không thể giải mã");
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(OutputPath))
+        {
+            await _errorDialog.ShowErrorAsync(
+                "Thư mục giải mã chưa được cấu hình trong Thiết lập.",
+                "Không thể giải mã");
+            return;
+        }
+
+        Directory.CreateDirectory(Path.GetFullPath(OutputPath));
+        IsDecrypting = true;
+        IsStatusBarVisible = true;
+        StatusAction = "Đang giải mã";
+        StatusProgress = 0;
+        StatusDetails = "";
+        StatusMessage = "";
+        var cts = new CancellationTokenSource();
+        _activeCts = cts;
+        byte[]? passwordBytes = null;
+        var success = 0;
+        var failed = Items.Count(item => !item.IsValid);
+
+        try
+        {
+            passwordBytes = Encoding.UTF8.GetBytes(Password);
+            foreach (var invalidItem in Items.Where(item => !item.IsValid))
+            {
+                invalidItem.Status = "Thất bại";
+                invalidItem.StatusForeground = "#DC2626";
+            }
+            var validItems = Items.Where(item => item.IsValid).ToArray();
+            var completedItems = failed;
+            for (var index = 0; index < validItems.Length; index++)
+            {
+                cts.Token.ThrowIfCancellationRequested();
+                var item = validItems[index];
+                StatusCurrentFile = item.VaultName;
+
+                if (!item.HasVerifiedMetadata &&
+                    !await VerifyItemAsync(item, passwordBytes, cts.Token))
+                {
+                    item.Status = "Thất bại";
+                    failed++;
+                    completedItems++;
+                    UpdateOverallProgress(completedItems, Items.Count, 0);
+                    NotifySummaries();
+                    continue;
+                }
+
+                item.IsProcessing = true;
+                item.Progress = 0;
+                item.Status = "Đang giải mã";
+                item.StatusForeground = "#2563EB";
+                item.ErrorMessage = "";
+
+                try
+                {
+                    await DecryptItemAsync(
+                        item,
+                        passwordBytes,
+                        cts.Token,
+                        new Progress<double>(value =>
+                        {
+                            item.Progress = value;
+                            UpdateOverallProgress(
+                                completedItems, Items.Count, value);
+                        }));
+                    item.Progress = 1;
+                    item.Status = "Thành công";
+                    item.StatusForeground = "#16A34A";
+                    success++;
+                }
+                catch (OperationCanceledException)
+                {
+                    item.Status = "Đã huỷ";
+                    item.StatusForeground = "#6B7280";
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    item.Status = "Thất bại";
+                    item.StatusForeground = "#DC2626";
+                    item.ErrorMessage = GetFriendlyError(ex);
+                    failed++;
+                }
+                finally
+                {
+                    item.IsProcessing = false;
+                    completedItems++;
+                    UpdateOverallProgress(completedItems, Items.Count, 0);
+                    RefreshSelectionDetails();
+                    NotifySummaries();
+                }
+            }
+
+            StatusAction = failed == 0 ? "Giải mã hoàn tất" : "Giải mã có lỗi";
+            StatusDetails = $"{success:N0} thành công • {failed:N0} thất bại";
+            StatusMessage = $"✓ Hoàn tất: {success:N0} thành công" +
+                            (failed > 0 ? $" • {failed:N0} thất bại" : "");
+
+            if (failed > 0)
+            {
+                await _errorDialog.ShowErrorAsync(
+                    $"Đã giải mã thành công {success:N0} vault. " +
+                    $"{failed:N0} vault thất bại. Chọn từng dòng để xem nguyên nhân.",
+                    "Hoàn tất với lỗi");
+            }
+            if (OpenFolderWhenDone && success > 0)
+                _filePicker.OpenFolder(OutputPath);
+        }
+        catch (OperationCanceledException)
+        {
+            StatusAction = "Đã huỷ giải mã";
+            StatusMessage = "Đã huỷ thao tác.";
+        }
+        finally
+        {
+            if (passwordBytes is not null)
+                CryptographicOperations.ZeroMemory(passwordBytes);
+            IsDecrypting = false;
+            _activeCts?.Dispose();
+            _activeCts = null;
+            NotifySummaries();
+        }
+    }
+
+    private async Task DecryptItemAsync(
+        DecryptQueueItem item,
+        byte[] passwordBytes,
+        CancellationToken cancellationToken,
+        IProgress<double> progress)
+    {
+        var relativeRoot = string.IsNullOrWhiteSpace(item.RelativeDirectory)
+            ? Path.GetFullPath(OutputPath)
+            : Path.Combine(Path.GetFullPath(OutputPath), item.RelativeDirectory);
+        Directory.CreateDirectory(relativeRoot);
+
+        var destination = GetDestinationPath(item, relativeRoot);
+        var mode = item.Header!.Mode;
+        if ((File.Exists(destination) || Directory.Exists(destination)) &&
+            !(mode is VaultMode.File or VaultMode.PerFile &&
+              OverwriteExisting &&
+              File.Exists(destination)))
+        {
+            throw new IOException(
+                "Đầu ra đã tồn tại. Bật ghi đè hoặc xóa đầu ra cũ.");
+        }
+
+        var encryptor = new FileEncryptor(
+            _settings.MaxThreads, progress, _settings);
+        switch (mode)
+        {
+            case VaultMode.File:
+                await encryptor.DecryptFileAsync(
+                    item.SourcePath,
+                    destination,
+                    passwordBytes,
+                    cancellationToken,
+                    OverwriteExisting);
+                break;
+            case VaultMode.Zip:
+                await encryptor.DecryptFolderZipAsync(
+                    item.SourcePath,
+                    destination,
+                    passwordBytes,
+                    cancellationToken);
+                break;
+            case VaultMode.PerFile:
+                await encryptor.DecryptPerFileVaultAsync(
+                    item.SourcePath,
+                    destination,
+                    passwordBytes,
+                    cancellationToken,
+                    OverwriteExisting);
+                break;
+            default:
+                throw new InvalidDataException(
+                    $"Chế độ vault {mode} không được hỗ trợ.");
+        }
+    }
+
+    private static string GetDestinationPath(
+        DecryptQueueItem item,
+        string destinationRoot)
+    {
+        if (item.Header?.Mode == VaultMode.Zip)
+        {
+            var folderName = Path.GetFileNameWithoutExtension(
+                item.OriginalFileName);
+            return Path.Combine(destinationRoot, folderName);
+        }
+
+        return Path.Combine(destinationRoot, item.OriginalFileName);
+    }
+
+    private bool ValidateSelectionAndPassword(out string error)
+    {
+        if (Items.Count == 0)
+        {
+            error = "Vui lòng chọn ít nhất một file .safe hoặc thư mục vault.";
+            return false;
+        }
+        if (!Items.Any(item => item.IsValid))
+        {
+            error = "Danh sách không có vault hợp lệ.";
             return false;
         }
         if (string.IsNullOrEmpty(Password))
         {
-            StatusMessage = "Vui lòng nhập mật khẩu giải mã.";
-            HasError = true;
+            error = "Vui lòng nhập mật khẩu giải mã.";
             return false;
         }
-        if (requireOutput && string.IsNullOrWhiteSpace(OutputPath))
-        {
-            StatusMessage = "Vui lòng chọn thư mục đích.";
-            HasError = true;
-            return false;
-        }
+
+        error = "";
         return true;
     }
 
-    private string GetDestinationPath()
+    private void RemoveItem(DecryptQueueItem item)
     {
-        var root = Path.GetFullPath(OutputPath);
-        if (IsFolderSource)
-            return Path.Combine(root, SourceName + "_decrypted");
+        if (IsDecrypting)
+            return;
 
-        var stem = Path.GetFileNameWithoutExtension(SourcePath);
-        if (_header?.Mode == VaultMode.Zip)
-        {
-            var folderName = HasVerifiedMetadata
-                ? Path.GetFileNameWithoutExtension(OriginalFileNameText)
-                : stem;
-            return Path.Combine(root, folderName);
-        }
-
-        var fileName = _header?.EncryptFileNames == true
-            ? HasVerifiedMetadata ? OriginalFileNameText : "decrypted-output"
-            : stem;
-        return Path.Combine(root, fileName);
+        var index = Items.IndexOf(item);
+        if (index < 0)
+            return;
+        Items.RemoveAt(index);
+        _sourcePaths.Remove(item.SourcePath);
+        if (ReferenceEquals(SelectedItem, item))
+            SelectedItem = Items.Count == 0
+                ? null
+                : Items[Math.Min(index, Items.Count - 1)];
+        NotifySummaries();
     }
 
-    private string? ResolveDestinationPath(string destination)
+    private void ClearItems()
     {
-        Directory.CreateDirectory(Path.GetFullPath(OutputPath));
-        var exists = File.Exists(destination) || Directory.Exists(destination);
-        if (!exists)
-            return destination;
+        if (IsDecrypting)
+            return;
+        Items.Clear();
+        _sourcePaths.Clear();
+        SelectedItem = null;
+        PasswordCheckMessage = "";
+        StatusMessage = "";
+        NotifySummaries();
+    }
 
-        if (_header?.Mode == VaultMode.File && OverwriteExisting && File.Exists(destination))
-            return destination;
+    private void Reset()
+    {
+        if (IsDecrypting)
+            return;
 
-        StatusMessage = "Đầu ra đã tồn tại. Hãy chọn thư mục khác" +
-                        (_header?.Mode == VaultMode.File ? " hoặc bật ghi đè." : ".");
-        HasError = true;
-        return null;
+        ClearItems();
+        Password = "";
+        ShowPassword = false;
+        OverwriteExisting = false;
+        OpenFolderWhenDone = true;
+        PasswordCheckMessage = "";
+        IsPasswordCheckError = false;
+        IsStatusBarVisible = false;
+        StatusAction = "";
+        StatusCurrentFile = "";
+        StatusProgress = 0;
+        StatusDetails = "";
+        StatusMessage = "";
     }
 
     private void OpenOutputFolder()
@@ -480,8 +659,8 @@ public sealed partial class DecryptViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Không thể mở thư mục đầu ra: {ex.Message}";
-            HasError = true;
+            _ = _errorDialog.ShowErrorAsync(
+                ex.Message, "Không thể mở thư mục đầu ra");
         }
     }
 
@@ -493,26 +672,68 @@ public sealed partial class DecryptViewModel : ViewModelBase
             IsStatusBarVisible = false;
     }
 
-    private long? TryGetSourceSize()
+    private void UpdateOverallProgress(
+        int completedItems,
+        int totalItems,
+        double currentItemProgress)
+    {
+        StatusProgress = totalItems == 0
+            ? 0
+            : Math.Clamp(
+                (completedItems + currentItemProgress) / totalItems,
+                0,
+                1);
+        StatusDetails = ResultSummary;
+    }
+
+    private void NotifySummaries()
+    {
+        OnPropertyChanged(nameof(HasItems));
+        OnPropertyChanged(nameof(SelectionSummary));
+        OnPropertyChanged(nameof(ResultSummary));
+    }
+
+    private void RefreshSelectionDetails()
+    {
+        OnPropertyChanged(nameof(DetailVaultName));
+        OnPropertyChanged(nameof(DetailOriginalFileName));
+        OnPropertyChanged(nameof(DetailFormat));
+        OnPropertyChanged(nameof(DetailMode));
+        OnPropertyChanged(nameof(DetailChunkSize));
+        OnPropertyChanged(nameof(DetailKdf));
+        OnPropertyChanged(nameof(DetailAlgorithm));
+        OnPropertyChanged(nameof(DetailVaultSize));
+        OnPropertyChanged(nameof(DetailModifiedTime));
+        OnPropertyChanged(nameof(DetailStatus));
+        OnPropertyChanged(nameof(DetailError));
+        OnPropertyChanged(nameof(HasDetailError));
+    }
+
+    private static string GetRelativeDirectory(
+        string sourceRoot,
+        string filePath)
+    {
+        var directory = Path.GetDirectoryName(filePath) ?? sourceRoot;
+        var relative = Path.GetRelativePath(sourceRoot, directory);
+        return relative == "." ? "" : relative;
+    }
+
+    private static long TryGetLength(string path)
     {
         try
         {
-            return IsFolderSource
-                ? new DirectoryInfo(SourcePath).EnumerateFiles("*.safe", SearchOption.AllDirectories).Sum(f => f.Length)
-                : new FileInfo(SourcePath).Length;
+            return new FileInfo(path).Length;
         }
         catch
         {
-            return null;
+            return 0;
         }
     }
 
-    private string GetDefaultOutputPath()
-    {
-        if (!string.IsNullOrWhiteSpace(_settings.DefaultOutputPath))
-            return Path.Combine(Path.GetFullPath(_settings.DefaultOutputPath), "Decrypted");
-        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Decrypted");
-    }
+    private static string GetFriendlyError(Exception ex) =>
+        ex is InvalidOperationException or CryptographicException
+            ? "Mật khẩu không đúng hoặc vault đã bị thay đổi."
+            : ex.Message;
 
     private static string FormatBytes(long bytes)
     {

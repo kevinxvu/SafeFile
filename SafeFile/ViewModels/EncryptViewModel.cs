@@ -17,6 +17,7 @@ namespace SafeFile.ViewModels;
 public sealed partial class EncryptViewModel : ViewModelBase
 {
     private readonly IFilePickerService _filePicker;
+    private readonly IErrorDialogService _errorDialog;
     private readonly AppSettings _settings;
     private CancellationTokenSource? _activeCts;
 
@@ -190,9 +191,12 @@ public sealed partial class EncryptViewModel : ViewModelBase
     public IRelayCommand TogglePasswordVisibilityCommand { get; }
     public IRelayCommand ToggleConfirmPasswordVisibilityCommand { get; }
 
-    public EncryptViewModel(IFilePickerService filePicker)
+    public EncryptViewModel(
+        IFilePickerService filePicker,
+        IErrorDialogService errorDialog)
     {
         _filePicker = filePicker;
+        _errorDialog = errorDialog;
         var settingsService = new SettingsService();
         _settings = settingsService.Load();
         _encryptFileNames = false;
@@ -226,20 +230,17 @@ public sealed partial class EncryptViewModel : ViewModelBase
 
         if (string.IsNullOrWhiteSpace(SourcePath))
         {
-            StatusMessage = "Vui lòng chọn tập tin hoặc thư mục nguồn.";
-            HasError = true;
+            await ShowSubmitErrorAsync("Vui lòng chọn tập tin hoặc thư mục nguồn.");
             return;
         }
         if (string.IsNullOrEmpty(Password))
         {
-            StatusMessage = "Vui lòng nhập mật khẩu.";
-            HasError = true;
+            await ShowSubmitErrorAsync("Vui lòng nhập mật khẩu.");
             return;
         }
         if (IsPasswordConfirmationRequired && Password != ConfirmPassword)
         {
-            StatusMessage = "Mật khẩu xác nhận không khớp.";
-            HasError = true;
+            await ShowSubmitErrorAsync("Mật khẩu xác nhận không khớp.");
             return;
         }
 
@@ -357,15 +358,15 @@ public sealed partial class EncryptViewModel : ViewModelBase
         {
             StatusAction = "Mã hoá thất bại";
             StatusEta = "";
-            StatusMessage = $"Sai mật khẩu hoặc dữ liệu bị hỏng: {ex.Message}";
-            HasError = true;
+            await ShowSubmitErrorAsync(
+                $"Sai mật khẩu hoặc dữ liệu bị hỏng: {ex.Message}",
+                "Mã hoá thất bại");
         }
         catch (Exception ex)
         {
             StatusAction = "Mã hoá thất bại";
             StatusEta = "";
-            StatusMessage = $"Lỗi: {ex.Message}";
-            HasError = true;
+            await ShowSubmitErrorAsync(ex.Message, "Mã hoá thất bại");
         }
         finally
         {
@@ -375,6 +376,15 @@ public sealed partial class EncryptViewModel : ViewModelBase
             _activeCts?.Dispose();
             _activeCts = null;
         }
+    }
+
+    private async Task ShowSubmitErrorAsync(
+        string message,
+        string title = "Không thể mã hoá")
+    {
+        StatusMessage = "";
+        HasError = false;
+        await _errorDialog.ShowErrorAsync(message, title);
     }
 
     private void CloseOrCancelStatus()

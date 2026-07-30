@@ -10,6 +10,7 @@ public enum NavItem { Encrypt, Decrypt, Logs, Settings }
 public sealed partial class MainWindowViewModel : ViewModelBase
 {
     private readonly SettingsService _settingsService;
+    private readonly IErrorDialogService _errorDialog;
 
     // ── Navigation ────────────────────────────────────────────────
     [ObservableProperty] private ViewModelBase _currentPage;
@@ -34,22 +35,26 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     public IRelayCommand NavigateToSettingsCommand { get; }
     public IRelayCommand NavigateToAboutCommand { get; }
 
-    public MainWindowViewModel(IFilePickerService filePicker, SettingsService settingsService)
+    public MainWindowViewModel(
+        IFilePickerService filePicker,
+        SettingsService settingsService,
+        IErrorDialogService errorDialog)
     {
         _settingsService = settingsService;
-        _currentPage = new EncryptViewModel(filePicker);
+        _errorDialog = errorDialog;
+        _currentPage = new EncryptViewModel(filePicker, errorDialog);
 
         NavigateToEncryptCommand = new RelayCommand(() =>
         {
             ActiveNav = NavItem.Encrypt;
             ActivePage = "Mã hoá dữ liệu";
-            CurrentPage = new EncryptViewModel(filePicker);
+            CurrentPage = new EncryptViewModel(filePicker, _errorDialog);
         });
         NavigateToDecryptCommand = new RelayCommand(() =>
         {
             ActiveNav = NavItem.Decrypt;
             ActivePage = "Giải mã dữ liệu";
-            CurrentPage = new DecryptViewModel(filePicker);
+            CurrentPage = new DecryptViewModel(filePicker, _errorDialog);
         });
         NavigateToLogsCommand = new RelayCommand(() =>
         {
@@ -61,7 +66,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         {
             ActiveNav = NavItem.Settings;
             ActivePage = "Thiết lập";
-            CurrentPage = new SettingsViewModel(_settingsService, filePicker);
+            CurrentPage = new SettingsViewModel(
+                _settingsService, filePicker, _errorDialog);
         });
         NavigateToAboutCommand = new RelayCommand(() =>
         {

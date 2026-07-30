@@ -20,10 +20,12 @@ namespace SafeFile
             if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
             {
                 var filePicker = new FilePickerService();
+                var errorDialog = new ErrorDialogService();
                 var settingsService = new SettingsService();
                 desktop.MainWindow = new MainWindow
                 {
-                    DataContext = new MainWindowViewModel(filePicker, settingsService),
+                    DataContext = new MainWindowViewModel(
+                        filePicker, settingsService, errorDialog),
                 };
             }
 

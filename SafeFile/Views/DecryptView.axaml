@@ -6,153 +6,376 @@
              Foreground="#1F2937">
   <Grid RowDefinitions="*,Auto">
     <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
-      <Grid Margin="24" ColumnDefinitions="2*,16,*" RowDefinitions="Auto,16,Auto,16,Auto">
-        <Border Grid.Column="0" Background="White" CornerRadius="8" Padding="16">
+      <StackPanel Margin="24" Spacing="16">
+
+        <!-- Unified file/folder picker -->
+        <Border Background="White" CornerRadius="8" Padding="16">
           <StackPanel Spacing="10">
-            <TextBlock Text="Chọn File" FontSize="17" FontWeight="SemiBold"/>
+            <Grid ColumnDefinitions="*,Auto">
+              <StackPanel Spacing="2">
+                <TextBlock Text="Dữ liệu cần giải mã"
+                           FontSize="17" FontWeight="SemiBold"/>
+                <TextBlock Text="Chọn một file, nhiều file hoặc toàn bộ thư mục vault."
+                           FontSize="12" Foreground="#6B7280"/>
+              </StackPanel>
+              <TextBlock Grid.Column="1" Text="{Binding SelectionSummary}"
+                         VerticalAlignment="Center" Foreground="#4B5563"
+                         FontWeight="Medium"/>
+            </Grid>
+
             <Border x:Name="DropZone"
-                    Height="205" BorderBrush="#CBD5E1" BorderThickness="2"
+                    Height="122" BorderBrush="#CBD5E1" BorderThickness="2"
                     CornerRadius="6" Background="#F8FAFC"
                     DragDrop.AllowDrop="True"
                     DragDrop.DragEnter="OnDragEnter"
                     DragDrop.DragLeave="OnDragLeave"
                     DragDrop.DragOver="OnDragOver"
                     DragDrop.Drop="OnDrop">
-              <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
-                <PathIcon Data="{StaticResource FolderIcon}" Width="40" Height="40" Foreground="#64748B"/>
-                <TextBlock Text="Kéo thả file .safe vào đây" FontSize="14" FontWeight="Medium"/>
-                <TextBlock Text="hoặc" Foreground="#6B7280"/>
-                <Button Content="Duyệt file" Theme="{StaticResource PrimaryButtonTheme}"
-                        Command="{Binding BrowseSourceCommand}"/>
-                <TextBlock Text="Hỗ trợ định dạng: .safe" FontSize="11" Foreground="#6B7280"/>
+              <Grid ColumnDefinitions="*,Auto" Margin="22,12">
+                <StackPanel VerticalAlignment="Center" Spacing="5">
+                  <StackPanel Orientation="Horizontal" Spacing="10">
+                    <PathIcon Data="{StaticResource FolderIcon}"
+                              Width="28" Height="28" Foreground="#64748B"/>
+                    <StackPanel VerticalAlignment="Center">
+                      <TextBlock Text="Kéo thả các file .safe hoặc thư mục vào đây"
+                                 FontSize="14" FontWeight="Medium"/>
+                      <TextBlock Text="Các file trùng sẽ tự động được bỏ qua."
+                                 FontSize="11" Foreground="#6B7280"/>
+                    </StackPanel>
+                  </StackPanel>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal"
+                            VerticalAlignment="Center" Spacing="8">
+                  <Button Theme="{StaticResource PrimaryButtonTheme}"
+                          Command="{Binding BrowseSourceCommand}">
+                    <TextBlock Text="Chọn file"/>
+                  </Button>
+                  <Button Theme="{StaticResource OutlinedButtonTheme}"
+                          Command="{Binding BrowseSourceFolderCommand}">
+                    <TextBlock Text="Chọn thư mục"/>
+                  </Button>
+                </StackPanel>
+              </Grid>
+            </Border>
+          </StackPanel>
+        </Border>
+
+        <!-- Batch queue -->
+        <Border Background="White" CornerRadius="8" Padding="16">
+          <Grid RowDefinitions="Auto,Auto,*">
+            <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,12">
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <TextBlock Text="Danh sách vault" FontSize="17"
+                           FontWeight="SemiBold" VerticalAlignment="Center"/>
+                <Border Background="#EFF6FF" CornerRadius="10" Padding="8,2"
+                        IsVisible="{Binding HasItems}">
+                  <TextBlock Text="{Binding SelectionSummary}"
+                             FontSize="11" Foreground="#2563EB"/>
+                </Border>
               </StackPanel>
-            </Border>
-            <Grid ColumnDefinitions="*,Auto">
-              <TextBlock Text="{Binding SourceName}" TextTrimming="CharacterEllipsis"
-                         VerticalAlignment="Center" Foreground="#4B5563"/>
-              <Button Grid.Column="1" Content="Chọn thư mục vault"
-                      Theme="{StaticResource OutlinedButtonTheme}"
-                      Command="{Binding BrowseSourceFolderCommand}"/>
-            </Grid>
-          </StackPanel>
-        </Border>
-
-        <Border Grid.Column="2" Background="White" BorderBrush="#D1D5DB"
-                BorderThickness="1" CornerRadius="8" Padding="16">
-          <StackPanel Spacing="13">
-            <TextBlock Text="Thông tin File" FontSize="17" FontWeight="SemiBold"/>
-            <Grid ColumnDefinitions="*,Auto"><TextBlock Text="Định dạng"/><TextBlock Grid.Column="1" Text="{Binding FormatText}" FontWeight="SemiBold"/></Grid>
-            <Separator/>
-            <Grid ColumnDefinitions="*,Auto"><TextBlock Text="Chế độ"/><TextBlock Grid.Column="1" Text="{Binding ModeText}"/></Grid>
-            <Separator/>
-            <Grid ColumnDefinitions="*,Auto"><TextBlock Text="Kích thước Chunk"/><TextBlock Grid.Column="1" Text="{Binding ChunkSizeText}"/></Grid>
-            <Separator/>
-            <Grid ColumnDefinitions="*,Auto"><TextBlock Text="KDF"/><TextBlock Grid.Column="1" Text="{Binding KdfText}"/></Grid>
-            <Separator/>
-            <Grid ColumnDefinitions="*,Auto"><TextBlock Text="Thuật toán"/><TextBlock Grid.Column="1" Text="{Binding AlgorithmText}"/></Grid>
-            <Separator/>
-            <Grid ColumnDefinitions="105,*">
-              <TextBlock Text="Tên file gốc"/>
-              <TextBlock Grid.Column="1" Text="{Binding OriginalFileNameText}"
-                         TextWrapping="Wrap" FontWeight="SemiBold"
-                         HorizontalAlignment="Right" TextAlignment="Right"/>
-            </Grid>
-            <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding HasVerifiedMetadata}"><TextBlock Text="Kích thước vault"/><TextBlock Grid.Column="1" Text="{Binding VaultSizeText}"/></Grid>
-            <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding HasVerifiedMetadata}"><TextBlock Text="Sửa đổi"/><TextBlock Grid.Column="1" Text="{Binding ModifiedTimeText}"/></Grid>
-            <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding HasVerifiedMetadata}"><TextBlock Text="Bộ nhớ KDF"/><TextBlock Grid.Column="1" Text="{Binding KdfMemoryText}"/></Grid>
-            <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding HasVerifiedMetadata}"><TextBlock Text="KDF Parallelism"/><TextBlock Grid.Column="1" Text="{Binding KdfParallelismText}"/></Grid>
-            <Border Background="#F3F4F6" CornerRadius="4" Padding="10">
-              <TextBlock Text="{Binding AnalysisMessage}" TextWrapping="Wrap"
-                         HorizontalAlignment="Center" FontSize="11" Foreground="#4B5563"/>
-            </Border>
-          </StackPanel>
-        </Border>
-
-        <Border Grid.Row="2" Grid.Column="0" Background="White" CornerRadius="8" Padding="16">
-          <StackPanel Spacing="9">
-            <TextBlock Text="Bảo mật" FontSize="17" FontWeight="SemiBold"/>
-            <TextBlock Text="Master Password" FontSize="12"/>
-            <Grid ColumnDefinitions="*,Auto">
-              <TextBox Text="{Binding Password}" PasswordChar="{Binding PasswordChar}"
-                       PlaceholderText="Nhập mật khẩu giải mã..."/>
-              <Button Grid.Column="1" Margin="6,0,0,0" Width="40"
-                      Theme="{StaticResource OutlinedButtonTheme}"
-                      Command="{Binding TogglePasswordVisibilityCommand}">
-                <PathIcon Data="{StaticResource EyeIcon}" Width="17" Height="17"/>
-              </Button>
-            </Grid>
-            <Grid ColumnDefinitions="Auto,*">
-              <Button HorizontalAlignment="Left" Theme="{StaticResource OutlinedButtonTheme}"
-                      Command="{Binding CheckPasswordCommand}">
+              <Button Grid.Column="1" Theme="{StaticResource OutlinedButtonTheme}"
+                      Command="{Binding ClearItemsCommand}"
+                      IsVisible="{Binding HasItems}">
                 <StackPanel Orientation="Horizontal" Spacing="6">
-                  <PathIcon Data="{StaticResource LockIcon}" Width="15" Height="15"/>
-                  <TextBlock Text="Kiểm tra password"/>
+                  <PathIcon Data="{StaticResource CancelCircleIcon}"
+                            Width="14" Height="14"/>
+                  <TextBlock Text="Xóa tất cả"/>
                 </StackPanel>
               </Button>
-              <TextBlock Grid.Column="1" Margin="12,0,0,0"
-                         VerticalAlignment="Center" TextWrapping="Wrap"
-                         Text="{Binding PasswordCheckMessage}"
-                         Foreground="#16A34A"
-                         IsVisible="{Binding IsPasswordCheckSuccess}"/>
-              <TextBlock Grid.Column="1" Margin="12,0,0,0"
-                         VerticalAlignment="Center" TextWrapping="Wrap"
-                         Text="{Binding PasswordCheckMessage}"
-                         Foreground="#DC2626"
-                         IsVisible="{Binding IsPasswordCheckError}"/>
             </Grid>
-          </StackPanel>
+
+            <Border Grid.Row="1" Background="#F8FAFC"
+                    BorderBrush="#E5E7EB" BorderThickness="1"
+                    CornerRadius="5,5,0,0" Padding="10,8">
+              <Grid ColumnDefinitions="2*,12,2*,12,85,12,145,12,110,36"
+                    ClipToBounds="True">
+                <TextBlock Text="Vault" FontSize="11" FontWeight="SemiBold"/>
+                <TextBlock Grid.Column="2" Text="Tên file gốc"
+                           FontSize="11" FontWeight="SemiBold"/>
+                <TextBlock Grid.Column="4" Text="Dung lượng"
+                           FontSize="11" FontWeight="SemiBold"/>
+                <TextBlock Grid.Column="6" Text="Tiến trình"
+                           FontSize="11" FontWeight="SemiBold"/>
+                <TextBlock Grid.Column="8" Text="Trạng thái"
+                           FontSize="11" FontWeight="SemiBold"/>
+              </Grid>
+            </Border>
+
+            <Grid Grid.Row="2">
+              <Border BorderBrush="#E5E7EB" BorderThickness="1,0,1,1"
+                      CornerRadius="0,0,5,5" Height="224"
+                      IsVisible="{Binding !HasItems}">
+                <StackPanel HorizontalAlignment="Center"
+                            VerticalAlignment="Center" Spacing="7">
+                  <PathIcon Data="{StaticResource FolderIcon}" Width="30"
+                            Height="30" Foreground="#94A3B8"/>
+                  <TextBlock Text="Chưa có vault nào trong danh sách"
+                             Foreground="#64748B"/>
+                  <TextBlock Text="Chọn file, thư mục hoặc kéo thả để bắt đầu."
+                             FontSize="11" Foreground="#94A3B8"/>
+                </StackPanel>
+              </Border>
+
+              <ListBox ItemsSource="{Binding Items}"
+                       SelectedItem="{Binding SelectedItem}"
+                       Height="224"
+                       BorderBrush="#E5E7EB" BorderThickness="1,0,1,1"
+                       IsVisible="{Binding HasItems}">
+                <ListBox.Styles>
+                  <Style Selector="ListBoxItem">
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                  </Style>
+                </ListBox.Styles>
+                <ListBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:DecryptQueueItem">
+                    <Grid ColumnDefinitions="2*,12,2*,12,85,12,145,12,110,36"
+                          MinHeight="48" Margin="6,2" ClipToBounds="True">
+                      <TextBlock Text="{Binding VaultName}"
+                                 TextTrimming="CharacterEllipsis"
+                                 ClipToBounds="True"
+                                 VerticalAlignment="Center"
+                                 ToolTip.Tip="{Binding VaultName}"/>
+                      <TextBlock Grid.Column="2"
+                                 Text="{Binding OriginalFileName}"
+                                 TextTrimming="CharacterEllipsis"
+                                 ClipToBounds="True"
+                                 VerticalAlignment="Center"
+                                 ToolTip.Tip="{Binding OriginalFileName}"/>
+                      <TextBlock Grid.Column="4"
+                                 Text="{Binding VaultSizeText}"
+                                 ClipToBounds="True"
+                                 VerticalAlignment="Center"
+                                 Foreground="#4B5563"/>
+                      <StackPanel Grid.Column="6" Spacing="3"
+                                  VerticalAlignment="Center"
+                                  ClipToBounds="True">
+                        <TextBlock Text="{Binding ProgressText}"
+                                   FontSize="10"
+                                   HorizontalAlignment="Right"/>
+                        <ProgressBar Height="8" MinWidth="0"
+                                     HorizontalAlignment="Stretch"
+                                     Minimum="0" Maximum="1"
+                                     Value="{Binding Progress}"
+                                     ClipToBounds="True"/>
+                      </StackPanel>
+                      <TextBlock Grid.Column="8" Text="{Binding Status}"
+                                 Foreground="{Binding StatusForeground}"
+                                 FontSize="11" FontWeight="Medium"
+                                 TextWrapping="Wrap"
+                                 ClipToBounds="True"
+                                 VerticalAlignment="Center"
+                                 ToolTip.Tip="{Binding ErrorMessage}"/>
+                      <Button Grid.Column="9" Width="28" Height="28"
+                              Padding="0" Background="Transparent"
+                              Command="{Binding RemoveCommand}"
+                              VerticalAlignment="Center"
+                              ToolTip.Tip="Xóa khỏi danh sách">
+                        <TextBlock Text="×" FontSize="18"/>
+                      </Button>
+                    </Grid>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+            </Grid>
+          </Grid>
         </Border>
 
-        <Border Grid.Row="4" Grid.Column="0" Background="White" CornerRadius="8" Padding="16">
-          <StackPanel Spacing="9">
-            <TextBlock Text="Tuỳ chọn Output" FontSize="17" FontWeight="SemiBold"/>
-            <TextBlock Text="Thư mục đích" FontSize="12"/>
-            <Grid ColumnDefinitions="*,Auto">
-              <TextBox Text="{Binding OutputPath}" PlaceholderText="Chọn thư mục đích"/>
-              <Button Grid.Column="1" Margin="8,0,0,0" Content="..."
-                      Theme="{StaticResource OutlinedButtonTheme}"
-                      Command="{Binding BrowseOutputCommand}"/>
-            </Grid>
-            <CheckBox Content="Ghi đè file nếu đã tồn tại" IsChecked="{Binding OverwriteExisting}"/>
-            <CheckBox Content="Mở thư mục khi hoàn tất" IsChecked="{Binding OpenFolderWhenDone}"/>
-          </StackPanel>
-        </Border>
+        <!-- Password, options and selected-item details -->
+        <Grid ColumnDefinitions="3*,16,2*">
+          <Border Grid.Column="0" Background="White" CornerRadius="8" Padding="16"
+                  VerticalAlignment="Top">
+            <StackPanel Spacing="14">
+              <TextBlock Text="Bảo mật và tuỳ chọn"
+                         FontSize="17" FontWeight="SemiBold"/>
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBox Text="{Binding Password}"
+                         PasswordChar="{Binding PasswordChar}"
+                         PlaceholderText="Nhập mật khẩu dùng cho các vault..."/>
+                <Button Grid.Column="1" Margin="6,0,0,0" Width="40"
+                        Theme="{StaticResource OutlinedButtonTheme}"
+                        Command="{Binding TogglePasswordVisibilityCommand}">
+                  <PathIcon Data="{StaticResource EyeIcon}" Width="17" Height="17"/>
+                </Button>
+              </Grid>
 
-        <StackPanel Grid.Row="4" Grid.Column="2" VerticalAlignment="Center" Spacing="12">
-          <Button Height="52" Theme="{StaticResource PrimaryButtonTheme}"
-                  Command="{Binding DecryptCommand}" IsEnabled="{Binding !IsDecrypting}">
-            <StackPanel Orientation="Horizontal" Spacing="8">
-              <PathIcon Data="{StaticResource LockIcon}" Width="18" Height="18"/>
-              <TextBlock Text="Bắt đầu Giải mã" FontSize="15" FontWeight="SemiBold"/>
+              <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                <Button Theme="{StaticResource OutlinedButtonTheme}"
+                        Command="{Binding CheckPasswordCommand}"
+                        IsEnabled="{Binding !IsDecrypting}">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <PathIcon Data="{StaticResource LockIcon}" Width="15" Height="15"/>
+                    <TextBlock Text="Kiểm tra tất cả"/>
+                  </StackPanel>
+                </Button>
+                <TextBlock Grid.Column="1"
+                           Text="{Binding PasswordCheckMessage}"
+                           TextWrapping="Wrap" VerticalAlignment="Center"
+                           Foreground="{Binding PasswordCheckForeground}"/>
+              </Grid>
+
+              <Border Background="#F8FAFC" BorderBrush="#E5E7EB"
+                      BorderThickness="1" CornerRadius="6" Padding="12">
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
+                  <CheckBox Content="Ghi đè đầu ra đã tồn tại"
+                            IsChecked="{Binding OverwriteExisting}"/>
+                  <CheckBox Grid.Column="1" Content="Mở thư mục khi hoàn tất"
+                            IsChecked="{Binding OpenFolderWhenDone}"/>
+                </Grid>
+              </Border>
+
+              <Separator/>
+
+              <TextBlock Text="{Binding StatusMessage}"
+                         TextWrapping="Wrap" Foreground="#16A34A"
+                         IsVisible="{Binding HasStatusMessage}"/>
+
+              <StackPanel Orientation="Horizontal" Spacing="8"
+                          HorizontalAlignment="Right">
+                <Button
+                        Theme="{StaticResource OutlinedButtonTheme}"
+                        Command="{Binding ResetCommand}">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <PathIcon Data="{StaticResource RefreshIcon}"
+                              Width="15" Height="15"/>
+                    <TextBlock Text="Reset" VerticalAlignment="Center"/>
+                  </StackPanel>
+                </Button>
+                <Button
+                        Theme="{StaticResource OutlinedButtonTheme}"
+                        Command="{Binding OpenOutputFolderCommand}">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <PathIcon Data="{StaticResource FolderIcon}"
+                              Width="15" Height="15"/>
+                    <TextBlock Text="Mở thư mục output"
+                               VerticalAlignment="Center"/>
+                  </StackPanel>
+                </Button>
+                <Button
+                        Theme="{StaticResource PrimaryButtonTheme}"
+                        Command="{Binding DecryptCommand}"
+                        IsEnabled="{Binding !IsDecrypting}">
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <PathIcon Data="{StaticResource LockOpenIcon}"
+                              Width="15" Height="15"/>
+                    <TextBlock Text="Giải mã ngay"
+                               VerticalAlignment="Center"/>
+                  </StackPanel>
+                </Button>
+              </StackPanel>
             </StackPanel>
-          </Button>
-          <Button HorizontalAlignment="Center" Background="Transparent"
-                  Foreground="#2563EB" Command="{Binding OpenOutputFolderCommand}">
-            <TextBlock Text="Mở thư mục output"/>
-          </Button>
-          <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap"
-                     HorizontalAlignment="Center" TextAlignment="Center"/>
-        </StackPanel>
-      </Grid>
+          </Border>
+
+          <Border Grid.Column="2" Background="White"
+                  BorderBrush="#D1D5DB" BorderThickness="1"
+                  CornerRadius="8" Padding="10">
+            <TabControl>
+              <TabItem Header="Chi tiết file">
+                <Grid Margin="8" MinHeight="245">
+                  <TextBlock Text="Chọn một vault trong danh sách để xem chi tiết."
+                             Foreground="#6B7280" TextWrapping="Wrap"
+                             HorizontalAlignment="Center"
+                             VerticalAlignment="Center"
+                             IsVisible="{Binding !HasSelectedItem}"/>
+                  <StackPanel Spacing="9" IsVisible="{Binding HasSelectedItem}">
+                    <Grid ColumnDefinitions="110,*">
+                      <TextBlock Text="Vault"/>
+                      <TextBlock Grid.Column="1" Text="{Binding DetailVaultName}"
+                                 FontWeight="SemiBold"
+                                 TextTrimming="CharacterEllipsis"/>
+                    </Grid>
+                    <Grid ColumnDefinitions="110,*">
+                      <TextBlock Text="Tên file gốc"/>
+                      <TextBlock Grid.Column="1"
+                                 Text="{Binding DetailOriginalFileName}"
+                                 FontWeight="SemiBold" TextWrapping="Wrap"/>
+                    </Grid>
+                    <Grid ColumnDefinitions="110,*">
+                      <TextBlock Text="Định dạng"/>
+                      <TextBlock Grid.Column="1" Text="{Binding DetailFormat}"/>
+                    </Grid>
+                    <Grid ColumnDefinitions="110,*">
+                      <TextBlock Text="Chế độ"/>
+                      <TextBlock Grid.Column="1" Text="{Binding DetailMode}"/>
+                    </Grid>
+                    <Grid ColumnDefinitions="110,*">
+                      <TextBlock Text="Chunk"/>
+                      <TextBlock Grid.Column="1" Text="{Binding DetailChunkSize}"/>
+                    </Grid>
+                    <Grid ColumnDefinitions="110,*">
+                      <TextBlock Text="KDF"/>
+                      <TextBlock Grid.Column="1" Text="{Binding DetailKdf}"
+                                 TextWrapping="Wrap"/>
+                    </Grid>
+                    <Grid ColumnDefinitions="110,*">
+                      <TextBlock Text="Thuật toán"/>
+                      <TextBlock Grid.Column="1" Text="{Binding DetailAlgorithm}"/>
+                    </Grid>
+                    <Grid ColumnDefinitions="110,*">
+                      <TextBlock Text="Dung lượng"/>
+                      <TextBlock Grid.Column="1" Text="{Binding DetailVaultSize}"/>
+                    </Grid>
+                    <Grid ColumnDefinitions="110,*">
+                      <TextBlock Text="Sửa đổi"/>
+                      <TextBlock Grid.Column="1" Text="{Binding DetailModifiedTime}"/>
+                    </Grid>
+                    <Grid ColumnDefinitions="110,*">
+                      <TextBlock Text="Trạng thái"/>
+                      <TextBlock Grid.Column="1" Text="{Binding DetailStatus}"
+                                 FontWeight="SemiBold"/>
+                    </Grid>
+                    <Border Background="#FEF2F2" CornerRadius="4" Padding="8"
+                            IsVisible="{Binding HasDetailError}">
+                      <TextBlock Text="{Binding DetailError}" Foreground="#B91C1C"
+                                 TextWrapping="Wrap" FontSize="11"/>
+                    </Border>
+                  </StackPanel>
+                </Grid>
+              </TabItem>
+
+              <TabItem Header="Tổng quan">
+                <StackPanel Margin="8" MinHeight="245" Spacing="14">
+                  <TextBlock Text="Kết quả batch" FontSize="15"
+                             FontWeight="SemiBold"/>
+                  <TextBlock Text="{Binding ResultSummary}"
+                             TextWrapping="Wrap"/>
+                  <Separator/>
+                  <TextBlock Text="Thư mục đầu ra" FontSize="11"
+                             Foreground="#6B7280"/>
+                  <TextBlock Text="{Binding OutputPath}"
+                             FontWeight="Medium" TextWrapping="Wrap"/>
+                  <TextBlock Text="Mỗi dòng trong danh sách giữ progress và kết quả riêng. Chọn một dòng thất bại để xem nguyên nhân."
+                             FontSize="11" Foreground="#6B7280"
+                             TextWrapping="Wrap"/>
+                </StackPanel>
+              </TabItem>
+            </TabControl>
+          </Border>
+        </Grid>
+      </StackPanel>
     </ScrollViewer>
 
     <Border Grid.Row="1" IsVisible="{Binding IsStatusBarVisible}"
-            Background="White" BorderBrush="#E3E7EC" BorderThickness="0,1,0,0"
-            Padding="20,10">
+            Background="White" BorderBrush="#E3E7EC"
+            BorderThickness="0,1,0,0" Padding="20,10">
       <Grid ColumnDefinitions="250,*,56,Auto" VerticalAlignment="Center">
         <StackPanel Grid.Column="0" Spacing="3">
-          <TextBlock Text="{Binding StatusAction}" FontSize="13" FontWeight="SemiBold"/>
+          <TextBlock Text="{Binding StatusAction}"
+                     FontSize="13" FontWeight="SemiBold"/>
           <TextBlock Text="{Binding StatusCurrentFile}" FontSize="11"
-                     Foreground="#4B5563" TextTrimming="CharacterEllipsis"/>
-          <TextBlock Text="{Binding StatusDetails}" FontSize="11" Foreground="#6B7280"/>
+                     Foreground="#4B5563"
+                     TextTrimming="CharacterEllipsis"/>
+          <TextBlock Text="{Binding StatusDetails}" FontSize="11"
+                     Foreground="#6B7280"/>
         </StackPanel>
-        <ProgressBar Grid.Column="1" Height="8" Margin="16,0" Minimum="0" Maximum="1"
+        <ProgressBar Grid.Column="1" Height="8" Margin="16,0"
+                     Minimum="0" Maximum="1"
                      Value="{Binding StatusProgress}" CornerRadius="4"/>
         <TextBlock Grid.Column="2" HorizontalAlignment="Center"
                    Text="{Binding StatusProgress, StringFormat={}{0:P0}}"/>
         <Button Grid.Column="3" Theme="{StaticResource CancelButtonTheme}"
                 Command="{Binding CloseStatusCommand}">
-          <PathIcon Data="{StaticResource CancelCircleIcon}" Width="18" Height="18"/>
+          <PathIcon Data="{StaticResource CancelCircleIcon}"
+                    Width="18" Height="18"/>
         </Button>
       </Grid>
     </Border>
