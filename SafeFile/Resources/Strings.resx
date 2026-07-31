@@ -35,12 +35,20 @@
   <data name="Folder" xml:space="preserve"><value>Folder</value></data>
   <data name="EnterPath" xml:space="preserve"><value>Enter a path</value></data>
   <data name="DropEncryptSource" xml:space="preserve"><value>Drop a file or folder here</value></data>
-  <data name="EncryptSelectionHint" xml:space="preserve"><value>Select a file or an entire folder to encrypt.</value></data>
+  <data name="EncryptSelectionHint" xml:space="preserve"><value>Select one or more files, or an entire folder to encrypt.</value></data>
   <data name="EncryptDropHint" xml:space="preserve"><value>The selected source will be ready for encryption.</value></data>
   <data name="SelectFile" xml:space="preserve"><value>Select file</value></data>
   <data name="CalculatingSourceInfo" xml:space="preserve"><value>Calculating...</value></data>
   <data name="SourceFileCount" xml:space="preserve"><value>{0} file(s)</value></data>
   <data name="SourceInfoUnavailable" xml:space="preserve"><value>Info unavailable</value></data>
+  <data name="Files" xml:space="preserve"><value>Files</value></data>
+  <data name="DropEncryptSources" xml:space="preserve"><value>Drop files or a folder here</value></data>
+  <data name="EncryptDropHintMultiple" xml:space="preserve"><value>Each selected file will be encrypted into the output folder.</value></data>
+  <data name="SelectSourceFiles" xml:space="preserve"><value>Select source files</value></data>
+  <data name="FilesSelected" xml:space="preserve"><value>{0} files selected</value></data>
+  <data name="MultipleFilesOutput" xml:space="preserve"><value>{0} encrypted files in the output folder</value></data>
+  <data name="FilesEncrypted" xml:space="preserve"><value>{0} files encrypted</value></data>
+  <data name="MultipleEncryptionSucceeded" xml:space="preserve"><value>✓ Successfully encrypted {0} files into the output folder.</value></data>
   <data name="Security" xml:space="preserve"><value>Security</value></data>
   <data name="Password" xml:space="preserve"><value>Password</value></data>
   <data name="ConfirmPassword" xml:space="preserve"><value>Confirm password</value></data>

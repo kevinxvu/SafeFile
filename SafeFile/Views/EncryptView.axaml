@@ -43,21 +43,21 @@
                   <PathIcon Data="{StaticResource FolderIcon}" Width="28" Height="28"
                             Foreground="{DynamicResource SecondaryTextBrush}"/>
                   <StackPanel VerticalAlignment="Center">
-                    <TextBlock Text="{loc:Tr DropEncryptSource}"
+                    <TextBlock Text="{loc:Tr DropEncryptSources}"
                                FontSize="13" FontWeight="Medium"/>
-                    <TextBlock Text="{loc:Tr EncryptDropHint}" FontSize="11"
+                    <TextBlock Text="{loc:Tr EncryptDropHintMultiple}" FontSize="11"
                                Foreground="{DynamicResource SecondaryTextBrush}"/>
                     <TextBlock Text="{Binding SourceDisplayName}" FontSize="12"
                                FontWeight="SemiBold" MaxWidth="520"
                                TextTrimming="CharacterEllipsis"
                                Foreground="{DynamicResource AccentBrush}"
                                IsVisible="{Binding HasSourceInfo}"
-                               ToolTip.Tip="{Binding SourcePath}"/>
+                               ToolTip.Tip="{Binding SourceFilesTooltip}"/>
                     <TextBlock Text="{Binding SourcePath}" FontSize="10"
                                MaxWidth="520" TextTrimming="CharacterEllipsis"
                                Foreground="{DynamicResource SecondaryTextBrush}"
                                IsVisible="{Binding HasSourceInfo}"
-                               ToolTip.Tip="{Binding SourcePath}"/>
+                               ToolTip.Tip="{Binding SourcePathsTooltip}"/>
                     <StackPanel Orientation="Horizontal" Spacing="6"
                                 IsVisible="{Binding HasSourceInfo}">
                       <Border Background="{DynamicResource AccentSubtleBrush}"
@@ -83,7 +83,7 @@
                           VerticalAlignment="Center" Spacing="8">
                 <Button Theme="{StaticResource PrimaryButtonTheme}"
                         Command="{Binding BrowseSourceCommand}">
-                  <TextBlock Text="{loc:Tr SelectFile}"/>
+                  <TextBlock Text="{loc:Tr SelectFiles}"/>
                 </Button>
                 <Button Theme="{StaticResource OutlinedButtonTheme}"
                         Command="{Binding BrowseSourceFolderCommand}">

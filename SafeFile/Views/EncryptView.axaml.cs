@@ -33,9 +33,12 @@ public partial class EncryptView : UserControl
     {
         ResetDragState(sender as Border);
 
-        var item = e.DataTransfer.TryGetFiles()?.FirstOrDefault();
-        var localPath = item?.TryGetLocalPath();
-        if (item is null || string.IsNullOrWhiteSpace(localPath))
+        var paths = e.DataTransfer.TryGetFiles()?
+            .Select(item => item.TryGetLocalPath())
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Cast<string>()
+            .ToArray() ?? [];
+        if (paths.Length == 0)
         {
             e.DragEffects = DragDropEffects.None;
             return;
@@ -43,8 +46,17 @@ public partial class EncryptView : UserControl
 
         if (DataContext is EncryptViewModel viewModel)
         {
-            viewModel.IsFileSource = File.Exists(localPath);
-            viewModel.SourcePath = localPath;
+            var files = paths.Where(File.Exists).ToArray();
+            var folders = paths.Where(Directory.Exists).ToArray();
+            if (files.Length == paths.Length)
+                viewModel.SelectSourceFiles(files);
+            else if (folders.Length == 1 && paths.Length == 1)
+                viewModel.SelectSourceFolder(folders[0]);
+            else
+            {
+                e.DragEffects = DragDropEffects.None;
+                return;
+            }
             viewModel.StatusMessage = "";
             viewModel.HasError = false;
             e.DragEffects = DragDropEffects.Copy;
