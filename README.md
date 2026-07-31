@@ -52,6 +52,8 @@ does not upload them or require an internet connection.
   is designed to run on Windows, Linux, and macOS with a consistent interface
   and the same vault format.
 - **File, ZIP-folder, and PerFile workflows**.
+- **Batch file encryption:** select or drop multiple files and write one
+  independent `.safe` vault per file to the encrypted-output folder.
 - **Optional filename encryption** with authenticated name restoration.
 - **Batch decryption** for one file, multiple vaults, or entire folders.
 - **Per-vault progress and results** in a numbered queue.
@@ -65,11 +67,14 @@ does not upload them or require an internet connection.
 
 ### Encrypt
 
-Choose a file or folder, enter a password, and select an output mode:
+Choose one or more files, or a folder, enter a password, and select an output
+mode. A multi-file selection is processed as a batch; a failure for one file
+does not prevent later files from being attempted.
 
 | Source | Mode | Result |
 |---|---|---|
 | File | `File` | One `.safe` vault |
+| Multiple files | `File` batch | One `.safe` vault per selected file |
 | Folder | `ZIP` | One streamed folder vault |
 | Folder | `PerFile` | One independent vault per regular file |
 
@@ -196,7 +201,7 @@ dotnet.exe build SafeFile/SafeFile.csproj
 ### Basic usage
 
 1. Review output paths and security parameters in **Settings**.
-2. Open **Encrypt** and select a file or folder.
+2. Open **Encrypt** and select one or more files, or a folder.
 3. Enter a strong, unique password and choose the desired options.
 4. Start encryption and keep the resulting `.safe` vault.
 5. Open **Decrypt**, add the vaults, enter the exact password, and start the

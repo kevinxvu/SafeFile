@@ -367,7 +367,14 @@ The output component ends in `.safe`. To fit the common 255-byte filesystem comp
 
 The Avalonia encryption form currently integrates Core as follows:
 
-- file and folder sources can be selected with a picker or drag-and-drop;
+- one or more files, or one folder, can be selected with a picker or
+  drag-and-drop; mixed file-and-folder drops are rejected;
+- a multi-file selection calls `EncryptFileAsync` sequentially for each source
+  and writes one independent vault per file under
+  `AppSettings.DefaultOutputPath`; one failure does not prevent later selected
+  files from being attempted;
+- multi-file overall progress is weighted by total selected source bytes, and
+  the source filename/path tooltips show numbered lists;
 - algorithm, chunk size, and worker count are not editable on the form;
 - chunk size, worker count, and Argon2id parameters come from `AppSettings`;
 - all encrypted output is written under `AppSettings.DefaultOutputPath`, which is created when necessary;
@@ -405,8 +412,9 @@ The Avalonia decryption form integrates Core as follows:
   drag-and-drop; duplicates are ignored;
 - selected vaults appear in a queue table with basename, authenticated original
   filename, size, per-item progress, and status;
-- only the vault basename is displayed and used by its tooltip; the source path
-  stays internal;
+- the details panel truncates long vault and authenticated original filenames;
+  the vault tooltip shows its complete source path and the original-filename
+  tooltip shows the complete authenticated name;
 - the unauthenticated header is parsed immediately to show format, mode, chunk
   size, KDF summary, and algorithm;
 - the password is not checked while the user types;
@@ -414,9 +422,9 @@ The Avalonia decryption form integrates Core as follows:
   Argon2id once, validates the key verifier, and decrypts only the filename
   chunk;
 - the password result is displayed beside the check button;
-- successful verification displays the complete original filename without
-  ellipsis, vault size and modification time, KDF memory/iterations/parallelism,
-  version, mode, chunk size, and algorithm;
+- successful verification makes the complete original filename available in
+  its tooltip and displays vault size and modification time, KDF
+  memory/iterations/parallelism, version, mode, chunk size, and algorithm;
 - changing the password clears the verified metadata until the user checks it
   again;
 - all source inputs, drop zones, queue mutation controls, password input, and
@@ -425,6 +433,9 @@ The Avalonia decryption form integrates Core as follows:
   valid queue items from running;
 - aggregate progress is based on completed queue items plus the current item's
   progress, and the table retains individual success/failure results;
+- aggregate results are shown in the bottom status bar rather than a separate
+  Overview tab; starting another decrypt run resets prior progress/results while
+  retaining verified metadata;
 - automatic collision renaming is not offered;
 - when overwrite is disabled, both clear-name and restored encrypted-name
   destinations use create-new semantics and an existing file is preserved;

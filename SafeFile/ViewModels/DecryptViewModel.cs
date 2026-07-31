@@ -44,6 +44,7 @@ public sealed partial class DecryptViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSelectedItem))]
     [NotifyPropertyChangedFor(nameof(DetailVaultName))]
+    [NotifyPropertyChangedFor(nameof(DetailVaultPath))]
     [NotifyPropertyChangedFor(nameof(DetailOriginalFileName))]
     [NotifyPropertyChangedFor(nameof(DetailFormat))]
     [NotifyPropertyChangedFor(nameof(DetailMode))]
@@ -106,6 +107,7 @@ public sealed partial class DecryptViewModel : ViewModelBase
     }
 
     public string DetailVaultName => SelectedItem?.VaultName ?? "";
+    public string DetailVaultPath => SelectedItem?.SourcePath ?? "";
     public string DetailOriginalFileName => SelectedItem?.OriginalFileName ?? "";
     public string DetailFormat => SelectedItem?.Header is { } header
         ? $"SafeFile v{header.Version}"
@@ -440,8 +442,21 @@ public sealed partial class DecryptViewModel : ViewModelBase
         IsStatusBarVisible = true;
         StatusAction = L("Decrypting");
         StatusProgress = 0;
-        StatusDetails = "";
         StatusMessage = "";
+        foreach (var item in Items.Where(item => item.IsValid))
+        {
+            item.Progress = 0;
+            item.IsProcessing = false;
+            item.ErrorMessage = "";
+            item.Status = item.HasVerifiedMetadata
+                ? L("ReadyToDecrypt")
+                : L("Ready");
+            item.StatusForeground = item.HasVerifiedMetadata
+                ? "#16A34A"
+                : "#4B5563";
+        }
+        NotifySummaries();
+        StatusDetails = ResultSummary;
         var cts = new CancellationTokenSource();
         _activeCts = cts;
         byte[]? passwordBytes = null;
@@ -480,6 +495,8 @@ public sealed partial class DecryptViewModel : ViewModelBase
                 item.Status = L("Decrypting");
                 item.StatusForeground = "#2563EB";
                 item.ErrorMessage = "";
+                NotifySummaries();
+                StatusDetails = ResultSummary;
 
                 try
                 {
@@ -776,6 +793,7 @@ public sealed partial class DecryptViewModel : ViewModelBase
     private void RefreshSelectionDetails()
     {
         OnPropertyChanged(nameof(DetailVaultName));
+        OnPropertyChanged(nameof(DetailVaultPath));
         OnPropertyChanged(nameof(DetailOriginalFileName));
         OnPropertyChanged(nameof(DetailFormat));
         OnPropertyChanged(nameof(DetailMode));

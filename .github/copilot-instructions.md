@@ -82,7 +82,14 @@
 ## Current Avalonia UI behavior
 
 - The main window opens centered at 1280×720.
-- The encryption view supports file/folder picker selection and drag-and-drop. A dropped item automatically selects the matching source type.
+- The encryption view supports selecting or dropping one or more files, or one
+  folder. Multiple files are encrypted sequentially into independent `.safe`
+  vaults under the configured encrypted-output root; a failed file does not
+  prevent later selected files from being attempted. Do not accept a mixed
+  file-and-folder drop as one selection.
+- Multi-file encryption progress is weighted by the selected files' total byte
+  size. The source summary shows the selection count; its filename and path
+  tooltips list every selected item on numbered lines.
 - Do not add algorithm, chunk-size, or worker-count controls back to the encryption form. Those operational values come from Settings.
 - Keep the filename-encryption checkbox on the encryption form only; it is intentionally absent from Settings.
 - The encryption form includes an overwrite checkbox for single-file and ZIP
@@ -98,15 +105,19 @@
   drag-and-drop. Keep the picker/drop zone independent from the queue/detail
   region so long metadata does not change the source-selection layout.
 - Show each queued vault in a table with vault basename, authenticated original
-  filename, size, per-item progress, and success/failure state. The visible
-  value and tooltip for a vault use the basename, never the full source path.
+  filename, size, per-item progress, and success/failure state. In the details
+  panel, visually truncate the vault and authenticated original filename with
+  an ellipsis. Their tooltips show the full source path and complete original
+  filename respectively.
 - Lock every picker, drop zone, queue mutation, password field, and option while
   `IsDecrypting` is true. A batch failure must not stop subsequent valid vaults;
   preserve each row's result and show the aggregate result after the batch.
 - Display the password-check result beside its button. Clear the verified state
   and metadata when the password changes.
-- Display the complete verified original filename with wrapping; do not truncate
-  it with an ellipsis.
+- Keep only the File details section beside Security and options; aggregate
+  batch results belong in the bottom progress/status bar. Reset previous item
+  progress and result states when a new decrypt batch starts while retaining
+  already verified metadata.
 - The decryption view offers overwrite and open-folder options. Overwrite
   applies only to `File` and individual `PerFile` vault outputs; a ZIP
   destination folder must remain new. Do not re-add the removed automatic

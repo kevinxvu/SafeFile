@@ -81,9 +81,13 @@
                 <TextBlock Text="{loc:Tr VaultList}" FontSize="16"
                            FontWeight="SemiBold" VerticalAlignment="Center"/>
                 <Border Background="{DynamicResource AccentSubtleBrush}" CornerRadius="10" Padding="8,2"
+                        VerticalAlignment="Center"
                         IsVisible="{Binding HasItems}">
                   <TextBlock Text="{Binding SelectionSummary}"
-                             FontSize="11" Foreground="{DynamicResource AccentBrush}"/>
+                             FontSize="11" Foreground="{DynamicResource AccentBrush}"
+                             HorizontalAlignment="Center"
+                             VerticalAlignment="Center"
+                             TextAlignment="Center"/>
                 </Border>
               </StackPanel>
               <Button Grid.Column="1" Theme="{StaticResource OutlinedButtonTheme}"
@@ -291,9 +295,10 @@
           <Border Grid.Column="2" Background="{DynamicResource SurfaceBrush}"
                   BorderBrush="{DynamicResource StrongBorderBrush}" BorderThickness="1"
                   CornerRadius="8" Padding="10">
-            <TabControl>
-              <TabItem Header="{loc:Tr FileDetails}" FontSize="13">
-                <Grid Margin="8" MinHeight="245">
+            <StackPanel Spacing="14" Margin="6">
+              <TextBlock Text="{loc:Tr FileDetails}"
+                         FontSize="16" FontWeight="SemiBold"/>
+                <Grid MinHeight="245">
                   <TextBlock Text="{loc:Tr SelectVaultForDetails}"
                              Foreground="{DynamicResource SecondaryTextBrush}" TextWrapping="Wrap"
                              HorizontalAlignment="Center"
@@ -304,13 +309,18 @@
                       <TextBlock Text="{loc:Tr Vault}"/>
                       <TextBlock Grid.Column="1" Text="{Binding DetailVaultName}"
                                  FontWeight="SemiBold"
-                                 TextTrimming="CharacterEllipsis"/>
+                                 TextWrapping="NoWrap"
+                                 TextTrimming="CharacterEllipsis"
+                                 ToolTip.Tip="{Binding DetailVaultPath}"/>
                     </Grid>
                     <Grid ColumnDefinitions="110,*">
                       <TextBlock Text="{loc:Tr OriginalFileName}"/>
                       <TextBlock Grid.Column="1"
                                  Text="{Binding DetailOriginalFileName}"
-                                 FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                 FontWeight="SemiBold"
+                                 TextWrapping="NoWrap"
+                                 TextTrimming="CharacterEllipsis"
+                                 ToolTip.Tip="{Binding DetailOriginalFileName}"/>
                     </Grid>
                     <Grid ColumnDefinitions="110,*">
                       <TextBlock Text="{loc:Tr Format}"/>
@@ -353,25 +363,7 @@
                     </Border>
                   </StackPanel>
                 </Grid>
-              </TabItem>
-
-              <TabItem Header="{loc:Tr Overview}" FontSize="13">
-                <StackPanel Margin="8" MinHeight="245" Spacing="14">
-                  <TextBlock Text="{loc:Tr BatchResult}" FontSize="14"
-                             FontWeight="SemiBold"/>
-                  <TextBlock Text="{Binding ResultSummary}"
-                             TextWrapping="Wrap"/>
-                  <Separator/>
-                  <TextBlock Text="{loc:Tr OutputFolder}" FontSize="11"
-                             Foreground="{DynamicResource SecondaryTextBrush}"/>
-                  <TextBlock Text="{Binding OutputPath}"
-                             FontWeight="Medium" TextWrapping="Wrap"/>
-                  <TextBlock Text="{loc:Tr BatchDetailsHint}"
-                             FontSize="11" Foreground="{DynamicResource SecondaryTextBrush}"
-                             TextWrapping="Wrap"/>
-                </StackPanel>
-              </TabItem>
-            </TabControl>
+            </StackPanel>
           </Border>
         </Grid>
       </StackPanel>
