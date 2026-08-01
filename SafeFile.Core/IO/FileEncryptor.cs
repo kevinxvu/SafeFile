@@ -39,7 +39,7 @@ public sealed class FileEncryptor
         byte[] passwordBytes,
         int chunkSizeBytes = 1_048_576,
         Argon2Parameters? kdfParams = null,
-        bool? encryptFileName = null,
+        OutputFileNameMode outputFileNameMode = OutputFileNameMode.None,
         CancellationToken cancellationToken = default,
         bool overwriteExisting = false)
     {
@@ -54,7 +54,7 @@ public sealed class FileEncryptor
         ValidateChunkSize(chunkSizeBytes);
         _pipeline.ValidateMemoryBudget(chunkSizeBytes);
         EnsureDestinationOutsideSourceFolder(sourceFolderPath, destinationPath);
-        var shouldEncryptFileName = encryptFileName ?? false;
+        ValidateOutputFileNameMode(outputFileNameMode);
         var actualDestinationPath = destinationPath;
         var destinationOpened = false;
 
@@ -83,13 +83,14 @@ public sealed class FileEncryptor
                 noncePrefix,
                 0,
                 true);
-            if (shouldEncryptFileName)
-                actualDestinationPath = GetEncryptedVaultPath(
+            if (outputFileNameMode != OutputFileNameMode.None)
+                actualDestinationPath = GetProtectedVaultPath(
                     destinationPath,
                     encryptedFileName,
                     masterKey,
                     salt,
-                    effectiveKdfParams);
+                    effectiveKdfParams,
+                    outputFileNameMode);
 
             var destinationMode = overwriteExisting ? FileMode.Create : FileMode.CreateNew;
             using var destStream = new FileStream(
@@ -99,7 +100,7 @@ public sealed class FileEncryptor
             var header = new VaultHeader
             {
                 Mode = VaultMode.Zip,
-                EncryptFileNames = shouldEncryptFileName,
+                OutputFileNameMode = outputFileNameMode,
                 KdfParameters = effectiveKdfParams,
                 Salt = salt,
                 NoncePrefix = noncePrefix,
@@ -341,7 +342,7 @@ public sealed class FileEncryptor
         byte[] passwordBytes,
         int chunkSizeBytes = 1_048_576,
         Argon2Parameters? kdfParams = null,
-        bool? encryptFileName = null,
+        OutputFileNameMode outputFileNameMode = OutputFileNameMode.None,
         CancellationToken cancellationToken = default,
         bool overwriteExisting = false) =>
         EncryptFileCoreAsync(
@@ -353,7 +354,7 @@ public sealed class FileEncryptor
             kdfParams,
             cancellationToken,
             progressCallback: null,
-            encryptFileNames: encryptFileName ?? false,
+            outputFileNameMode,
             overwriteExisting);
 
     /// <summary>
@@ -418,7 +419,7 @@ public sealed class FileEncryptor
                     fileInfo.LastWriteTimeUtc,
                     header.Version,
                     header.Mode,
-                    header.EncryptFileNames,
+                    header.OutputFileNameMode,
                     header.ChunkSize,
                     header.KdfParameters,
                     "AES-256-GCM");
@@ -448,7 +449,14 @@ public sealed class FileEncryptor
         if (!fileName.EndsWith(".safe", StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException("Encrypted output filename must end with .safe.");
 
-        var base64Url = fileName[..^".safe".Length]
+        var encodedName = fileName[..^".safe".Length];
+        if (encodedName.Length == 64 && encodedName.All(Uri.IsHexDigit))
+        {
+            throw new InvalidDataException(
+                "A SHA-256 output filename cannot be decrypted without reading its vault metadata.");
+        }
+
+        var base64Url = encodedName
             .Replace('-', '+')
             .Replace('_', '/');
         var paddingLength = (4 - base64Url.Length % 4) % 4;
@@ -529,8 +537,9 @@ public sealed class FileEncryptor
         byte[] passwordBytes,
         int chunkSizeBytes = 1_048_576,
         Argon2Parameters? kdfParams = null,
-        bool? encryptFileNames = null,
-        CancellationToken cancellationToken = default)
+        OutputFileNameMode outputFileNameMode = OutputFileNameMode.None,
+        CancellationToken cancellationToken = default,
+        bool overwriteExisting = false)
     {
         ArgumentNullException.ThrowIfNull(sourceFolderPath);
         ArgumentNullException.ThrowIfNull(destinationFolderPath);
@@ -538,8 +547,8 @@ public sealed class FileEncryptor
 
         if (!Directory.Exists(sourceFolderPath))
             throw new DirectoryNotFoundException($"Source folder not found: {sourceFolderPath}");
-        if (Directory.Exists(destinationFolderPath) || File.Exists(destinationFolderPath))
-            throw new IOException($"Destination already exists: {destinationFolderPath}");
+        if (File.Exists(destinationFolderPath))
+            throw new IOException($"Destination path is an existing file: {destinationFolderPath}");
         ValidatePasswordForEncryption(passwordBytes);
 
         ValidateChunkSize(chunkSizeBytes);
@@ -547,15 +556,20 @@ public sealed class FileEncryptor
         EnsureDestinationOutsideSourceFolder(sourceFolderPath, destinationFolderPath);
 
         var sourceRoot = Path.GetFullPath(sourceFolderPath);
-        var shouldEncryptFileNames = encryptFileNames ?? false;
+        ValidateOutputFileNameMode(outputFileNameMode);
         Directory.CreateDirectory(destinationFolderPath);
+        var hasFailures = false;
 
-        try
+        // Collision fast-fail paths for None/SHA-256 can complete synchronously.
+        // Move the batch loop off a caller UI context before processing them.
+        await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
+
+        foreach (var sourceFile in EnumerateRegularFiles(new DirectoryInfo(sourceRoot)))
         {
-            foreach (var sourceFile in EnumerateRegularFiles(new DirectoryInfo(sourceRoot)))
+            cancellationToken.ThrowIfCancellationRequested();
+            var relativePath = Path.GetRelativePath(sourceRoot, sourceFile.FullName);
+            try
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                var relativePath = Path.GetRelativePath(sourceRoot, sourceFile.FullName);
                 var encryptedFileName = sourceFile.Name + ".safe";
                 var encryptedRelativePath = Path.Combine(
                     Path.GetDirectoryName(relativePath) ?? string.Empty,
@@ -575,14 +589,34 @@ public sealed class FileEncryptor
                     cancellationToken,
                     progress => _perFileProgress?.Report(
                         new PerFileProgress(sourceFile.FullName, progress)),
-                    shouldEncryptFileNames,
-                    overwriteExisting: false).ConfigureAwait(false);
+                    outputFileNameMode,
+                    overwriteExisting).ConfigureAwait(false);
+                _perFileProgress?.Report(
+                    new PerFileProgress(
+                        sourceFile.FullName,
+                        1,
+                        PerFileResult.Succeeded));
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                hasFailures = true;
+                _perFileProgress?.Report(
+                    new PerFileProgress(
+                        sourceFile.FullName,
+                        1,
+                        ex is DestinationAlreadyExistsException
+                            ? PerFileResult.DestinationExists
+                            : PerFileResult.Failed));
             }
         }
-        catch
+
+        if (hasFailures)
         {
-            TryDeleteDirectory(destinationFolderPath);
-            throw;
+            throw new IOException("Per-file encryption completed with errors.");
         }
     }
 
@@ -647,7 +681,7 @@ public sealed class FileEncryptor
         Argon2Parameters? kdfParams,
         CancellationToken cancellationToken,
         Action<double>? progressCallback,
-        bool encryptFileNames,
+        OutputFileNameMode outputFileNameMode,
         bool overwriteExisting)
     {
         ArgumentNullException.ThrowIfNull(sourcePath);
@@ -659,6 +693,7 @@ public sealed class FileEncryptor
         EnsureDistinctPaths(sourcePath, destinationPath);
 
         ValidatePasswordForEncryption(passwordBytes);
+        ValidateOutputFileNameMode(outputFileNameMode);
 
         ValidateChunkSize(chunkSizeBytes);
         _pipeline.ValidateMemoryBudget(chunkSizeBytes);
@@ -666,13 +701,26 @@ public sealed class FileEncryptor
         var fileInfo = new FileInfo(sourcePath);
         var originalFileName = fileInfo.Name;
         var encryptedFileName = System.Text.Encoding.UTF8.GetBytes(originalFileName);
+        var actualDestinationPath = outputFileNameMode == OutputFileNameMode.Sha256
+            ? GetSha256VaultPath(destinationPath, encryptedFileName)
+            : destinationPath;
+
+        EnsureDistinctPaths(sourcePath, actualDestinationPath);
+        if (!overwriteExisting &&
+            outputFileNameMode is OutputFileNameMode.None or OutputFileNameMode.Sha256 &&
+            File.Exists(actualDestinationPath))
+        {
+            if (vaultMode == VaultMode.PerFile)
+                throw new DestinationAlreadyExistsException(actualDestinationPath);
+            throw new IOException($"Destination already exists: {actualDestinationPath}");
+        }
+
         using var sourceStream = new FileStream(
             sourcePath,
             FileMode.Open,
             FileAccess.Read,
             FileShare.Read);
         var fileSize = sourceStream.Length;
-        var actualDestinationPath = destinationPath;
         var masterKey = Array.Empty<byte>();
         var destinationOpened = false;
 
@@ -691,24 +739,38 @@ public sealed class FileEncryptor
             var aesGcm = new AesGcmEngine();
             var encryptedFileNameChunk = aesGcm.EncryptChunk(
                 encryptedFileName, masterKey, noncePrefix, 0, true);
-            if (encryptFileNames)
-                actualDestinationPath = GetEncryptedVaultPath(
+            if (outputFileNameMode == OutputFileNameMode.Aes)
+                actualDestinationPath = GetProtectedVaultPath(
                     destinationPath,
                     encryptedFileName,
                     masterKey,
                     salt,
-                    effectiveKdfParams);
+                    effectiveKdfParams,
+                    outputFileNameMode);
 
             EnsureDistinctPaths(sourcePath, actualDestinationPath);
             var destinationMode = overwriteExisting ? FileMode.Create : FileMode.CreateNew;
-            using var destStream = new FileStream(
-                actualDestinationPath, destinationMode, FileAccess.Write, FileShare.None);
+            FileStream destStream;
+            try
+            {
+                destStream = new FileStream(
+                    actualDestinationPath, destinationMode, FileAccess.Write, FileShare.None);
+            }
+            catch (IOException ex) when (
+                !overwriteExisting && File.Exists(actualDestinationPath))
+            {
+                if (vaultMode == VaultMode.PerFile)
+                    throw new DestinationAlreadyExistsException(actualDestinationPath, ex);
+                throw;
+            }
+            using (destStream)
+            {
             destinationOpened = true;
             var passwordChecksum = PasswordValidator.ComputeChecksum(masterKey, salt);
             var header = new VaultHeader
             {
                 Mode = vaultMode,
-                EncryptFileNames = encryptFileNames,
+                OutputFileNameMode = outputFileNameMode,
                 KdfParameters = effectiveKdfParams,
                 Salt = salt,
                 NoncePrefix = noncePrefix,
@@ -764,6 +826,7 @@ public sealed class FileEncryptor
 
             if (sourceStream.Length != fileSize)
                 throw new IOException("Source file size changed while it was being encrypted.");
+            }
         }
         catch
         {
@@ -845,7 +908,8 @@ public sealed class FileEncryptor
             if (header.Mode != expectedMode)
                 throw new InvalidDataException(
                     $"Vault mode mismatch: expected {expectedMode}, got {header.Mode}.");
-            var restoreStoredFileName = header.EncryptFileNames;
+            var restoreStoredFileName =
+                header.OutputFileNameMode != OutputFileNameMode.None;
 
             var masterKey = await DeriveKeyAsync(
                 passwordBytes,
@@ -1032,7 +1096,22 @@ public sealed class FileEncryptor
         }
     }
 
-    private static string GetEncryptedVaultPath(
+    private static string GetProtectedVaultPath(
+        string requestedPath,
+        byte[] fullFileName,
+        byte[] masterKey,
+        byte[] salt,
+        Argon2Parameters kdfParameters,
+        OutputFileNameMode outputFileNameMode) => outputFileNameMode switch
+    {
+        OutputFileNameMode.Aes => GetAesEncryptedVaultPath(
+            requestedPath, fullFileName, masterKey, salt, kdfParameters),
+        OutputFileNameMode.Sha256 => GetSha256VaultPath(requestedPath, fullFileName),
+        _ => throw new ArgumentOutOfRangeException(
+            nameof(outputFileNameMode), outputFileNameMode, "Unsupported output filename mode.")
+    };
+
+    private static string GetAesEncryptedVaultPath(
         string requestedPath,
         byte[] fullFileName,
         byte[] masterKey,
@@ -1073,6 +1152,20 @@ public sealed class FileEncryptor
         {
             CryptographicOperations.ZeroMemory(fileNameKey);
             CryptographicOperations.ZeroMemory(shortenedBytes);
+        }
+    }
+
+    private static string GetSha256VaultPath(string requestedPath, byte[] fullFileName)
+    {
+        var parent = Path.GetDirectoryName(requestedPath) ?? string.Empty;
+        var hash = SHA256.HashData(fullFileName);
+        try
+        {
+            return Path.Combine(parent, Convert.ToHexStringLower(hash) + ".safe");
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(hash);
         }
     }
 
@@ -1119,6 +1212,15 @@ public sealed class FileEncryptor
         return await Task.Run(
             () => _kdf.DeriveKey(passwordBytes, salt, parameters),
             cancellationToken).ConfigureAwait(false);
+    }
+
+    private static void ValidateOutputFileNameMode(OutputFileNameMode mode)
+    {
+        if (!Enum.IsDefined(mode))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(mode), mode, "Unsupported output filename mode.");
+        }
     }
 
     private static void ReadExactly(Stream stream, Span<byte> buffer, string fieldName)
@@ -1297,4 +1399,23 @@ public sealed class FileEncryptor
     }
 }
 
-public sealed record PerFileProgress(string SourceFilePath, double Progress);
+public sealed record PerFileProgress(
+    string SourceFilePath,
+    double Progress,
+    PerFileResult Result = PerFileResult.InProgress);
+
+public enum PerFileResult
+{
+    InProgress,
+    Succeeded,
+    DestinationExists,
+    Failed
+}
+
+internal sealed class DestinationAlreadyExistsException : IOException
+{
+    public DestinationAlreadyExistsException(string path, Exception? innerException = null)
+        : base($"Destination already exists: {path}", innerException)
+    {
+    }
+}

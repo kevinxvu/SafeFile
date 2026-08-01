@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using SafeFile.Core.Format;
 using SafeFile.Core.IO;
 using SafeFile.Core.Models;
 using SafeFile.Core.Services;
@@ -32,7 +33,6 @@ public sealed partial class EncryptViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(EstimatedOutputName))]
     [NotifyPropertyChangedFor(nameof(IsFolderSource))]
-    [NotifyPropertyChangedFor(nameof(IsSingleVaultOutput))]
     private bool _isFileSource = true;
 
     [ObservableProperty]
@@ -232,15 +232,43 @@ public sealed partial class EncryptViewModel : ViewModelBase
     private bool _encryptFileNames;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsAesOutputFileNameMode))]
+    [NotifyPropertyChangedFor(nameof(IsSha256OutputFileNameMode))]
+    [NotifyPropertyChangedFor(nameof(EstimatedOutputName))]
+    private OutputFileNameMode _selectedOutputFileNameMode = OutputFileNameMode.Aes;
+
+    public bool IsAesOutputFileNameMode
+    {
+        get => SelectedOutputFileNameMode == OutputFileNameMode.Aes;
+        set
+        {
+            if (value)
+                SelectedOutputFileNameMode = OutputFileNameMode.Aes;
+        }
+    }
+
+    public bool IsSha256OutputFileNameMode
+    {
+        get => SelectedOutputFileNameMode == OutputFileNameMode.Sha256;
+        set
+        {
+            if (value)
+                SelectedOutputFileNameMode = OutputFileNameMode.Sha256;
+        }
+    }
+
+    private OutputFileNameMode EffectiveOutputFileNameMode =>
+        EncryptFileNames
+            ? SelectedOutputFileNameMode
+            : OutputFileNameMode.None;
+
+    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsFolderModePerFile))]
     [NotifyPropertyChangedFor(nameof(EstimatedOutputName))]
-    [NotifyPropertyChangedFor(nameof(IsSingleVaultOutput))]
     private bool _isFolderModeZip = true;
 
     [ObservableProperty]
     private bool _overwriteExisting;
-
-    public bool IsSingleVaultOutput => IsFileSource || IsFolderModeZip;
 
     public bool IsFolderModePerFile
     {
@@ -270,9 +298,11 @@ public sealed partial class EncryptViewModel : ViewModelBase
             }
 
             return EncryptFileNames
-                ? IsFileSource
-                    ? L("EncryptedFileNamePlaceholder")
-                    : L("EncryptedFolderNamePlaceholder")
+                ? SelectedOutputFileNameMode == OutputFileNameMode.Sha256
+                    ? L("Sha256FileNamePlaceholder")
+                    : IsFileSource
+                        ? L("EncryptedFileNamePlaceholder")
+                        : L("EncryptedFolderNamePlaceholder")
                 : sourceName + ".safe";
         }
     }
@@ -307,7 +337,11 @@ public sealed partial class EncryptViewModel : ViewModelBase
         new[] { StatusBytes, StatusSpeed, StatusEta }
             .Where(s => !string.IsNullOrEmpty(s)));
 
-    [ObservableProperty] private string _statusMessage = "";
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasStatusMessage))]
+    private string _statusMessage = "";
+
+    public bool HasStatusMessage => !string.IsNullOrWhiteSpace(StatusMessage);
     [ObservableProperty] private bool _hasError;
 
     // ── Commands ──────────────────────────────────────────────────
@@ -440,17 +474,28 @@ public sealed partial class EncryptViewModel : ViewModelBase
         StatusEta = "";
 
         var startTime = DateTime.UtcNow;
-        long? sourceSize = TryGetSourceSize();
+        var sourceMetrics = await Task.Run(() =>
+        {
+            var size = TryGetSourceSize();
+            var fileCount = !IsFileSource && !IsFolderModeZip
+                ? TryGetSourceFileCount()
+                : 0;
+            return (Size: size, FileCount: fileCount);
+        });
+        long? sourceSize = sourceMetrics.Size;
         long completedBatchBytes = 0;
         long currentBatchFileBytes = 0;
-        var perFileTotal = !IsFileSource && !IsFolderModeZip
-            ? TryGetSourceFileCount()
-            : 0;
-        var completedPerFileCount = 0;
-        string? activePerFilePath = null;
+        var perFileTotal = sourceMetrics.FileCount;
+        var succeededFileCount = 0;
+        var failedFileCount = 0;
+        var collisionFileCount = 0;
+        var otherFailedFileCount = 0;
 
         var progress = new Progress<double>(p =>
         {
+            if (perFileTotal > 0)
+                return;
+
             var overallProgress = IsMultipleFileSource && sourceSize is > 0
                 ? Math.Clamp((completedBatchBytes + currentBatchFileBytes * p) /
                     (double)sourceSize.Value, 0, 1)
@@ -461,7 +506,15 @@ public sealed partial class EncryptViewModel : ViewModelBase
             {
                 var bytesProcessed = (long)(sourceSize.Value * overallProgress);
                 var speed = bytesProcessed / elapsed;
-                StatusBytes = FormatBytes(bytesProcessed) + " / " + FormatBytes(sourceSize.Value);
+                StatusBytes = IsMultipleFileSource
+                    ? F(
+                        "BatchSummary",
+                        succeededFileCount,
+                        failedFileCount,
+                        Math.Max(
+                            0,
+                            _sourcePaths.Count - succeededFileCount - failedFileCount))
+                    : FormatBytes(bytesProcessed) + " / " + FormatBytes(sourceSize.Value);
                 StatusSpeed = FormatSpeed(speed);
                 if (overallProgress > 0.001)
                 {
@@ -473,28 +526,37 @@ public sealed partial class EncryptViewModel : ViewModelBase
 
         var perFileProgress = new Progress<PerFileProgress>(p =>
         {
-            if (activePerFilePath is null)
+            switch (p.Result)
             {
-                activePerFilePath = p.SourceFilePath;
-            }
-            else if (!string.Equals(
-                         activePerFilePath,
-                         p.SourceFilePath,
-                         OperatingSystem.IsWindows()
-                             ? StringComparison.OrdinalIgnoreCase
-                             : StringComparison.Ordinal))
-            {
-                completedPerFileCount++;
-                activePerFilePath = p.SourceFilePath;
+                case PerFileResult.Succeeded:
+                    succeededFileCount++;
+                    break;
+                case PerFileResult.DestinationExists:
+                    collisionFileCount++;
+                    failedFileCount++;
+                    break;
+                case PerFileResult.Failed:
+                    otherFailedFileCount++;
+                    failedFileCount++;
+                    break;
             }
 
             StatusCurrentFile = Path.GetFileName(p.SourceFilePath);
+            var completed = succeededFileCount + failedFileCount;
             StatusProgress = perFileTotal > 0
                 ? Math.Clamp(
-                    (completedPerFileCount + p.Progress) / perFileTotal,
+                    (completed + (p.Result == PerFileResult.InProgress ? p.Progress : 0)) /
+                    perFileTotal,
                     0,
                     1)
                 : p.Progress;
+            StatusBytes = F(
+                "BatchSummary",
+                succeededFileCount,
+                failedFileCount,
+                Math.Max(0, perFileTotal - completed));
+            StatusSpeed = "";
+            StatusEta = "";
         });
 
         byte[]? passwordBytes = null;
@@ -528,14 +590,16 @@ public sealed partial class EncryptViewModel : ViewModelBase
                         actualOutputPath = await encryptor.EncryptFileAsync(
                             sourceFile, destPath, passwordBytes,
                             chunkSizeBytes, kdfParams,
-                            encryptFileName: EncryptFileNames,
+                            outputFileNameMode: EffectiveOutputFileNameMode,
                             cancellationToken: cts.Token,
                             overwriteExisting: OverwriteExisting);
+                        succeededFileCount++;
                         Logger.Information("Encrypted batch source {SourcePath} to {OutputPath}", sourceFile, actualOutputPath);
                     }
                     catch (OperationCanceledException) { throw; }
                     catch (Exception ex) when (IsMultipleFileSource)
                     {
+                        failedFileCount++;
                         failures.Add($"{Path.GetFileName(sourceFile)}: {ex.Message}");
                         Logger.Error(ex, "Failed to encrypt batch source {SourcePath}", sourceFile);
                     }
@@ -558,7 +622,7 @@ public sealed partial class EncryptViewModel : ViewModelBase
                 actualOutputPath = await encryptor.EncryptFolderZipAsync(
                     SourcePath, destPath, passwordBytes,
                     chunkSizeBytes, kdfParams,
-                    encryptFileName: EncryptFileNames,
+                    outputFileNameMode: EffectiveOutputFileNameMode,
                     cancellationToken: cts.Token,
                     overwriteExisting: OverwriteExisting);
             }
@@ -571,8 +635,9 @@ public sealed partial class EncryptViewModel : ViewModelBase
                 await encryptor.EncryptFolderPerFileAsync(
                     SourcePath, destFolder, passwordBytes,
                     chunkSizeBytes, kdfParams,
-                    encryptFileNames: EncryptFileNames,
-                    cancellationToken: cts.Token);
+                    outputFileNameMode: EffectiveOutputFileNameMode,
+                    cancellationToken: cts.Token,
+                    overwriteExisting: OverwriteExisting);
                 actualOutputPath = destFolder;
             }
 
@@ -582,6 +647,14 @@ public sealed partial class EncryptViewModel : ViewModelBase
                 ? F("FilesEncrypted", _sourcePaths.Count)
                 : Path.GetFileName(actualOutputPath);
             StatusEta = "";
+            if (IsMultipleFileSource || perFileTotal > 0)
+            {
+                StatusBytes = F(
+                    "SuccessFailureSummary",
+                    succeededFileCount,
+                    failedFileCount);
+                StatusSpeed = "";
+            }
             StatusMessage = IsMultipleFileSource
                 ? F("MultipleEncryptionSucceeded", _sourcePaths.Count)
                 : F("EncryptionSucceeded", Path.GetFileName(actualOutputPath));
@@ -612,13 +685,37 @@ public sealed partial class EncryptViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            StatusAction = L("EncryptionFailed");
+            StatusAction = succeededFileCount > 0 && failedFileCount > 0
+                ? L("EncryptionCompletedWithErrors")
+                : L("EncryptionFailed");
             StatusEta = "";
+            if (IsMultipleFileSource || perFileTotal > 0)
+            {
+                StatusBytes = F(
+                    "SuccessFailureSummary",
+                    succeededFileCount,
+                    failedFileCount);
+                StatusSpeed = "";
+            }
             Logger.Error(
                 ex,
                 "Encryption failed for {SourcePath}",
                 SourcePath);
-            await ShowSubmitErrorAsync(ex.Message, L("EncryptionFailed"));
+            if (perFileTotal > 0 && failedFileCount > 0)
+            {
+                var summaries = new List<string>();
+                if (collisionFileCount > 0)
+                    summaries.Add(F("PerFileCollisionFailures", collisionFileCount));
+                if (otherFailedFileCount > 0)
+                    summaries.Add(F("PerFileOtherFailures", otherFailedFileCount));
+                await ShowSubmitErrorAsync(
+                    string.Join(Environment.NewLine, summaries),
+                    L("EncryptionCompletedWithErrors"));
+            }
+            else
+            {
+                await ShowSubmitErrorAsync(ex.Message, L("EncryptionFailed"));
+            }
         }
         finally
         {
@@ -660,6 +757,7 @@ public sealed partial class EncryptViewModel : ViewModelBase
         HasError = false;
         IsFileSource = true;
         EncryptFileNames = false;
+        SelectedOutputFileNameMode = OutputFileNameMode.Aes;
         OverwriteExisting = false;
         IsFolderModeZip = true;
     }

@@ -6,6 +6,9 @@ namespace SafeFile.Core.Format;
 
 public sealed class VaultHeader
 {
+    private const byte ProtectOutputFileNameFlag = 1 << 0;
+    private const byte Sha256OutputFileNameFlag = 1 << 1;
+    private const byte KnownFlags = ProtectOutputFileNameFlag | Sha256OutputFileNameFlag;
     private static readonly byte[] Magic = Encoding.ASCII.GetBytes("SAFE");
     public static ReadOnlySpan<byte> MagicBytes => Magic;
     public const byte CurrentVersion = 1;
@@ -19,7 +22,7 @@ public sealed class VaultHeader
 
     public byte Version { get; init; } = CurrentVersion;
     public VaultMode Mode { get; init; }
-    public bool EncryptFileNames { get; init; }
+    public OutputFileNameMode OutputFileNameMode { get; init; }
     public Argon2Parameters KdfParameters { get; init; } = Argon2Kdf.DefaultParameters;
     public byte[] Salt { get; init; } = Array.Empty<byte>();
     public byte[] NoncePrefix { get; init; } = Array.Empty<byte>();
@@ -40,7 +43,7 @@ public sealed class VaultHeader
 
         fixedBuffer[offset++] = Version;
         fixedBuffer[offset++] = (byte)Mode;
-        fixedBuffer[offset++] = EncryptFileNames ? (byte)1 : (byte)0;
+        fixedBuffer[offset++] = GetFlags(OutputFileNameMode);
 
         BinaryPrimitives.WriteInt32LittleEndian(fixedBuffer[offset..], KdfParameters.MemorySizeKb);
         offset += 4;
@@ -100,9 +103,15 @@ public sealed class VaultHeader
         }
 
         var flags = headerBytes[offset++];
-        if ((flags & ~1) != 0)
+        if ((flags & ~KnownFlags) != 0)
             throw new InvalidDataException($"Invalid vault flags: {flags}.");
-        var encryptFileNames = (flags & 1) != 0;
+        var outputFileNameMode = flags switch
+        {
+            0 => OutputFileNameMode.None,
+            ProtectOutputFileNameFlag => OutputFileNameMode.Aes,
+            ProtectOutputFileNameFlag | Sha256OutputFileNameFlag => OutputFileNameMode.Sha256,
+            _ => throw new InvalidDataException($"Invalid vault flags: {flags}.")
+        };
 
         var memorySizeKb = BinaryPrimitives.ReadInt32LittleEndian(headerBytes.AsSpan(offset, 4));
         offset += 4;
@@ -141,7 +150,7 @@ public sealed class VaultHeader
         {
             Version = version,
             Mode = mode,
-            EncryptFileNames = encryptFileNames,
+            OutputFileNameMode = outputFileNameMode,
             KdfParameters = kdfParameters,
             Salt = salt,
             NoncePrefix = noncePrefix,
@@ -160,6 +169,12 @@ public sealed class VaultHeader
         if (!Enum.IsDefined(Mode))
         {
             throw new InvalidOperationException($"Unsupported vault mode: {Mode}.");
+        }
+
+        if (!Enum.IsDefined(OutputFileNameMode))
+        {
+            throw new InvalidOperationException(
+                $"Unsupported output filename mode: {OutputFileNameMode}.");
         }
 
         KdfParameters.Validate();
@@ -195,4 +210,12 @@ public sealed class VaultHeader
             buffer = buffer[read..];
         }
     }
+
+    private static byte GetFlags(OutputFileNameMode mode) => mode switch
+    {
+        OutputFileNameMode.None => 0,
+        OutputFileNameMode.Aes => ProtectOutputFileNameFlag,
+        OutputFileNameMode.Sha256 => ProtectOutputFileNameFlag | Sha256OutputFileNameFlag,
+        _ => throw new InvalidOperationException($"Unsupported output filename mode: {mode}.")
+    };
 }

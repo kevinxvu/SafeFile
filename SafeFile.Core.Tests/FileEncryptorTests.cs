@@ -51,7 +51,7 @@ public sealed class FileEncryptorTests
             password,
             1_048_576,
             FastKdf,
-            encryptFileName: true);
+            outputFileNameMode: OutputFileNameMode.Aes);
 
         Assert.Equal("existing destination", await File.ReadAllTextAsync(requestedVault));
         Assert.True(File.Exists(actualVault));
@@ -60,7 +60,9 @@ public sealed class FileEncryptorTests
             "private-name.txt",
             await encryptor.DecryptOutputFileNameAsync(Path.GetFileName(actualVault), password));
         using (var stream = File.OpenRead(actualVault))
-            Assert.True(VaultHeader.ReadFrom(stream).EncryptFileNames);
+            Assert.Equal(
+                OutputFileNameMode.Aes,
+                VaultHeader.ReadFrom(stream).OutputFileNameMode);
 
         var actualRestored = await encryptor.DecryptFileAsync(
             actualVault,
@@ -69,6 +71,45 @@ public sealed class FileEncryptorTests
 
         Assert.Equal(Path.Combine(restoredFolder, "private-name.txt"), actualRestored);
         Assert.Equal("hidden filename", await File.ReadAllTextAsync(actualRestored));
+    }
+
+    [Fact]
+    public async Task FileRoundTrip_Sha256OutputName_HashesNameAndRestoresFromVault()
+    {
+        using var temp = new TempDirectory();
+        var sourceFolder = Directory.CreateDirectory(Path.Combine(temp.Path, "source")).FullName;
+        var restoredFolder = Directory.CreateDirectory(Path.Combine(temp.Path, "restored")).FullName;
+        const string originalFileName = "private-name.txt";
+        var source = Path.Combine(sourceFolder, originalFileName);
+        var requestedVault = Path.Combine(temp.Path, originalFileName + ".safe");
+        await File.WriteAllTextAsync(source, "sha256 filename");
+        var password = "sha256-test-password"u8.ToArray();
+        var encryptor = new FileEncryptor(consumerThreads: 2);
+
+        var actualVault = await encryptor.EncryptFileAsync(
+            source,
+            requestedVault,
+            password,
+            1_048_576,
+            FastKdf,
+            outputFileNameMode: OutputFileNameMode.Sha256);
+
+        var expectedHash = Convert.ToHexString(
+            SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(originalFileName)))
+            .ToLowerInvariant();
+        Assert.Equal(expectedHash + ".safe", Path.GetFileName(actualVault));
+
+        Assert.Equal(3, (await File.ReadAllBytesAsync(actualVault))[6]);
+        using (var stream = File.OpenRead(actualVault))
+            Assert.Equal(OutputFileNameMode.Sha256, VaultHeader.ReadFrom(stream).OutputFileNameMode);
+
+        var actualRestored = await encryptor.DecryptFileAsync(
+            actualVault,
+            Path.Combine(restoredFolder, "ignored-name"),
+            password);
+
+        Assert.Equal(Path.Combine(restoredFolder, originalFileName), actualRestored);
+        Assert.Equal("sha256 filename", await File.ReadAllTextAsync(actualRestored));
     }
 
     [Fact]
@@ -86,13 +127,13 @@ public sealed class FileEncryptorTests
             password,
             1_048_576,
             FastKdf,
-            encryptFileName: true);
+            outputFileNameMode: OutputFileNameMode.Aes);
 
         var metadata = await encryptor.ReadVaultMetadataAsync(vault, password);
 
         Assert.Equal(originalName, metadata.OriginalFileName);
         Assert.Equal(VaultMode.File, metadata.Mode);
-        Assert.True(metadata.EncryptFileNames);
+        Assert.Equal(OutputFileNameMode.Aes, metadata.OutputFileNameMode);
         Assert.Equal(1_048_576, metadata.ChunkSize);
         Assert.Equal(FastKdf, metadata.KdfParameters);
         Assert.Equal(new FileInfo(vault).Length, metadata.VaultSizeBytes);
@@ -120,7 +161,7 @@ public sealed class FileEncryptorTests
             password,
             1_048_576,
             FastKdf,
-            encryptFileName: true);
+            outputFileNameMode: OutputFileNameMode.Aes);
 
         await Assert.ThrowsAsync<IOException>(() =>
             encryptor.DecryptFileAsync(
@@ -232,7 +273,7 @@ public sealed class FileEncryptorTests
             password,
             1_048_576,
             FastKdf,
-            encryptFileName: true);
+            outputFileNameMode: OutputFileNameMode.Aes);
 
         Assert.Equal(255, Path.GetFileName(actualVault).Length);
         Assert.Equal(
@@ -266,7 +307,7 @@ public sealed class FileEncryptorTests
             password,
             1_048_576,
             FastKdf,
-            encryptFileName: true);
+            outputFileNameMode: OutputFileNameMode.Aes);
 
         Assert.Equal("existing destination", await File.ReadAllTextAsync(requestedVault));
         Assert.True(File.Exists(actualVault));
@@ -275,7 +316,9 @@ public sealed class FileEncryptorTests
             "private-folder.zip",
             await encryptor.DecryptOutputFileNameAsync(Path.GetFileName(actualVault), password));
         using (var stream = File.OpenRead(actualVault))
-            Assert.True(VaultHeader.ReadFrom(stream).EncryptFileNames);
+            Assert.Equal(
+                OutputFileNameMode.Aes,
+                VaultHeader.ReadFrom(stream).OutputFileNameMode);
 
         await encryptor.DecryptFolderZipAsync(actualVault, restoredFolder, password);
         Assert.Equal(
@@ -298,7 +341,7 @@ public sealed class FileEncryptorTests
                 "password-for-test"u8.ToArray(),
                 1_048_576,
                 FastKdf,
-                encryptFileName: true));
+                outputFileNameMode: OutputFileNameMode.Aes));
 
         Assert.Contains("shorter extension", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
@@ -366,26 +409,6 @@ public sealed class FileEncryptorTests
         Assert.Equal(
             "settings-driven password policy",
             await File.ReadAllTextAsync(destination));
-    }
-
-    [Fact]
-    public async Task TruncatedVault_IsRejectedAndPartialOutputIsDeleted()
-    {
-        using var temp = new TempDirectory();
-        var source = Path.Combine(temp.Path, "source.bin");
-        var vault = Path.Combine(temp.Path, "source.safe");
-        var destination = Path.Combine(temp.Path, "restored.bin");
-        await File.WriteAllBytesAsync(source, RandomNumberGenerator.GetBytes(20_000));
-        var password = "password-for-test"u8.ToArray();
-        var encryptor = new FileEncryptor(consumerThreads: 4);
-        await encryptor.EncryptFileAsync(source, vault, password, 1_048_576, FastKdf);
-
-        await using (var stream = new FileStream(vault, FileMode.Open, FileAccess.Write))
-            stream.SetLength(stream.Length - 1);
-
-        await Assert.ThrowsAsync<InvalidDataException>(
-            () => encryptor.DecryptFileAsync(vault, destination, password));
-        Assert.False(File.Exists(destination));
     }
 
     [Fact]

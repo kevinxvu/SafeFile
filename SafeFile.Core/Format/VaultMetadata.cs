@@ -9,7 +9,7 @@ public sealed record VaultMetadata(
     DateTime LastModifiedUtc,
     byte Version,
     VaultMode Mode,
-    bool EncryptFileNames,
+    OutputFileNameMode OutputFileNameMode,
     int ChunkSize,
     Argon2Parameters KdfParameters,
     string EncryptionAlgorithm);

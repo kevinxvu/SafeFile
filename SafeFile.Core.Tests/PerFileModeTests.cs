@@ -91,13 +91,15 @@ public sealed class PerFileModeTests
             password,
             chunkSizeBytes: 1_048_576,
             kdfParams: FastKdf,
-            encryptFileNames: true);
+            outputFileNameMode: OutputFileNameMode.Aes);
 
         var vault = Assert.Single(Directory.GetFiles(
             Path.Combine(encryptedFolder, "nested"), "*.safe"));
         Assert.DoesNotContain("private-name", Path.GetFileName(vault), StringComparison.Ordinal);
         using (var stream = File.OpenRead(vault))
-            Assert.True(VaultHeader.ReadFrom(stream).EncryptFileNames);
+            Assert.Equal(
+                OutputFileNameMode.Aes,
+                VaultHeader.ReadFrom(stream).OutputFileNameMode);
 
         var decryptorWithDefaultSettings = new FileEncryptor(consumerThreads: 2);
         await decryptorWithDefaultSettings.DecryptFolderPerFileAsync(
@@ -109,6 +111,52 @@ public sealed class PerFileModeTests
             "secret",
             await File.ReadAllTextAsync(
                 Path.Combine(restoredFolder, "nested", "private-name.txt")));
+    }
+
+    [Fact]
+    public async Task PerFileOption_ExistingDestination_ContinuesAndHonorsOverwriteChoice()
+    {
+        using var temp = new TempDirectory();
+        var source = Directory.CreateDirectory(Path.Combine(temp.Path, "source")).FullName;
+        await File.WriteAllTextAsync(Path.Combine(source, "existing.txt"), "replacement");
+        await File.WriteAllTextAsync(Path.Combine(source, "new.txt"), "new content");
+
+        var encryptedFolder = Directory.CreateDirectory(
+            Path.Combine(temp.Path, "encrypted")).FullName;
+        var existingVault = Path.Combine(encryptedFolder, "existing.txt.safe");
+        var newVault = Path.Combine(encryptedFolder, "new.txt.safe");
+        await File.WriteAllTextAsync(existingVault, "keep this vault");
+        var password = "per-file-overwrite-password"u8.ToArray();
+        var fileProgress = new RecordingPerFileProgress();
+        var encryptor = new FileEncryptor(
+            consumerThreads: 2,
+            perFileProgress: fileProgress);
+
+        await Assert.ThrowsAsync<IOException>(() =>
+            encryptor.EncryptFolderPerFileAsync(
+                source,
+                encryptedFolder,
+                password,
+                chunkSizeBytes: 1_048_576,
+                kdfParams: FastKdf));
+
+        Assert.Contains(
+            fileProgress.Values,
+            value => value.SourceFilePath.EndsWith("existing.txt") &&
+                     value.Result == PerFileResult.DestinationExists);
+        Assert.Equal("keep this vault", await File.ReadAllTextAsync(existingVault));
+        Assert.True(File.Exists(newVault));
+
+        await encryptor.EncryptFolderPerFileAsync(
+            source,
+            encryptedFolder,
+            password,
+            chunkSizeBytes: 1_048_576,
+            kdfParams: FastKdf,
+            overwriteExisting: true);
+
+        using var stream = File.OpenRead(existingVault);
+        Assert.Equal(VaultMode.PerFile, VaultHeader.ReadFrom(stream).Mode);
     }
 }
 

@@ -16,7 +16,7 @@
   - Nonce: 4-byte random vault prefix + 8-byte little-endian chunk index.
   - Filename uses index `0`; data starts at index `1`. Never reuse a nonce.
   - AAD contains chunk index and `IsLastChunk`.
-- Vault header v1 is 47 bytes. Its flags byte records whether output filenames are encrypted for every vault mode.
+- Vault header v1 is 47 bytes. In its flags byte, bit 0 means the output filename is protected and bit 1 selects SHA-256; values are `0` for none, `1` for AES, and `3` for SHA-256. Bit 1 without bit 0 and unknown high bits are invalid.
 - Chunk size must be 1–16 MiB.
 - Bound total in-flight chunks across channels/reordering. Require estimated resident chunk buffers, including active consumers, to use at most half of GC available memory.
 - Enforce encryption password length from `AppSettings.MinPasswordLength`; decryption remains compatible with older vaults.
@@ -27,15 +27,15 @@
 ## I/O modes
 
 - `EncryptFileAsync` / `DecryptFileAsync`: one file, `VaultMode.File`; for standalone output-name encryption, shorten the plaintext stem on UTF-8 boundaries when necessary, preserve its extension, then encrypt and Base64URL-encode it. Keep the complete authenticated original name inside the vault. These APIs return the actual output path.
-- `EncryptFolderZipAsync`: `ZipArchive → bounded Pipe → crypto pipeline → one .safe`; filename encryption uses the reversible filename ciphertext rather than a random identifier. Encrypt returns the actual vault path.
+- `EncryptFolderZipAsync`: `ZipArchive → bounded Pipe → crypto pipeline → one .safe`; AES uses the reversible filename ciphertext and SHA-256 uses the direct unsalted UTF-8 filename hash. Encrypt returns the actual vault path.
 - `DecryptFolderZipAsync`: decrypt to a temporary ZIP and extract directly to
   the requested destination while preserving partial output on failure.
-- `EncryptFolderPerFileAsync` / `DecryptFolderPerFileAsync`: one `VaultMode.PerFile` vault per regular file while preserving relative paths. Filename encryption uses each authenticated filename ciphertext; decrypt reads the behavior from each header and restores authenticated names.
+- `EncryptFolderPerFileAsync` / `DecryptFolderPerFileAsync`: one `VaultMode.PerFile` vault per regular file while preserving relative paths. AES or SHA-256 protects each visible vault name; decrypt reads the header and restores the authenticated AES-encrypted name stored inside each vault.
 - A failed or cancelled decrypt must not delete files or directories from the
   configured output folder. Preserve completed outputs and any partial output
   produced before the failure so the UI can report each vault independently.
 - `PerFileProgress` reports the source file path with its per-file percentage.
-- `DecryptOutputFileNameAsync` decrypts the standalone Base64URL output name with the password and runs Argon2 off the caller thread; a shortened output name may differ from the complete name restored from the vault.
+- `DecryptOutputFileNameAsync` decrypts only standalone AES Base64URL output names with the password and runs Argon2 off the caller thread; SHA-256 names require vault metadata because they are not reversible.
 - `ReadVaultMetadataAsync` validates the password and decrypts only the
   authenticated filename chunk, not the file contents. It returns the complete
   original filename, vault filesystem metadata, format/mode, filename flag,
@@ -56,7 +56,7 @@
 - Construct one `FileEncryptor` per active UI operation; shared instances do not provide independent concurrent progress state.
 - Convert passwords to UTF-8 bytes, pass the byte array to Core, and zero the caller-owned array in UI `finally` blocks.
 - Pass `AppSettings.GetChunkSizeBytes()` and `GetKdfParameters()` to encrypt operations.
-- Filename encryption is not stored in `AppSettings`. Read it from the encryption-form checkbox and pass it explicitly to the relevant Core method; a nullable filename-encryption argument defaults to `false`.
+- Filename protection is not stored in `AppSettings`. Read `OutputFileNameMode` from the encryption form and pass it explicitly to the relevant Core method; it defaults to `None`, while the enabled UI defaults to `Aes`.
 - Build encrypted destinations under `AppSettings.DefaultOutputPath` and
   decrypted destinations under `AppSettings.DefaultDecryptOutputPath`, creating
   the configured root when necessary. Keep these two output roots visually and
@@ -70,9 +70,10 @@
 - Use `ReadVaultMetadataAsync` after an explicit **Check password** action when
   the UI needs the complete authenticated original filename. Do not invoke it
   on password-field changes because it runs Argon2id.
-- Pass the encryption-form overwrite checkbox to `EncryptFileAsync` and
-  `EncryptFolderZipAsync`. PerFile mode still requires a new destination
-  directory and does not support this checkbox.
+- Pass the encryption-form overwrite checkbox to `EncryptFileAsync`,
+  `EncryptFolderZipAsync`, and `EncryptFolderPerFileAsync`. PerFile mode may
+  reuse an existing destination directory; without overwrite it preserves
+  collisions, continues with later files, and reports collected errors last.
 - Pass the decryption-form overwrite checkbox to `DecryptFileAsync`. With the
   checkbox disabled, an existing plaintext file must be rejected and preserved
   on the first and every subsequent attempt.

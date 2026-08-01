@@ -138,7 +138,7 @@ Task<string> EncryptFileAsync(
     byte[] passwordBytes,
     int chunkSizeBytes = 1_048_576,
     Argon2Parameters? kdfParams = null,
-    bool? encryptFileName = null,
+    OutputFileNameMode outputFileNameMode = OutputFileNameMode.None,
     CancellationToken cancellationToken = default,
     bool overwriteExisting = false);
 ```
@@ -150,15 +150,16 @@ UI inputs:
 - `passwordBytes`: UTF-8 password bytes.
 - `chunkSizeBytes`: 1–16 MiB.
 - `kdfParams`: normally `settings.GetKdfParameters()`.
-- `encryptFileName`: pass the encryption-form toggle explicitly; `null` defaults to `false`.
+- `outputFileNameMode`: pass `None`, `Aes`, or `Sha256` from the encryption form; it defaults to `None`.
 - `cancellationToken`: token owned by the UI operation.
 - `overwriteExisting`: replace an existing vault only after explicit user
   confirmation; the default `false` preserves an existing destination.
 
 Return value:
 
-- filename encryption off: returns `destinationPath`;
-- filename encryption on: returns the actual Base64URL `.safe` path in the same parent directory.
+- `None`: returns `destinationPath`;
+- `Aes`: returns the actual Base64URL `.safe` path in the same parent directory;
+- `Sha256`: returns `lowercase_hex(SHA256(UTF8(originalFileName))) + ".safe"` in the same parent directory.
 
 When filename encryption is on, Core derives the final encrypted path before opening output. The clear-name `destinationPath` is not created or truncated. The UI must use the returned path for notifications, recent files, reveal-in-folder, and subsequent decrypt operations.
 
@@ -171,7 +172,7 @@ var actualVaultPath = await encryptor.EncryptFileAsync(
     passwordBytes,
     settings.GetChunkSizeBytes(),
     settings.GetKdfParameters(),
-    encryptFileName: encryptNameToggle,
+    outputFileNameMode: selectedOutputFileNameMode,
     cancellationToken,
     overwriteExisting: overwriteToggle);
 ```
@@ -214,7 +215,7 @@ Task<string> EncryptFolderZipAsync(
     byte[] passwordBytes,
     int chunkSizeBytes = 1_048_576,
     Argon2Parameters? kdfParams = null,
-    bool? encryptFileName = null,
+    OutputFileNameMode outputFileNameMode = OutputFileNameMode.None,
     CancellationToken cancellationToken = default,
     bool overwriteExisting = false);
 ```
@@ -265,25 +266,36 @@ Task EncryptFolderPerFileAsync(
     byte[] passwordBytes,
     int chunkSizeBytes = 1_048_576,
     Argon2Parameters? kdfParams = null,
-    bool? encryptFileNames = null,
-    CancellationToken cancellationToken = default);
+    OutputFileNameMode outputFileNameMode = OutputFileNameMode.None,
+    CancellationToken cancellationToken = default,
+    bool overwriteExisting = false);
 ```
 
 UI inputs:
 
 - source folder must exist;
-- destination folder must not exist and must be outside the source tree;
-- pass `encryptFileNames` explicitly from the encryption form; `null` defaults to `false`.
+- destination folder may already exist but must be outside the source tree;
+- pass `outputFileNameMode` explicitly from the encryption form; it defaults to `None`.
+- `overwriteExisting` controls whether existing per-file vaults are replaced.
 
 Core preserves relative subfolder structure but does not preserve empty directories. Each regular file receives its own salt, key, header, filename chunk, and data chunks.
+When overwrite is disabled, an existing vault is preserved and recorded as a
+per-file failure. Core continues encrypting later source files and throws one
+summary error after every file has been attempted. Successful outputs and the
+destination directory are preserved.
 
 Use `IProgress<PerFileProgress>` to show:
 
 ```csharp
 public sealed record PerFileProgress(
     string SourceFilePath,
-    double Progress);
+    double Progress,
+    PerFileResult Result = PerFileResult.InProgress);
 ```
+
+`Result` is `InProgress` for progress updates, then `Succeeded`,
+`DestinationExists`, or `Failed` for the terminal update. The UI uses these
+structured results to maintain and localize the per-file summary.
 
 ### 4.6 Decrypt a per-file folder
 
@@ -321,6 +333,8 @@ Inputs:
 
 The returned value is the standalone filename stored in the Base64URL name. For long names, this value may have a shortened stem while preserving the final extension. Full vault decryption still restores the complete filename from the encrypted filename chunk inside the vault.
 
+This API accepts only AES Base64URL output names. A SHA-256 output name is not reversible; use `ReadVaultMetadataAsync` with the vault file to recover its authenticated original filename.
+
 Argon2 runs on a background task. Cancellation is checked before scheduling; the current Argon2 library cannot interrupt a KDF invocation that has already started.
 
 ### 4.8 Read authenticated vault metadata
@@ -335,18 +349,20 @@ Task<VaultMetadata> ReadVaultMetadataAsync(
 This API validates the password and decrypts only the authenticated filename
 chunk; it does not decrypt the file contents. The returned metadata includes
 the complete original filename, vault size and modification time, version,
-mode, filename-encryption flag, chunk size, Argon2id parameters, and encryption
+mode, output-filename mode, chunk size, Argon2id parameters, and encryption
 algorithm.
 
 Because the call runs Argon2id, invoke it from an explicit UI action such as
 **Check password**, not on every password-field change. Clear the caller-owned
 password byte array after the call.
 
-## 5. Filename encryption
+## 5. Output filename protection
 
-Filename encryption is an operation-level choice, not a persisted `AppSettings` value. The desktop encryption form owns the checkbox and passes its value explicitly to `EncryptFileAsync`, `EncryptFolderZipAsync`, or `EncryptFolderPerFileAsync`.
+Filename protection is an operation-level choice, not a persisted `AppSettings` value. The desktop encryption form owns the checkbox and AES/SHA-256 choice and passes `OutputFileNameMode` explicitly to `EncryptFileAsync`, `EncryptFolderZipAsync`, or `EncryptFolderPerFileAsync`.
 
-When enabled, the visible output name is not a random identifier. It is a self-contained Base64URL payload containing:
+AES keeps the reversible Base64URL output-name format described below. SHA-256 directly hashes the original UTF-8 filename without a salt, password, or master key and writes the lowercase 64-character hexadecimal digest with `.safe`. SHA-256 names cannot be reversed independently; the complete original filename remains authenticated and encrypted with AES-256-GCM inside the vault and is restored from there during decryption.
+
+In AES mode, the visible output name is a self-contained Base64URL payload containing:
 
 ```text
 format version
@@ -381,8 +397,8 @@ The Avalonia encryption form currently integrates Core as follows:
 - the filename-encryption checkbox exists only on the encryption form and is passed explicitly to Core;
 - the overwrite checkbox is passed to file and ZIP encryption; when disabled,
   an existing vault is rejected and preserved;
-- overwrite is disabled for PerFile mode because its destination folder must
-  not already exist;
+- overwrite is passed to PerFile mode; its destination folder may already
+  exist, and collisions are collected while later files continue;
 - the estimated output label uses a placeholder for encrypted names because the final Base64URL name depends on a random salt created during encryption;
 - password confirmation is shown and validated only when `ConfirmPasswordToggle` is enabled;
 - each password field has an independent show/hide button;
@@ -391,8 +407,8 @@ The Avalonia encryption form currently integrates Core as follows:
 
 The Settings screen does not expose filename encryption or an output-name
 collision policy. File and ZIP encryption default to no overwrite and require
-explicit UI confirmation to replace an existing vault. A PerFile destination
-folder must not already exist.
+explicit UI confirmation to replace an existing vault. PerFile preserves
+existing vault collisions unless overwrite is explicitly enabled.
 
 Settings owns the language, theme, performance, password/KDF, encrypted-output,
 and decrypted-output values. Language and theme are staged in the form and are
@@ -588,7 +604,7 @@ The header is 47 bytes. Multi-byte integers are little-endian.
 | 0 | 4 | ASCII magic `SAFE` |
 | 4 | 1 | Version |
 | 5 | 1 | `VaultMode` |
-| 6 | 1 | Flags; bit 0 means output filename encryption |
+| 6 | 1 | Flags: `0` none, `1` AES, `3` SHA-256; bit 0 means protected, bit 1 selects SHA-256, bits 2–7 are reserved |
 | 7 | 4 | Argon2 memory KiB |
 | 11 | 4 | Argon2 iterations |
 | 15 | 4 | Argon2 parallelism |

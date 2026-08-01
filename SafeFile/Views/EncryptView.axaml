@@ -95,7 +95,7 @@
         </StackPanel>
       </Border>
 
-      <Grid ColumnDefinitions="*,16,*">
+      <Grid ColumnDefinitions="*,16,*" IsEnabled="{Binding !IsEncrypting}">
         <Border Grid.Column="0" Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="16">
           <StackPanel Spacing="8">
             <TextBlock Text="{loc:Tr Security}" FontSize="15" FontWeight="SemiBold"/>
@@ -135,15 +135,31 @@
             <TextBlock Text="{loc:Tr EncryptionOptions}" FontSize="15" FontWeight="SemiBold"/>
             <CheckBox Content="{loc:Tr EncryptFileNames}"
                       IsChecked="{Binding EncryptFileNames}"/>
+            <StackPanel Margin="24,0,0,0"
+                        Spacing="6"
+                        IsVisible="{Binding EncryptFileNames}">
+              <TextBlock Text="{loc:Tr OutputFileNameMethod}"
+                         FontSize="12"
+                         FontWeight="Medium"/>
+              <StackPanel Orientation="Horizontal" Spacing="16">
+                <RadioButton Content="{loc:Tr OutputFileNameAes}"
+                             IsChecked="{Binding IsAesOutputFileNameMode}"
+                             GroupName="OutputFileNameMode"
+                             ToolTip.Tip="{loc:Tr AesOutputFileNameHint}"/>
+                <RadioButton Content="{loc:Tr OutputFileNameSha256}"
+                             IsChecked="{Binding IsSha256OutputFileNameMode}"
+                             GroupName="OutputFileNameMode"
+                             ToolTip.Tip="{loc:Tr Sha256OutputFileNameHint}"/>
+              </StackPanel>
+            </StackPanel>
             <CheckBox Content="{loc:Tr OverwriteSafe}"
-                      IsChecked="{Binding OverwriteExisting}"
-                      IsEnabled="{Binding IsSingleVaultOutput}"/>
-            <TextBlock Text="{loc:Tr EncryptedNameHint}"
-                       FontSize="11" Foreground="{DynamicResource SecondaryTextBrush}" TextWrapping="Wrap"/>
-            <TextBlock Text="{loc:Tr FolderProcessing}" FontWeight="Medium" Margin="0,4,0,0"/>
-            <StackPanel Orientation="Horizontal" Spacing="16">
-              <RadioButton Content="{loc:Tr FolderModeZip}" IsChecked="{Binding IsFolderModeZip}" IsEnabled="{Binding IsFolderSource}" GroupName="FolderMode"/>
-              <RadioButton Content="{loc:Tr FolderModePerFile}" IsChecked="{Binding IsFolderModePerFile}" IsEnabled="{Binding IsFolderSource}" GroupName="FolderMode"/>
+                      IsChecked="{Binding OverwriteExisting}"/>
+            <StackPanel Spacing="10" IsVisible="{Binding IsFolderSource}">
+              <TextBlock Text="{loc:Tr FolderProcessing}" FontWeight="Medium" Margin="0,4,0,0"/>
+              <StackPanel Orientation="Horizontal" Spacing="16">
+                <RadioButton Content="{loc:Tr FolderModeZip}" IsChecked="{Binding IsFolderModeZip}" GroupName="FolderMode"/>
+                <RadioButton Content="{loc:Tr FolderModePerFile}" IsChecked="{Binding IsFolderModePerFile}" GroupName="FolderMode"/>
+              </StackPanel>
             </StackPanel>
           </StackPanel>
         </Border>
@@ -185,6 +201,7 @@
           </Button>
           <TextBlock Grid.Row="1" Grid.ColumnSpan="4"
                      Text="{Binding StatusMessage}"
+                     IsVisible="{Binding HasStatusMessage}"
                      Margin="0,10,0,0"
                      TextWrapping="Wrap"/>
         </Grid>
