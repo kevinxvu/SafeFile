@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.IO.Compression;
 
 namespace SafeFile.Core.IO;
@@ -110,7 +111,8 @@ public sealed class StreamZipper
     public static async Task ExtractZipStreamAsync(
         Stream zipStream,
         string destinationPath,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Action<double>? progressCallback = null)
     {
         ArgumentNullException.ThrowIfNull(zipStream);
         ArgumentNullException.ThrowIfNull(destinationPath);
@@ -121,6 +123,11 @@ public sealed class StreamZipper
         var destinationRoot = Path.GetFullPath(destinationPath);
         var rootWithSeparator = Path.TrimEndingDirectorySeparator(destinationRoot) + Path.DirectorySeparatorChar;
         using var zipArchive = new ZipArchive(zipStream, ZipArchiveMode.Read, leaveOpen: true);
+        var totalBytes = zipArchive.Entries
+            .Where(entry => !entry.FullName.EndsWith("/", StringComparison.Ordinal))
+            .Sum(entry => entry.Length);
+        long extractedBytes = 0;
+        double lastReportedProgress = 0;
 
         foreach (var entry in zipArchive.Entries)
         {
@@ -139,9 +146,39 @@ public sealed class StreamZipper
                 using (var entryStream = entry.Open())
                 using (var fileStream = File.Create(fullPath))
                 {
-                    await entryStream.CopyToAsync(fileStream, cancellationToken).ConfigureAwait(false);
+                    var buffer = ArrayPool<byte>.Shared.Rent(81_920);
+                    try
+                    {
+                        int bytesRead;
+                        while ((bytesRead = await entryStream.ReadAsync(
+                                   buffer.AsMemory(0, buffer.Length),
+                                   cancellationToken).ConfigureAwait(false)) > 0)
+                        {
+                            await fileStream.WriteAsync(
+                                buffer.AsMemory(0, bytesRead),
+                                cancellationToken).ConfigureAwait(false);
+                            extractedBytes += bytesRead;
+                            if (totalBytes > 0)
+                            {
+                                var progress = Math.Min(
+                                    (double)extractedBytes / totalBytes,
+                                    1);
+                                if (progress - lastReportedProgress >= 0.001)
+                                {
+                                    progressCallback?.Invoke(progress);
+                                    lastReportedProgress = progress;
+                                }
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        ArrayPool<byte>.Shared.Return(buffer);
+                    }
                 }
             }
         }
+
+        progressCallback?.Invoke(1);
     }
 }

@@ -266,6 +266,15 @@ Core decrypts to a temporary seekable ZIP and extracts directly into
 is cancelled, successfully written and partial output remains available; Core
 does not remove the destination folder.
 
+Progress is monotonic across both ZIP-decryption stages. Decrypting the vault
+to the temporary ZIP reports from 0% through 60% based on encrypted source
+bytes consumed. Extraction reports from 60% through 100% based on total
+uncompressed entry bytes written. Updates are throttled to 0.1% increments to
+avoid flooding the UI synchronization context for large archives, and 100% is
+reported only after extraction completes. The value remains a normal per-item
+`IProgress<double>` value, so the desktop batch calculation works unchanged
+when File, ZIP, and PerFile vaults are mixed.
+
 The stored encrypted filename can be displayed separately with `DecryptOutputFileNameAsync`, but ZIP extraction always uses the destination folder selected by the UI.
 
 ### 4.5 Encrypt a folder as independent per-file vaults
@@ -513,6 +522,7 @@ without sensitive content.
 | File encrypt | Ordered encrypted chunks |
 | File decrypt | Authenticated decrypted chunks |
 | ZIP encrypt | Source bytes read divided by estimated regular-file input bytes |
+| ZIP decrypt | Vault bytes consumed for 0–60%, then uncompressed extracted bytes for 60–100% |
 | PerFile | Includes `SourceFilePath`; overall UI progress is `(completed files + current file progress) / total files` |
 
 ZIP encryption remains below 100% until both ZIP production and encryption finish.
@@ -674,7 +684,7 @@ dotnet.exe restore SafeFile.slnx
 dotnet.exe build SafeFile/SafeFile.csproj
 ```
 
-Tests live in `SafeFile.Core.Tests` and cover File, ZIP, PerFile, filename encryption, long-name restoration, empty files, cancellation before KDF, truncation, Zip Slip, progress, and ordered multi-consumer output.
+Tests live in `SafeFile.Core.Tests` and cover File, ZIP, PerFile, filename encryption, long-name restoration, empty files, cancellation before KDF, truncation, Zip Slip, progress (including both ZIP-decryption phases), and ordered multi-consumer output.
 Run Core tests only when the current task explicitly requires them.
 
 ## 13. Format-change rules

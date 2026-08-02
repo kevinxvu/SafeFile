@@ -38,6 +38,10 @@
 - `EncryptFolderZipAsync`: `ZipArchive → bounded Pipe → crypto pipeline → one .safe`; AES uses the reversible filename ciphertext and SHA-256 uses the direct unsalted UTF-8 filename hash. Encrypt returns the actual vault path.
 - `DecryptFolderZipAsync`: decrypt to a temporary ZIP and extract directly to
   the requested destination while preserving partial output on failure.
+- ZIP decryption progress uses two monotonic phases: decrypting the vault to
+  the temporary ZIP reports 0–60%, and extracting the ZIP reports 60–100% by
+  uncompressed bytes written. Throttle callbacks to 0.1% increments and report
+  100% only after extraction completes.
 - `EncryptFolderPerFileAsync` / `DecryptFolderPerFileAsync`: one `VaultMode.PerFile` vault per regular file while preserving relative paths. AES or SHA-256 protects each visible vault name; decrypt reads the header and restores the authenticated AES-encrypted name stored inside each vault.
 - A failed or cancelled decrypt must not delete files or directories from the
   configured output folder. Preserve completed outputs and any partial output
@@ -216,6 +220,8 @@
 - Tests live in `SafeFile.Core.Tests`.
 - Maintain happy-case round trips for `File`, `Zip`, and `PerFile`.
 - Also retain regression coverage for empty files, truncation, Zip Slip, progress, and ordered multi-consumer output.
+- Retain ZIP-decryption progress coverage proving that it starts at 0, reports
+  intermediate values in both decrypt and extraction phases, and ends at 1.
 - Retain regression tests proving that file/ZIP encryption and file decryption
   preserve existing destinations by default, overwrite only when explicitly
   enabled, and never delete a collision after `FileMode.CreateNew` fails.

@@ -253,6 +253,7 @@ public sealed class FileEncryptor
         if (!File.Exists(sourcePath))
             throw new FileNotFoundException($"Source file not found: {sourcePath}");
         EnsureDistinctPaths(sourcePath, destinationFolder);
+        _progress?.Report(0);
 
         try
         {
@@ -283,10 +284,12 @@ public sealed class FileEncryptor
                     throw new InvalidDataException($"Expected filename chunk index 0, got {encryptedFileNameChunk.Index}.");
 
                 var decryptedFileName = aesGcm.DecryptChunk(encryptedFileNameChunk, masterKey);
+                CryptographicOperations.ZeroMemory(decryptedFileName);
 
                 var tempZipPath = Path.Combine(Path.GetTempPath(), $"SafeFile-{Guid.NewGuid():N}.zip");
                 long expectedChunkIndex = 1;  // Data chunks start at index 1
                 var sawLastChunk = false;
+                double lastReportedDecryptProgress = 0;
 
                 try
                 {
@@ -309,6 +312,14 @@ public sealed class FileEncryptor
                             await tempZipStream.WriteAsync(plaintext, cancellationToken).ConfigureAwait(false);
                             sawLastChunk = encryptedChunk.IsLastChunk;
                             expectedChunkIndex++;
+                            var decryptProgress = Math.Min(
+                                (double)sourceStream.Position / sourceStream.Length * 0.6,
+                                0.6);
+                            if (decryptProgress - lastReportedDecryptProgress >= 0.001)
+                            {
+                                _progress?.Report(decryptProgress);
+                                lastReportedDecryptProgress = decryptProgress;
+                            }
                         }
 
                         if (!sawLastChunk)
@@ -316,8 +327,13 @@ public sealed class FileEncryptor
 
                         tempZipStream.Position = 0;
                         await ExtractFolderPreservingPartialOutputAsync(
-                            tempZipStream, destinationFolder, cancellationToken).ConfigureAwait(false);
+                            tempZipStream,
+                            destinationFolder,
+                            cancellationToken,
+                            progress => _progress?.Report(0.6 + progress * 0.4))
+                            .ConfigureAwait(false);
                     }
+                    _progress?.Report(1);
                 }
                 finally
                 {
@@ -1370,14 +1386,18 @@ public sealed class FileEncryptor
     private static async Task ExtractFolderPreservingPartialOutputAsync(
         Stream zipStream,
         string destinationFolder,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Action<double>? progressCallback = null)
     {
         if (Directory.Exists(destinationFolder) || File.Exists(destinationFolder))
             throw new IOException($"Destination already exists: {destinationFolder}");
 
         Directory.CreateDirectory(destinationFolder);
         await StreamZipper.ExtractZipStreamAsync(
-            zipStream, destinationFolder, cancellationToken).ConfigureAwait(false);
+            zipStream,
+            destinationFolder,
+            cancellationToken,
+            progressCallback).ConfigureAwait(false);
     }
 
     private static void TryDeleteFile(string path)

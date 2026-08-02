@@ -439,7 +439,13 @@ public sealed class FileEncryptorTests
         Assert.Equal("keep", await File.ReadAllTextAsync(marker));
 
         Directory.Delete(destination, recursive: true);
-        await encryptor.DecryptFolderZipAsync(vault, destination, password);
+        var decryptProgress = new RecordingProgress();
+        var decryptor = new FileEncryptor(consumerThreads: 3, decryptProgress);
+        await decryptor.DecryptFolderZipAsync(vault, destination, password);
+        Assert.Equal(0, decryptProgress.Values.First());
+        Assert.Equal(1, decryptProgress.Values.Last());
+        Assert.Contains(decryptProgress.Values, value => value is > 0 and < 0.6);
+        Assert.Contains(decryptProgress.Values, value => value is >= 0.6 and < 1);
         Assert.Equal("hello", await File.ReadAllTextAsync(Path.Combine(destination, "nested", "hello.txt")));
         Assert.Equal(largeContent, await File.ReadAllBytesAsync(Path.Combine(destination, "large.bin")));
     }
