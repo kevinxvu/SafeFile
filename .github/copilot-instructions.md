@@ -23,6 +23,14 @@
 - The 4-byte password verifier is computed from the Argon2-derived key, never directly from the password.
 - Validate mode, chunk order, nonce prefix, sizes, authentication tags, final chunk, and trailing/truncated data before accepting a vault.
 - Zero internal password copies and master keys; do not mutate the caller's password buffer.
+- Text encryption uses `TextCryptoService` and the same `Argon2Kdf`, shared
+  async KDF helper, and `AesGcmEngine` primitives as vault encryption. Text
+  format v1 fixes Argon2id at 64 MiB, 4 iterations, parallelism 2 and represents
+  its binary `SFTX` payload as unprefixed Base64URL. Decrypt remains compatible
+  with the legacy `SAFETEXT1.` prefix.
+- Text plaintext and SHA-256 input are limited to 1,000,000 .NET characters.
+  Reject oversized encoded payloads and declared ciphertext lengths before
+  expensive work or large attacker-controlled allocations.
 
 ## I/O modes
 
@@ -34,11 +42,13 @@
 - A failed or cancelled decrypt must not delete files or directories from the
   configured output folder. Preserve completed outputs and any partial output
   produced before the failure so the UI can report each vault independently.
-- `PerFileProgress` reports the source file path with its per-file percentage.
+- `PerFileProgress` reports the source path, per-file percentage, and a
+  structured `PerFileResult`: `InProgress`, `Succeeded`,
+  `DestinationExists`, or `Failed`.
 - `DecryptOutputFileNameAsync` decrypts only standalone AES Base64URL output names with the password and runs Argon2 off the caller thread; SHA-256 names require vault metadata because they are not reversible.
 - `ReadVaultMetadataAsync` validates the password and decrypts only the
   authenticated filename chunk, not the file contents. It returns the complete
-  original filename, vault filesystem metadata, format/mode, filename flag,
+  original filename, vault filesystem metadata, format/mode, output-filename mode,
   chunk size, KDF parameters, and algorithm.
 - File and ZIP encryption default `overwriteExisting` to `false`. Use
   create-new semantics unless the caller explicitly enables overwrite.
@@ -46,6 +56,11 @@
   and restored encrypted filenames. Only use create semantics after explicit
   overwrite confirmation.
 - Derive the vault key and final encrypted output path before opening the destination; never create a clear-name staging vault or truncate the requested placeholder path when filename encryption is enabled.
+- For `None` and `Sha256`, check a known existing output before Argon2id. In
+  PerFile mode treat expected collisions as normal control flow: report
+  `DestinationExists` and continue without throwing per file. Retain
+  `FileMode.CreateNew` handling for race conditions. AES keeps its current flow
+  because its randomized final name depends on salt and the derived key.
 - Skip symlinks, junctions, and other reparse points.
 - Folder destinations must be outside the source tree.
 - Empty directories do not need to be preserved.
@@ -79,6 +94,9 @@
   on the first and every subsequent attempt.
 - Handle `OperationCanceledException` as cancellation; key-verifier `InvalidOperationException` or `CryptographicException` as wrong password/tampering; `InvalidDataException` as malformed vault data; and path/I/O exceptions as user-correctable selection conflicts.
 - Core never shows prompts. The UI owns pickers, overwrite/naming decisions, password confirmation, success/error messages, and cancellation-token lifetime.
+- Tools text encryption does not request password confirmation. It enforces
+  `AppSettings.MinPasswordLength`; Tools text and standalone-filename decryption
+  require only a non-empty password for compatibility.
 
 ## Current Avalonia UI behavior
 
@@ -92,13 +110,18 @@
   size. The source summary shows the selection count; its filename and path
   tooltips list every selected item on numbered lines.
 - Do not add algorithm, chunk-size, or worker-count controls back to the encryption form. Those operational values come from Settings.
-- Keep the filename-encryption checkbox on the encryption form only; it is intentionally absent from Settings.
-- The encryption form includes an overwrite checkbox for single-file and ZIP
-  vault output. Disable it for PerFile folder mode.
+- Keep filename protection on the encryption form only; it is intentionally
+  absent from Settings. When enabled, show AES and SHA-256 choices with AES as
+  the default and put their explanations in tooltips.
+- The encryption form includes an overwrite checkbox for file, ZIP, and
+  PerFile output. PerFile may reuse an existing destination directory.
 - `ConfirmPasswordToggle` controls whether the confirmation label/input are visible and whether matching-password validation runs.
 - Both encryption password inputs have independent show/hide controls.
 - The encryption status bar is owned by `EncryptViewModel`, not `MainWindowViewModel`. It is hidden before an operation, shown during progress, and retained after success, cancellation, or failure until the user closes it. Its close button cancels while encryption is active.
 - Keep status messages on their own row below the output preview/actions so long output names cannot hide them. Truncate long preview names visually with an ellipsis.
+- Show the Folder processing controls only when the selected encryption source
+  is a folder. Collapse empty status-message rows so the output/action card
+  sizes itself to its visible content.
 - The decryption view parses the unauthenticated header after file selection,
   but only verifies the password and reveals authenticated metadata when the
   user presses **Check password**.
@@ -127,8 +150,26 @@
 - PerFile encryption's overall progress is
   `(completed file count + current file progress) / total file count`; do not
   display the current file percentage as the overall percentage.
-- Every submit-time failure on encryption, decryption, Settings, and Logs is
+- PerFile encryption continues after item failures. Its bottom status bar shows
+  succeeded/failed/remaining counts, and its final dialog groups collisions and
+  other failures into short localized summaries instead of listing every path.
+- Every submit-time failure on encryption, decryption, Tools, Settings, and Logs is
   shown through `IErrorDialogService`, not as inline error text.
+- The Tools page contains four compact tabs: Encrypt text, Decrypt text,
+  SHA-256 Hash, and Password generator. Encrypt/decrypt text automatically use
+  the self-contained Base64URL text format. Decrypt auto-detects text through
+  the decoded `SFTX` magic; otherwise it treats the input as a standalone AES
+  encrypted filename. The `.safe` suffix is optional in this form. A 64-hex
+  SHA-256 filename is not reversible, and Tools does not offer vault selection.
+- Encrypt text and decrypted plaintext can be copied or saved. Their suggested
+  filename is `lowercase_hex(SHA256(UTF8(original content))) + ".txt"`.
+  Decrypted standalone filenames can only be copied. SHA-256 Hash supports HEX
+  and Base64 output, copy, and save.
+- Password generation uses `RandomNumberGenerator`, defaults to 10 characters,
+  and accepts lengths 4–64. At least one group must be selected, and every
+  selected uppercase, lowercase, number, or special-character group must occur
+  at least once. Ambiguous characters can be excluded. Never log generated
+  passwords or any Tools input/output/password/hash content.
 - Cache one ViewModel instance per main-shell page. The bottom status bars stay
   owned by their individual pages rather than the main shell.
 - Settings exposes appearance, performance, password/KDF, and separate
@@ -146,7 +187,7 @@
   `LocalizationService` for runtime strings. Both resource files must have
   identical keys. Language changes refresh the live resource bindings; do not
   recreate the Settings page.
-- Main navigation includes Encrypt, Decrypt, Logs, Settings, and About. About
+- Main navigation includes Encrypt, Decrypt, Tools, Logs, Settings, and About. About
   shows product/security/privacy information, runtime details, MIT licensing,
   copyable system information, and access to the log folder.
 - Serilog is the only application logging pipeline. Write structured events to
@@ -165,6 +206,10 @@
   operation. Decryption must not delete anything from the output folder when a
   vault fails or the batch is cancelled.
 - A create-new collision must never delete or modify the pre-existing file.
+- Do not use exceptions as the normal loop path for already-known PerFile
+  collisions; large exception storms cause process-wide allocation and GC
+  pauses that make Avalonia navigation lag. Run the PerFile batch continuation
+  off the caller UI context so synchronous fast-fail paths cannot monopolize it.
 
 ## Tests
 

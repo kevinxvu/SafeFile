@@ -34,4 +34,64 @@
   <data name="CancelOperation" xml:space="preserve"><value>Hủy thao tác</value></data><data name="KdfDetails" xml:space="preserve"><value>Argon2id • {0:N0} vòng • {1:N0} MB</value></data><data name="VerificationSummary" xml:space="preserve"><value>Đã xác thực {0:N0}/{1:N0} vault{2}</value></data><data name="FailureSuffix" xml:space="preserve"><value> • {0:N0} thất bại</value></data><data name="SuccessFailureSummary" xml:space="preserve"><value>{0:N0} thành công • {1:N0} thất bại</value></data><data name="CompletionSummary" xml:space="preserve"><value>✓ Hoàn tất: {0:N0} thành công{1}</value></data><data name="BatchFailureDetails" xml:space="preserve"><value>Đã giải mã thành công {0:N0} vault. {1:N0} vault thất bại. Chọn từng dòng để xem nguyên nhân.</value></data><data name="CompletedWithErrors" xml:space="preserve"><value>Hoàn tất với lỗi</value></data><data name="OutputAlreadyExists" xml:space="preserve"><value>Đầu ra đã tồn tại. Bật ghi đè hoặc xóa đầu ra cũ.</value></data><data name="UnsupportedVaultMode" xml:space="preserve"><value>Chế độ vault {0} không được hỗ trợ.</value></data><data name="EncryptedFileNamesSuffix" xml:space="preserve"><value>{0} (tên các tập tin sẽ được mã hóa)</value></data><data name="EncryptedFileNamePlaceholder" xml:space="preserve"><value>[Tên tập tin đã mã hóa].safe</value></data><data name="EncryptedFolderNamePlaceholder" xml:space="preserve"><value>[Tên thư mục đã mã hóa].safe</value></data><data name="CorruptData" xml:space="preserve"><value>Sai mật khẩu hoặc dữ liệu bị hỏng: {0}</value></data>
   <data name="PerFileCollisionFailures" xml:space="preserve"><value>{0:N0} tập tin đã được bỏ qua vì vault đích đã tồn tại.</value></data>
   <data name="PerFileOtherFailures" xml:space="preserve"><value>{0:N0} tập tin không thể mã hóa do lỗi khác.</value></data>
+  <data name="NavTools" xml:space="preserve"><value>Công cụ</value></data>
+  <data name="PageTools" xml:space="preserve"><value>Công cụ</value></data>
+  <data name="ToolsTitle" xml:space="preserve"><value>Công cụ bảo mật</value></data>
+  <data name="ToolsDescription" xml:space="preserve"><value>Mã hóa và giải mã văn bản, tính mã băm SHA-256 và tạo mật khẩu ngẫu nhiên an toàn.</value></data>
+  <data name="ToolsEncryptTextTab" xml:space="preserve"><value>Mã hóa văn bản</value></data>
+  <data name="ToolsDecryptTextTab" xml:space="preserve"><value>Giải mã văn bản</value></data>
+  <data name="ToolsSha256Tab" xml:space="preserve"><value>Mã băm SHA-256</value></data>
+  <data name="ToolsPasswordGeneratorTab" xml:space="preserve"><value>Tạo mật khẩu</value></data>
+  <data name="ToolsTextToEncrypt" xml:space="preserve"><value>Văn bản cần mã hóa</value></data>
+  <data name="ToolsTextLimitHint" xml:space="preserve"><value>Văn bản UTF-8, tối đa 1.000.000 ký tự.</value></data>
+  <data name="ToolsCharacterCount" xml:space="preserve"><value>{0:N0} / {1:N0} ký tự</value></data>
+  <data name="ToolsEnterText" xml:space="preserve"><value>Nhập văn bản tại đây...</value></data>
+  <data name="ToolsEnterPassword" xml:space="preserve"><value>Nhập mật khẩu</value></data>
+  <data name="ToolsClear" xml:space="preserve"><value>Xóa</value></data>
+  <data name="ToolsEncryptText" xml:space="preserve"><value>Mã hóa</value></data>
+  <data name="ToolsEncryptedResult" xml:space="preserve"><value>Kết quả mã hóa</value></data>
+  <data name="ToolsCopy" xml:space="preserve"><value>Sao chép</value></data>
+  <data name="ToolsSaveToFile" xml:space="preserve"><value>Lưu ra tập tin</value></data>
+  <data name="ToolsEncryptedInput" xml:space="preserve"><value>Văn bản hoặc tên tập tin đã mã hóa</value></data>
+  <data name="ToolsAutoDetectHint" xml:space="preserve"><value>SafeFile tự nhận diện văn bản mã hóa và tên tập tin được bảo vệ bằng AES. Không bắt buộc có đuôi .safe.</value></data>
+  <data name="ToolsEncryptedInputPlaceholder" xml:space="preserve"><value>Dán văn bản hoặc tên tập tin đã mã hóa...</value></data>
+  <data name="ToolsDecryptText" xml:space="preserve"><value>Giải mã</value></data>
+  <data name="ToolsDecryptedResult" xml:space="preserve"><value>Kết quả giải mã</value></data>
+  <data name="ToolsTextToHash" xml:space="preserve"><value>Văn bản cần băm</value></data>
+  <data name="ToolsShaHint" xml:space="preserve"><value>SHA-256 là hàm một chiều và không thể giải mã.</value></data>
+  <data name="ToolsOutputFormat" xml:space="preserve"><value>Định dạng đầu ra</value></data>
+  <data name="ToolsCalculateSha" xml:space="preserve"><value>Tính SHA-256</value></data>
+  <data name="ToolsShaResult" xml:space="preserve"><value>Kết quả SHA-256</value></data>
+  <data name="ToolsPasswordGenerator" xml:space="preserve"><value>Tạo mật khẩu ngẫu nhiên</value></data>
+  <data name="ToolsPasswordGeneratorHint" xml:space="preserve"><value>Mỗi nhóm ký tự được chọn chắc chắn xuất hiện ít nhất một lần.</value></data>
+  <data name="ToolsPasswordLength" xml:space="preserve"><value>Độ dài mật khẩu</value></data>
+  <data name="ToolsCharacterGroups" xml:space="preserve"><value>Nhóm ký tự</value></data>
+  <data name="ToolsUppercase" xml:space="preserve"><value>Chữ hoa (A–Z)</value></data>
+  <data name="ToolsLowercase" xml:space="preserve"><value>Chữ thường (a–z)</value></data>
+  <data name="ToolsNumbers" xml:space="preserve"><value>Chữ số (0–9)</value></data>
+  <data name="ToolsSpecialCharacters" xml:space="preserve"><value>Ký tự đặc biệt</value></data>
+  <data name="ToolsExcludeAmbiguous" xml:space="preserve"><value>Loại ký tự dễ nhầm (0, O, o, 1, l, I)</value></data>
+  <data name="ToolsGeneratePassword" xml:space="preserve"><value>Tạo mật khẩu</value></data>
+  <data name="ToolsGeneratedPassword" xml:space="preserve"><value>Mật khẩu đã tạo</value></data>
+  <data name="ToolsEncryptingText" xml:space="preserve"><value>Đang mã hóa văn bản...</value></data>
+  <data name="ToolsTextEncrypted" xml:space="preserve"><value>Đã mã hóa văn bản thành công.</value></data>
+  <data name="ToolsDecryptingText" xml:space="preserve"><value>Đang giải mã...</value></data>
+  <data name="ToolsTextDecrypted" xml:space="preserve"><value>Đã giải mã văn bản thành công.</value></data>
+  <data name="ToolsFileNameDecrypted" xml:space="preserve"><value>Đã giải mã tên tập tin thành công.</value></data>
+  <data name="ToolsOperationFailed" xml:space="preserve"><value>Thao tác thất bại.</value></data>
+  <data name="ToolsHashCalculated" xml:space="preserve"><value>Đã tính SHA-256.</value></data>
+  <data name="ToolsPasswordGenerated" xml:space="preserve"><value>Đã tạo mật khẩu.</value></data>
+  <data name="ToolsCopied" xml:space="preserve"><value>Đã sao chép vào clipboard.</value></data>
+  <data name="ToolsSaved" xml:space="preserve"><value>Đã lưu thành công.</value></data>
+  <data name="ToolsSaveResult" xml:space="preserve"><value>Lưu kết quả</value></data>
+  <data name="ToolsTextTooLong" xml:space="preserve"><value>Văn bản không được vượt quá {0:N0} ký tự.</value></data>
+  <data name="ToolsEncryptedInputTooLong" xml:space="preserve"><value>Dữ liệu mã hóa không được vượt quá {0:N0} ký tự.</value></data>
+  <data name="ToolsEncryptedInputRequired" xml:space="preserve"><value>Hãy nhập văn bản hoặc tên tập tin đã mã hóa.</value></data>
+  <data name="PasswordTooShort" xml:space="preserve"><value>Mật khẩu phải có ít nhất {0} ký tự.</value></data>
+  <data name="CannotEncryptText" xml:space="preserve"><value>Không thể mã hóa văn bản</value></data>
+  <data name="CannotDecryptText" xml:space="preserve"><value>Không thể giải mã văn bản</value></data>
+  <data name="CannotCalculateSha" xml:space="preserve"><value>Không thể tính SHA-256</value></data>
+  <data name="CannotGeneratePassword" xml:space="preserve"><value>Không thể tạo mật khẩu</value></data>
+  <data name="CannotCopyResult" xml:space="preserve"><value>Không thể sao chép kết quả</value></data>
+  <data name="CannotSaveResult" xml:space="preserve"><value>Không thể lưu kết quả</value></data>
 </root>

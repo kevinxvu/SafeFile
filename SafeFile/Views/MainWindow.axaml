@@ -112,6 +112,15 @@
           </Button>
 
           <Button Theme="{StaticResource NavButtonTheme}"
+                  Classes.active="{Binding IsToolsActive}"
+                  Command="{Binding NavigateToToolsCommand}">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+              <PathIcon Data="{StaticResource ToolsIcon}" Width="18" Height="18"/>
+              <TextBlock Text="{loc:Tr NavTools}" VerticalAlignment="Center"/>
+            </StackPanel>
+          </Button>
+
+          <Button Theme="{StaticResource NavButtonTheme}"
                   Classes.active="{Binding IsLogsActive}"
                   Command="{Binding NavigateToLogsCommand}">
             <StackPanel Orientation="Horizontal" Spacing="12">

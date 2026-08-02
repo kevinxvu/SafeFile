@@ -31,7 +31,7 @@
           </Grid>
 
           <Border Classes="source-drop-zone"
-                  BorderThickness="2" CornerRadius="6" Height="142"
+                  BorderThickness="2" CornerRadius="6" Height="120"
                   DragDrop.AllowDrop="True"
                   DragDrop.DragEnter="OnSourceDragEnter"
                   DragDrop.DragLeave="OnSourceDragLeave"

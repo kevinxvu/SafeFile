@@ -27,13 +27,21 @@ All modes:
 
 Empty directories are not preserved.
 
+Core also provides non-vault utilities:
+
+- `TextCryptoService` encrypts and decrypts portable authenticated text and
+  calculates SHA-256 for UTF-8 text;
+- `PasswordGenerator` creates cryptographically random passwords while
+  guaranteeing that every selected character group occurs at least once.
+
 ## 2. Package layout
 
 ```text
 SafeFile.Core/
 ├── Crypto/
 │   ├── Argon2Kdf.cs
-│   └── AesGcmEngine.cs
+│   ├── AesGcmEngine.cs
+│   └── KdfDerivation.cs       # Shared asynchronous KDF helper
 ├── Format/
 │   ├── VaultHeader.cs
 │   └── VaultMode.cs
@@ -45,7 +53,10 @@ SafeFile.Core/
 │   ├── StreamZipper.cs
 │   └── PasswordValidator.cs
 ├── Models/AppSettings.cs
-└── Services/SettingsService.cs
+└── Services/
+    ├── SettingsService.cs
+    ├── TextCryptoService.cs
+    └── PasswordGenerator.cs
 ```
 
 ## 3. UI setup
@@ -284,6 +295,14 @@ per-file failure. Core continues encrypting later source files and throws one
 summary error after every file has been attempted. Successful outputs and the
 destination directory are preserved.
 
+For `None` and `Sha256`, Core can determine the final output path without the
+vault key. It checks that path before Argon2id and reports an existing vault as
+`PerFileResult.DestinationExists` without throwing an exception for that item.
+This avoids KDF work and exception/stack-trace allocation when resuming a large
+folder. `FileMode.CreateNew` remains the final race-condition guard. AES retains
+the derived-key path calculation because its randomized visible name depends
+on salt and the master key and is extremely unlikely to collide.
+
 Use `IProgress<PerFileProgress>` to show:
 
 ```csharp
@@ -296,6 +315,11 @@ public sealed record PerFileProgress(
 `Result` is `InProgress` for progress updates, then `Succeeded`,
 `DestinationExists`, or `Failed` for the terminal update. The UI uses these
 structured results to maintain and localize the per-file summary.
+
+Before enumerating the PerFile batch, Core forces an asynchronous continuation
+without capturing the caller context. This keeps a run containing many
+synchronous collision checks off the Avalonia UI thread. It does not make file
+encryption parallel and does not change cancellation or exception propagation.
 
 ### 4.6 Decrypt a per-file folder
 
@@ -356,6 +380,75 @@ Because the call runs Argon2id, invoke it from an explicit UI action such as
 **Check password**, not on every password-field change. Clear the caller-owned
 password byte array after the call.
 
+### 4.9 Encrypt and decrypt text
+
+`TextCryptoService` uses the existing `Argon2Kdf`, shared asynchronous
+`KdfDerivation`, and `AesGcmEngine` implementations. Text is encoded as strict
+UTF-8 and handled as one authenticated AES-GCM chunk with index `1` and
+`IsLastChunk = true`.
+
+```csharp
+var textCrypto = new TextCryptoService();
+var encrypted = await textCrypto.EncryptAsync(
+    plaintext,
+    passwordBytes,
+    cancellationToken);
+
+var decrypted = await textCrypto.DecryptAsync(
+    encrypted,
+    passwordBytes,
+    cancellationToken);
+```
+
+Rules:
+
+- plaintext is limited to `TextCryptoService.MaximumTextCharacters`, currently
+  1,000,000 .NET characters;
+- encryption and decryption require non-empty UTF-8 password bytes at Core
+  level; the desktop encryption form additionally enforces
+  `AppSettings.MinPasswordLength`;
+- Argon2id parameters are fixed by text format version 1 at 64 MiB, four
+  iterations, and parallelism two;
+- each encryption creates a random 16-byte salt and random 4-byte nonce prefix;
+- output is an unprefixed Base64URL string. Decryption also accepts the legacy
+  `SAFETEXT1.` prefix;
+- invalid UTF-8, unsupported versions, malformed Base64URL, unsafe lengths, and
+  AES-GCM authentication failures are rejected without returning partial text;
+- the caller owns and must clear its password byte array.
+
+`TextCryptoService.IsEncryptedText` performs lightweight format recognition by
+checking the decoded `SFTX` magic and version. The desktop Tools form uses this
+to distinguish encrypted text from standalone AES-encrypted filenames without
+asking the user to choose an input type.
+
+### 4.10 SHA-256 text hashing
+
+```csharp
+var hex = TextCryptoService.ComputeSha256Hex(content);
+var base64 = TextCryptoService.ComputeSha256Base64(content);
+```
+
+Both methods hash strict UTF-8 bytes and enforce the same 1,000,000-character
+limit. SHA-256 is one-way and is not an encryption or password-based operation.
+
+### 4.11 Generate a password
+
+```csharp
+var password = PasswordGenerator.Generate(new PasswordGeneratorOptions(
+    Length: 10,
+    IncludeUppercase: true,
+    IncludeLowercase: true,
+    IncludeNumbers: true,
+    IncludeSpecialCharacters: true,
+    ExcludeAmbiguousCharacters: false));
+```
+
+Lengths from 4 through 64 are accepted. At least one character group must be
+enabled, the requested length must accommodate the number of enabled groups,
+and every enabled group is guaranteed to occur at least once. Selection and
+final shuffling use `RandomNumberGenerator`; generated passwords must never be
+logged.
+
 ## 5. Output filename protection
 
 Filename protection is an operation-level choice, not a persisted `AppSettings` value. The desktop encryption form owns the checkbox and AES/SHA-256 choice and passes `OutputFileNameMode` explicitly to `EncryptFileAsync`, `EncryptFolderZipAsync`, or `EncryptFolderPerFileAsync`.
@@ -379,110 +472,41 @@ The output component ends in `.safe`. To fit the common 255-byte filesystem comp
 - the final extension from `Path.GetExtension` is preserved;
 - an extension longer than 140 UTF-8 bytes is rejected and the UI should ask the user to rename it.
 
-## 6. Current desktop encryption integration
+## 6. Desktop integration summary
 
-The Avalonia encryption form currently integrates Core as follows:
+The desktop shell caches Encrypt, Decrypt, Tools, Logs, Settings, and About
+ViewModels. UI strings live in matching neutral-English and Vietnamese resource
+files; language and theme changes apply only after Settings is saved. Submit
+errors use the shared dialog service, while Serilog records technical events
+without sensitive content.
 
-- one or more files, or one folder, can be selected with a picker or
-  drag-and-drop; mixed file-and-folder drops are rejected;
-- a multi-file selection calls `EncryptFileAsync` sequentially for each source
-  and writes one independent vault per file under
-  `AppSettings.DefaultOutputPath`; one failure does not prevent later selected
-  files from being attempted;
-- multi-file overall progress is weighted by total selected source bytes, and
-  the source filename/path tooltips show numbered lists;
-- algorithm, chunk size, and worker count are not editable on the form;
-- chunk size, worker count, and Argon2id parameters come from `AppSettings`;
-- all encrypted output is written under `AppSettings.DefaultOutputPath`, which is created when necessary;
-- the filename-encryption checkbox exists only on the encryption form and is passed explicitly to Core;
-- the overwrite checkbox is passed to file and ZIP encryption; when disabled,
-  an existing vault is rejected and preserved;
-- overwrite is passed to PerFile mode; its destination folder may already
-  exist, and collisions are collected while later files continue;
-- the estimated output label uses a placeholder for encrypted names because the final Base64URL name depends on a random salt created during encryption;
-- password confirmation is shown and validated only when `ConfirmPasswordToggle` is enabled;
-- each password field has an independent show/hide button;
-- the operation status bar belongs to the encryption view, appears only after an operation starts, supports cancellation while running, and remains visible after completion, cancellation, or failure until dismissed;
-- the form uses the actual path returned by Core when reporting successful file or ZIP encryption.
+### 6.1 Vault workflows
 
-The Settings screen does not expose filename encryption or an output-name
-collision policy. File and ZIP encryption default to no overwrite and require
-explicit UI confirmation to replace an existing vault. PerFile preserves
-existing vault collisions unless overwrite is explicitly enabled.
+- Encrypt accepts multiple files or one folder. It reads performance/KDF values
+  from Settings, keeps filename protection on the form, processes batches past
+  individual failures, and always uses Core's returned output path.
+- Decrypt queues files or folders and isolates per-vault results. Header display
+  is unauthenticated until an explicit **Check password** call to
+  `ReadVaultMetadataAsync`; changing the password clears verified metadata.
+- Overwrite is always explicit. File and PerFile output may be overwritten only
+  when enabled; ZIP destinations remain new. Failures and cancellation preserve
+  existing, completed, and partial decryption output.
+- Password byte arrays are cleared by the caller. Conflicting controls remain
+  locked during active work, and page-owned status bars report aggregate and
+  per-item results.
 
-Settings owns the language, theme, performance, password/KDF, encrypted-output,
-and decrypted-output values. Language and theme are staged in the form and are
-applied only after **Save settings**. Restoring defaults populates the form but
-does not apply or persist the values until Save.
-On the first run, the desktop app detects the platform Light/Dark preference and
-stores it as the initial selection. If the platform cannot report a preference,
-Dark is used. Later launches always honor the saved setting.
+### 6.2 Tools
 
-The complete original filename is independently encrypted in the vault filename chunk and is never shortened there.
+- Tools exposes the text crypto, hashing, and password APIs from sections
+  4.9–4.11 through four compact tabs.
+- Decrypt auto-detects current or legacy text payloads and standalone AES
+  filenames; `.safe` is optional. SHA-256 names are not reversible and no vault
+  picker is offered.
+- Text and hashes support copy/save; recovered filenames are copy-only. Text
+  save names are `lowercase_hex(SHA256(UTF8(original content))) + ".txt"`.
+- Tools never logs input, output, hashes, passwords, or generated passwords.
 
-## 6.1 Current desktop decryption integration
-
-The Avalonia decryption form integrates Core as follows:
-
-- one `.safe` file, multiple files, or a folder can be selected with pickers or
-  drag-and-drop; duplicates are ignored;
-- selected vaults appear in a queue table with basename, authenticated original
-  filename, size, per-item progress, and status;
-- the details panel truncates long vault and authenticated original filenames;
-  the vault tooltip shows its complete source path and the original-filename
-  tooltip shows the complete authenticated name;
-- the unauthenticated header is parsed immediately to show format, mode, chunk
-  size, KDF summary, and algorithm;
-- the password is not checked while the user types;
-- pressing **Check password** calls `ReadVaultMetadataAsync`, which runs
-  Argon2id once, validates the key verifier, and decrypts only the filename
-  chunk;
-- the password result is displayed beside the check button;
-- successful verification makes the complete original filename available in
-  its tooltip and displays vault size and modification time, KDF
-  memory/iterations/parallelism, version, mode, chunk size, and algorithm;
-- changing the password clears the verified metadata until the user checks it
-  again;
-- all source inputs, drop zones, queue mutation controls, password input, and
-  options are locked while a batch is decrypting;
-- an invalid or failed vault records its own error and does not prevent later
-  valid queue items from running;
-- aggregate progress is based on completed queue items plus the current item's
-  progress, and the table retains individual success/failure results;
-- aggregate results are shown in the bottom status bar rather than a separate
-  Overview tab; starting another decrypt run resets prior progress/results while
-  retaining verified metadata;
-- automatic collision renaming is not offered;
-- when overwrite is disabled, both clear-name and restored encrypted-name
-  destinations use create-new semantics and an existing file is preserved;
-- when overwrite is enabled, `DecryptFileAsync` receives
-  `overwriteExisting: true` and replaces the existing file;
-- overwrite applies to `File` and individual `PerFile` outputs only; ZIP
-  destination folders must not already exist;
-- password and derived-key buffers owned by the caller are cleared after use.
-- submit-time errors are shown through a dialog rather than inline error text;
-- failure or cancellation never triggers cleanup of the configured output
-  folder.
-
-## 6.2 Desktop shell, localization, logs, and About
-
-- `MainWindowViewModel` keeps one ViewModel instance for each page: Encrypt,
-  Decrypt, Logs, Settings, and About.
-- Page-specific bottom status bars remain inside their pages; they are not moved
-  into the main shell.
-- All user-facing AXAML text is stored in `SafeFile/Resources/Strings.resx`
-  (neutral English) and `Strings.vi.resx`. `LocalizationService` updates live
-  bindings when the saved language changes.
-- English is the default. Language and Light/Dark theme controls live only in
-  Settings and apply on Save; the header contains only the current page title.
-- Serilog writes structured events to a daily rolling file and the in-memory UI
-  sink. The Logs page supports level filtering, search, clear-display, export,
-  auto-scroll, and opening the log directory.
-- The About page explains the cryptographic and local-processing model, reads
-  version/runtime information from the running application, can copy diagnostic
-  system information, opens the log folder, and identifies the MIT license.
-
-## 6.3 Progress behavior
+### 6.3 Progress behavior
 
 | Operation | Progress source |
 |---|---|
@@ -614,6 +638,28 @@ The header is 47 bytes. Multi-byte integers are little-endian.
 | 43 | 4 | Key verifier |
 
 The encrypted filename chunk follows the header, then data chunks.
+
+### 10.4 Authenticated text format v1
+
+The text result is the following binary payload encoded directly with
+unpadded Base64URL. New output has no textual prefix; readers retain support
+for the legacy `SAFETEXT1.` prefix.
+
+| Offset | Size | Field |
+|---:|---:|---|
+| 0 | 4 | ASCII magic `SFTX` |
+| 4 | 1 | Version `1` |
+| 5 | 16 | Random Argon2id salt |
+| 21 | 4 | Random AES-GCM nonce prefix |
+| 25 | 8 | Ciphertext length, UInt64 little-endian |
+| 33 | variable | UTF-8 ciphertext |
+| following ciphertext | 16 | AES-GCM authentication tag |
+
+Version 1 fixes Argon2id at 65,536 KiB, four iterations, parallelism two, and a
+32-byte derived key. The nonce is the stored random 4-byte prefix followed by
+the little-endian chunk index `1`. AAD is that index plus
+`IsLastChunk = true`. The parser validates encoded size, magic, version,
+declared length, UTF-8, and authentication before returning plaintext.
 
 ## 11. Pipeline and memory
 

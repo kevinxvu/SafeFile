@@ -175,4 +175,64 @@
   <data name="CancelOperation" xml:space="preserve"><value>Cancel operation</value></data><data name="KdfDetails" xml:space="preserve"><value>Argon2id • {0:N0} iterations • {1:N0} MB</value></data><data name="VerificationSummary" xml:space="preserve"><value>Verified {0:N0}/{1:N0} vaults{2}</value></data><data name="FailureSuffix" xml:space="preserve"><value> • {0:N0} failed</value></data><data name="SuccessFailureSummary" xml:space="preserve"><value>{0:N0} succeeded • {1:N0} failed</value></data><data name="CompletionSummary" xml:space="preserve"><value>✓ Completed: {0:N0} succeeded{1}</value></data><data name="BatchFailureDetails" xml:space="preserve"><value>Decrypted {0:N0} vaults successfully. {1:N0} vaults failed. Select a row to view the reason.</value></data><data name="CompletedWithErrors" xml:space="preserve"><value>Completed with errors</value></data><data name="OutputAlreadyExists" xml:space="preserve"><value>The output already exists. Enable overwrite or remove the existing output.</value></data><data name="UnsupportedVaultMode" xml:space="preserve"><value>Vault mode {0} is not supported.</value></data><data name="EncryptedFileNamesSuffix" xml:space="preserve"><value>{0} (file names will be encrypted)</value></data><data name="EncryptedFileNamePlaceholder" xml:space="preserve"><value>[Encrypted file name].safe</value></data><data name="EncryptedFolderNamePlaceholder" xml:space="preserve"><value>[Encrypted folder name].safe</value></data><data name="CorruptData" xml:space="preserve"><value>Incorrect password or corrupt data: {0}</value></data>
   <data name="PerFileCollisionFailures" xml:space="preserve"><value>{0:N0} file(s) were skipped because the destination vault already exists.</value></data>
   <data name="PerFileOtherFailures" xml:space="preserve"><value>{0:N0} file(s) could not be encrypted because of other errors.</value></data>
+  <data name="NavTools" xml:space="preserve"><value>Tools</value></data>
+  <data name="PageTools" xml:space="preserve"><value>Tools</value></data>
+  <data name="ToolsTitle" xml:space="preserve"><value>Security tools</value></data>
+  <data name="ToolsDescription" xml:space="preserve"><value>Encrypt and decrypt text, calculate SHA-256 hashes, and generate secure random passwords.</value></data>
+  <data name="ToolsEncryptTextTab" xml:space="preserve"><value>Encrypt text</value></data>
+  <data name="ToolsDecryptTextTab" xml:space="preserve"><value>Decrypt text</value></data>
+  <data name="ToolsSha256Tab" xml:space="preserve"><value>SHA-256 Hash</value></data>
+  <data name="ToolsPasswordGeneratorTab" xml:space="preserve"><value>Password generator</value></data>
+  <data name="ToolsTextToEncrypt" xml:space="preserve"><value>Text to encrypt</value></data>
+  <data name="ToolsTextLimitHint" xml:space="preserve"><value>UTF-8 text, up to 1,000,000 characters.</value></data>
+  <data name="ToolsCharacterCount" xml:space="preserve"><value>{0:N0} / {1:N0} characters</value></data>
+  <data name="ToolsEnterText" xml:space="preserve"><value>Enter text here...</value></data>
+  <data name="ToolsEnterPassword" xml:space="preserve"><value>Enter password</value></data>
+  <data name="ToolsClear" xml:space="preserve"><value>Clear</value></data>
+  <data name="ToolsEncryptText" xml:space="preserve"><value>Encrypt</value></data>
+  <data name="ToolsEncryptedResult" xml:space="preserve"><value>Encrypted result</value></data>
+  <data name="ToolsCopy" xml:space="preserve"><value>Copy</value></data>
+  <data name="ToolsSaveToFile" xml:space="preserve"><value>Save to file</value></data>
+  <data name="ToolsEncryptedInput" xml:space="preserve"><value>Encrypted text or filename</value></data>
+  <data name="ToolsAutoDetectHint" xml:space="preserve"><value>SafeFile automatically detects encrypted text and AES-protected filenames. The .safe extension is optional.</value></data>
+  <data name="ToolsEncryptedInputPlaceholder" xml:space="preserve"><value>Paste encrypted text or an encrypted filename...</value></data>
+  <data name="ToolsDecryptText" xml:space="preserve"><value>Decrypt</value></data>
+  <data name="ToolsDecryptedResult" xml:space="preserve"><value>Decrypted result</value></data>
+  <data name="ToolsTextToHash" xml:space="preserve"><value>Text to hash</value></data>
+  <data name="ToolsShaHint" xml:space="preserve"><value>SHA-256 is one-way and cannot be decrypted.</value></data>
+  <data name="ToolsOutputFormat" xml:space="preserve"><value>Output format</value></data>
+  <data name="ToolsCalculateSha" xml:space="preserve"><value>Calculate SHA-256</value></data>
+  <data name="ToolsShaResult" xml:space="preserve"><value>SHA-256 result</value></data>
+  <data name="ToolsPasswordGenerator" xml:space="preserve"><value>Random password generator</value></data>
+  <data name="ToolsPasswordGeneratorHint" xml:space="preserve"><value>Each selected character group is guaranteed to appear at least once.</value></data>
+  <data name="ToolsPasswordLength" xml:space="preserve"><value>Password length</value></data>
+  <data name="ToolsCharacterGroups" xml:space="preserve"><value>Character groups</value></data>
+  <data name="ToolsUppercase" xml:space="preserve"><value>Uppercase (A–Z)</value></data>
+  <data name="ToolsLowercase" xml:space="preserve"><value>Lowercase (a–z)</value></data>
+  <data name="ToolsNumbers" xml:space="preserve"><value>Numbers (0–9)</value></data>
+  <data name="ToolsSpecialCharacters" xml:space="preserve"><value>Special characters</value></data>
+  <data name="ToolsExcludeAmbiguous" xml:space="preserve"><value>Exclude ambiguous characters (0, O, o, 1, l, I)</value></data>
+  <data name="ToolsGeneratePassword" xml:space="preserve"><value>Generate password</value></data>
+  <data name="ToolsGeneratedPassword" xml:space="preserve"><value>Generated password</value></data>
+  <data name="ToolsEncryptingText" xml:space="preserve"><value>Encrypting text...</value></data>
+  <data name="ToolsTextEncrypted" xml:space="preserve"><value>Text encrypted successfully.</value></data>
+  <data name="ToolsDecryptingText" xml:space="preserve"><value>Decrypting...</value></data>
+  <data name="ToolsTextDecrypted" xml:space="preserve"><value>Text decrypted successfully.</value></data>
+  <data name="ToolsFileNameDecrypted" xml:space="preserve"><value>Filename decrypted successfully.</value></data>
+  <data name="ToolsOperationFailed" xml:space="preserve"><value>Operation failed.</value></data>
+  <data name="ToolsHashCalculated" xml:space="preserve"><value>SHA-256 calculated.</value></data>
+  <data name="ToolsPasswordGenerated" xml:space="preserve"><value>Password generated.</value></data>
+  <data name="ToolsCopied" xml:space="preserve"><value>Copied to clipboard.</value></data>
+  <data name="ToolsSaved" xml:space="preserve"><value>Saved successfully.</value></data>
+  <data name="ToolsSaveResult" xml:space="preserve"><value>Save result</value></data>
+  <data name="ToolsTextTooLong" xml:space="preserve"><value>Text cannot exceed {0:N0} characters.</value></data>
+  <data name="ToolsEncryptedInputTooLong" xml:space="preserve"><value>Encrypted input cannot exceed {0:N0} characters.</value></data>
+  <data name="ToolsEncryptedInputRequired" xml:space="preserve"><value>Enter encrypted text or an encrypted filename.</value></data>
+  <data name="PasswordTooShort" xml:space="preserve"><value>Password must contain at least {0} characters.</value></data>
+  <data name="CannotEncryptText" xml:space="preserve"><value>Unable to encrypt text</value></data>
+  <data name="CannotDecryptText" xml:space="preserve"><value>Unable to decrypt text</value></data>
+  <data name="CannotCalculateSha" xml:space="preserve"><value>Unable to calculate SHA-256</value></data>
+  <data name="CannotGeneratePassword" xml:space="preserve"><value>Unable to generate password</value></data>
+  <data name="CannotCopyResult" xml:space="preserve"><value>Unable to copy result</value></data>
+  <data name="CannotSaveResult" xml:space="preserve"><value>Unable to save result</value></data>
 </root>

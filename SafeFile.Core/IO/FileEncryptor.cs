@@ -12,7 +12,6 @@ namespace SafeFile.Core.IO;
 
 public sealed class FileEncryptor
 {
-    private readonly Argon2Kdf _kdf = new();
     private readonly CryptoPipeline _pipeline;
     private readonly IProgress<double>? _progress;
     private readonly IProgress<PerFileProgress>? _perFileProgress;
@@ -72,7 +71,7 @@ public sealed class FileEncryptor
             RandomNumberGenerator.Fill(noncePrefix);
 
             var effectiveKdfParams = kdfParams ?? Argon2Kdf.DefaultParameters;
-            masterKey = await DeriveKeyAsync(
+            masterKey = await KdfDerivation.DeriveKeyAsync(
                 passwordBytes,
                 salt,
                 effectiveKdfParams,
@@ -263,7 +262,7 @@ public sealed class FileEncryptor
             if (header.Mode != VaultMode.Zip)
                 throw new InvalidDataException("Vault is not in Zip mode.");
 
-            var masterKey = await DeriveKeyAsync(
+            var masterKey = await KdfDerivation.DeriveKeyAsync(
                 passwordBytes,
                 header.Salt,
                 header.KdfParameters,
@@ -379,7 +378,7 @@ public sealed class FileEncryptor
         using var sourceStream = new FileStream(
             sourcePath, FileMode.Open, FileAccess.Read, FileShare.Read);
         var header = VaultHeader.ReadFrom(sourceStream);
-        var masterKey = await DeriveKeyAsync(
+        var masterKey = await KdfDerivation.DeriveKeyAsync(
             passwordBytes,
             header.Salt,
             header.KdfParameters,
@@ -496,7 +495,7 @@ public sealed class FileEncryptor
         var ciphertextLength = payload.Length - 47;
         var ciphertext = payload.AsSpan(31, ciphertextLength).ToArray();
         var tag = payload.AsSpan(31 + ciphertextLength, AesGcmEngine.TagSize).ToArray();
-        var masterKey = await DeriveKeyAsync(
+        var masterKey = await KdfDerivation.DeriveKeyAsync(
             passwordBytes,
             salt,
             kdfParameters,
@@ -575,6 +574,25 @@ public sealed class FileEncryptor
                     Path.GetDirectoryName(relativePath) ?? string.Empty,
                     encryptedFileName);
                 var encryptedPath = Path.Combine(destinationFolderPath, encryptedRelativePath);
+                var expectedOutputPath = outputFileNameMode == OutputFileNameMode.Sha256
+                    ? GetSha256VaultPath(
+                        encryptedPath,
+                        System.Text.Encoding.UTF8.GetBytes(sourceFile.Name))
+                    : encryptedPath;
+
+                if (!overwriteExisting &&
+                    outputFileNameMode is OutputFileNameMode.None or OutputFileNameMode.Sha256 &&
+                    File.Exists(expectedOutputPath))
+                {
+                    hasFailures = true;
+                    _perFileProgress?.Report(
+                        new PerFileProgress(
+                            sourceFile.FullName,
+                            1,
+                            PerFileResult.DestinationExists));
+                    continue;
+                }
+
                 Directory.CreateDirectory(
                     Path.GetDirectoryName(encryptedPath)
                     ?? throw new InvalidOperationException("Encrypted file has no parent directory."));
@@ -731,7 +749,7 @@ public sealed class FileEncryptor
             RandomNumberGenerator.Fill(noncePrefix);
 
             var effectiveKdfParams = kdfParams ?? Argon2Kdf.DefaultParameters;
-            masterKey = await DeriveKeyAsync(
+            masterKey = await KdfDerivation.DeriveKeyAsync(
                 passwordBytes,
                 salt,
                 effectiveKdfParams,
@@ -911,7 +929,7 @@ public sealed class FileEncryptor
             var restoreStoredFileName =
                 header.OutputFileNameMode != OutputFileNameMode.None;
 
-            var masterKey = await DeriveKeyAsync(
+            var masterKey = await KdfDerivation.DeriveKeyAsync(
                 passwordBytes,
                 header.Salt,
                 header.KdfParameters,
@@ -1200,18 +1218,6 @@ public sealed class FileEncryptor
         using var hmac = new HMACSHA256(masterKey);
         return hmac.ComputeHash(
             System.Text.Encoding.ASCII.GetBytes("SafeFile.OutputFilename.v1"));
-    }
-
-    private async Task<byte[]> DeriveKeyAsync(
-        byte[] passwordBytes,
-        byte[] salt,
-        Argon2Parameters parameters,
-        CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        return await Task.Run(
-            () => _kdf.DeriveKey(passwordBytes, salt, parameters),
-            cancellationToken).ConfigureAwait(false);
     }
 
     private static void ValidateOutputFileNameMode(OutputFileNameMode mode)

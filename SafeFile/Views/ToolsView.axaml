@@ -1,0 +1,237 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:SafeFile.ViewModels"
+             xmlns:loc="using:SafeFile.Markup"
+             x:Class="SafeFile.Views.ToolsView"
+             x:DataType="vm:ToolsViewModel"
+             Foreground="{DynamicResource PrimaryTextBrush}">
+  <UserControl.Styles>
+    <Style Selector="TextBox.tool-editor">
+      <Setter Property="AcceptsReturn" Value="True"/>
+      <Setter Property="TextWrapping" Value="Wrap"/>
+      <Setter Property="VerticalContentAlignment" Value="Top"/>
+      <Setter Property="MinHeight" Value="132"/>
+    </Style>
+    <Style Selector="TextBox.tool-result">
+      <Setter Property="AcceptsReturn" Value="True"/>
+      <Setter Property="TextWrapping" Value="Wrap"/>
+      <Setter Property="IsReadOnly" Value="True"/>
+      <Setter Property="VerticalContentAlignment" Value="Top"/>
+      <Setter Property="MinHeight" Value="112"/>
+    </Style>
+    <Style Selector="NumericUpDown.no-direct-input /template/ TextBox">
+      <Setter Property="IsReadOnly" Value="True"/>
+    </Style>
+    <Style Selector="TabItem">
+      <Setter Property="FontSize" Value="13"/>
+    </Style>
+  </UserControl.Styles>
+
+  <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <StackPanel Margin="24,16,24,24" Spacing="16">
+      <TabControl>
+        <TabItem Header="{loc:Tr ToolsEncryptTextTab}">
+          <StackPanel Spacing="16" Margin="0,14,0,0" IsEnabled="{Binding !IsEncryptingText}">
+            <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="16">
+              <StackPanel Spacing="8">
+                <Grid ColumnDefinitions="*,Auto">
+                  <StackPanel Spacing="2">
+                    <TextBlock Text="{loc:Tr ToolsTextToEncrypt}" FontSize="15" FontWeight="SemiBold"/>
+                    <TextBlock Text="{loc:Tr ToolsTextLimitHint}" FontSize="11"
+                               Foreground="{DynamicResource SecondaryTextBrush}"/>
+                  </StackPanel>
+                  <TextBlock Grid.Column="1" Text="{Binding EncryptCharacterCount}"
+                             VerticalAlignment="Bottom" FontSize="11"
+                             Foreground="{DynamicResource SecondaryTextBrush}"/>
+                </Grid>
+                <TextBox Classes="tool-editor" Text="{Binding EncryptInput}"
+                         MaxLength="1000000" PlaceholderText="{loc:Tr ToolsEnterText}"/>
+                <TextBlock Text="{loc:Tr Password}" FontWeight="Medium"/>
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBox Text="{Binding EncryptPassword}"
+                           PasswordChar="{Binding EncryptPasswordChar}"
+                           PlaceholderText="{loc:Tr ToolsEnterPassword}"/>
+                  <Button Grid.Column="1" Margin="6,0,0,0" Width="38" Padding="8"
+                          Theme="{StaticResource OutlinedButtonTheme}"
+                          Command="{Binding ToggleEncryptPasswordCommand}"
+                          ToolTip.Tip="{loc:Tr TogglePassword}">
+                    <PathIcon Data="{StaticResource EyeIcon}" Width="17" Height="17"/>
+                  </Button>
+                </Grid>
+                <Grid ColumnDefinitions="*,Auto,Auto">
+                  <TextBlock Text="{Binding EncryptStatus}" VerticalAlignment="Center"
+                             Foreground="{DynamicResource SecondaryTextBrush}"/>
+                  <Button Grid.Column="1" Margin="0,0,8,0" Theme="{StaticResource OutlinedButtonTheme}"
+                          Command="{Binding ClearEncryptCommand}" Content="{loc:Tr ToolsClear}"/>
+                  <Button Grid.Column="2" Theme="{StaticResource PrimaryButtonTheme}"
+                          Command="{Binding EncryptTextCommand}" Content="{loc:Tr ToolsEncryptText}"/>
+                </Grid>
+              </StackPanel>
+            </Border>
+            <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="16"
+                    IsVisible="{Binding HasEncryptResult}">
+              <StackPanel Spacing="8">
+                <TextBlock Text="{loc:Tr ToolsEncryptedResult}" FontSize="15" FontWeight="SemiBold"/>
+                <TextBox Classes="tool-result" Text="{Binding EncryptResult}"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                  <Button Theme="{StaticResource OutlinedButtonTheme}" Command="{Binding CopyEncryptResultCommand}"
+                          Content="{loc:Tr ToolsCopy}"/>
+                  <Button Theme="{StaticResource OutlinedButtonTheme}" Command="{Binding SaveEncryptResultCommand}"
+                          Content="{loc:Tr ToolsSaveToFile}"/>
+                </StackPanel>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </TabItem>
+
+        <TabItem Header="{loc:Tr ToolsDecryptTextTab}">
+          <StackPanel Spacing="16" Margin="0,14,0,0" IsEnabled="{Binding !IsDecryptingText}">
+            <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="16">
+              <StackPanel Spacing="8">
+                <StackPanel Spacing="2">
+                  <TextBlock Text="{loc:Tr ToolsEncryptedInput}" FontSize="15" FontWeight="SemiBold"/>
+                  <TextBlock Text="{loc:Tr ToolsAutoDetectHint}" FontSize="11"
+                             Foreground="{DynamicResource SecondaryTextBrush}" TextWrapping="Wrap"/>
+                </StackPanel>
+                <TextBox Classes="tool-editor" Text="{Binding DecryptInput}"
+                         MaxLength="6000000" PlaceholderText="{loc:Tr ToolsEncryptedInputPlaceholder}"/>
+                <TextBlock Text="{loc:Tr Password}" FontWeight="Medium"/>
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBox Text="{Binding DecryptPassword}"
+                           PasswordChar="{Binding DecryptPasswordChar}"
+                           PlaceholderText="{loc:Tr ToolsEnterPassword}"/>
+                  <Button Grid.Column="1" Margin="6,0,0,0" Width="38" Padding="8"
+                          Theme="{StaticResource OutlinedButtonTheme}"
+                          Command="{Binding ToggleDecryptPasswordCommand}"
+                          ToolTip.Tip="{loc:Tr TogglePassword}">
+                    <PathIcon Data="{StaticResource EyeIcon}" Width="17" Height="17"/>
+                  </Button>
+                </Grid>
+                <Grid ColumnDefinitions="*,Auto,Auto">
+                  <TextBlock Text="{Binding DecryptStatus}" VerticalAlignment="Center"
+                             Foreground="{DynamicResource SecondaryTextBrush}"/>
+                  <Button Grid.Column="1" Margin="0,0,8,0" Theme="{StaticResource OutlinedButtonTheme}"
+                          Command="{Binding ClearDecryptCommand}" Content="{loc:Tr ToolsClear}"/>
+                  <Button Grid.Column="2" Theme="{StaticResource PrimaryButtonTheme}"
+                          Command="{Binding DecryptTextCommand}" Content="{loc:Tr ToolsDecryptText}"/>
+                </Grid>
+              </StackPanel>
+            </Border>
+            <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="16"
+                    IsVisible="{Binding HasDecryptResult}">
+              <StackPanel Spacing="8">
+                <TextBlock Text="{loc:Tr ToolsDecryptedResult}" FontSize="15" FontWeight="SemiBold"/>
+                <TextBox Classes="tool-result" Text="{Binding DecryptResult}"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                  <Button Theme="{StaticResource OutlinedButtonTheme}" Command="{Binding CopyDecryptResultCommand}"
+                          Content="{loc:Tr ToolsCopy}"/>
+                  <Button Theme="{StaticResource OutlinedButtonTheme}" Command="{Binding SaveDecryptResultCommand}"
+                          IsVisible="{Binding CanSaveDecryptResult}" Content="{loc:Tr ToolsSaveToFile}"/>
+                </StackPanel>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </TabItem>
+
+        <TabItem Header="{loc:Tr ToolsSha256Tab}">
+          <StackPanel Spacing="16" Margin="0,14,0,0">
+            <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="16">
+              <StackPanel Spacing="8">
+                <Grid ColumnDefinitions="*,Auto">
+                  <StackPanel Spacing="2">
+                    <TextBlock Text="{loc:Tr ToolsTextToHash}" FontSize="15" FontWeight="SemiBold"/>
+                    <TextBlock Text="{loc:Tr ToolsShaHint}" FontSize="11"
+                               Foreground="{DynamicResource SecondaryTextBrush}"/>
+                  </StackPanel>
+                  <TextBlock Grid.Column="1" Text="{Binding ShaCharacterCount}"
+                             VerticalAlignment="Bottom" FontSize="11"
+                             Foreground="{DynamicResource SecondaryTextBrush}"/>
+                </Grid>
+                <TextBox Classes="tool-editor" Text="{Binding ShaInput}" MaxLength="1000000"
+                         PlaceholderText="{loc:Tr ToolsEnterText}"/>
+                <StackPanel Orientation="Horizontal" Spacing="18">
+                  <TextBlock Text="{loc:Tr ToolsOutputFormat}" FontWeight="Medium" VerticalAlignment="Center"/>
+                  <RadioButton Content="HEX" IsChecked="{Binding ShaUseHex}" GroupName="ShaFormat"/>
+                  <RadioButton Content="Base64" IsChecked="{Binding ShaUseBase64}" GroupName="ShaFormat"/>
+                </StackPanel>
+                <Grid ColumnDefinitions="*,Auto,Auto">
+                  <TextBlock Text="{Binding ShaStatus}" VerticalAlignment="Center"
+                             Foreground="{DynamicResource SecondaryTextBrush}"/>
+                  <Button Grid.Column="1" Margin="0,0,8,0" Theme="{StaticResource OutlinedButtonTheme}"
+                          Command="{Binding ClearShaCommand}" Content="{loc:Tr ToolsClear}"/>
+                  <Button Grid.Column="2" Theme="{StaticResource PrimaryButtonTheme}"
+                          Command="{Binding CalculateShaCommand}" Content="{loc:Tr ToolsCalculateSha}"/>
+                </Grid>
+              </StackPanel>
+            </Border>
+            <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="16"
+                    IsVisible="{Binding HasShaResult}">
+              <StackPanel Spacing="8">
+                <TextBlock Text="{loc:Tr ToolsShaResult}" FontSize="15" FontWeight="SemiBold"/>
+                <TextBox Text="{Binding ShaResult}" IsReadOnly="True"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                  <Button Theme="{StaticResource OutlinedButtonTheme}" Command="{Binding CopyShaResultCommand}"
+                          Content="{loc:Tr ToolsCopy}"/>
+                  <Button Theme="{StaticResource OutlinedButtonTheme}" Command="{Binding SaveShaResultCommand}"
+                          Content="{loc:Tr ToolsSaveToFile}"/>
+                </StackPanel>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </TabItem>
+
+        <TabItem Header="{loc:Tr ToolsPasswordGeneratorTab}">
+          <StackPanel Spacing="16" Margin="0,14,0,0">
+            <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="16">
+              <StackPanel Spacing="16">
+                <StackPanel Spacing="2">
+                  <TextBlock Text="{loc:Tr ToolsPasswordGenerator}" FontSize="15" FontWeight="SemiBold"/>
+                  <TextBlock Text="{loc:Tr ToolsPasswordGeneratorHint}" FontSize="11"
+                             Foreground="{DynamicResource SecondaryTextBrush}"/>
+                </StackPanel>
+                <Grid ColumnDefinitions="*,24,*">
+                  <StackPanel Grid.Column="0" Spacing="8">
+                    <TextBlock Text="{loc:Tr ToolsPasswordLength}" FontWeight="Medium"/>
+                    <NumericUpDown Classes="no-direct-input" Value="{Binding PasswordLength}"
+                                   Minimum="4" Maximum="64" Increment="1" FormatString="0"/>
+                    <Slider Value="{Binding PasswordLength}" Minimum="4" Maximum="64"
+                            TickFrequency="1" IsSnapToTickEnabled="True"/>
+                  </StackPanel>
+                  <StackPanel Grid.Column="2" Spacing="8">
+                    <TextBlock Text="{loc:Tr ToolsCharacterGroups}" FontWeight="Medium"/>
+                    <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto">
+                      <CheckBox Content="{loc:Tr ToolsUppercase}" IsChecked="{Binding IncludeUppercase}"/>
+                      <CheckBox Grid.Column="1" Content="{loc:Tr ToolsLowercase}" IsChecked="{Binding IncludeLowercase}"/>
+                      <CheckBox Grid.Row="1" Content="{loc:Tr ToolsNumbers}" IsChecked="{Binding IncludeNumbers}"/>
+                      <CheckBox Grid.Row="1" Grid.Column="1" Content="{loc:Tr ToolsSpecialCharacters}"
+                                IsChecked="{Binding IncludeSpecialCharacters}"/>
+                      <CheckBox Grid.Row="2" Grid.ColumnSpan="2" Content="{loc:Tr ToolsExcludeAmbiguous}"
+                                IsChecked="{Binding ExcludeAmbiguousCharacters}"/>
+                    </Grid>
+                  </StackPanel>
+                </Grid>
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBlock Text="{Binding GeneratorStatus}" VerticalAlignment="Center"
+                             Foreground="{DynamicResource SecondaryTextBrush}"/>
+                  <Button Grid.Column="1" Theme="{StaticResource PrimaryButtonTheme}"
+                          Command="{Binding GeneratePasswordCommand}" Content="{loc:Tr ToolsGeneratePassword}"/>
+                </Grid>
+              </StackPanel>
+            </Border>
+            <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="16"
+                    IsVisible="{Binding HasGeneratedPassword}">
+              <StackPanel Spacing="8">
+                <TextBlock Text="{loc:Tr ToolsGeneratedPassword}" FontSize="15" FontWeight="SemiBold"/>
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBox Text="{Binding GeneratedPassword}" IsReadOnly="True" FontFamily="Consolas"/>
+                  <Button Grid.Column="1" Margin="8,0,0,0" Theme="{StaticResource OutlinedButtonTheme}"
+                          Command="{Binding CopyGeneratedPasswordCommand}" Content="{loc:Tr ToolsCopy}"/>
+                </Grid>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </TabItem>
+      </TabControl>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

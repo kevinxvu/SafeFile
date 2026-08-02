@@ -55,6 +55,8 @@ does not upload them or require an internet connection.
 - **Batch file encryption:** select or drop multiple files and write one
   independent `.safe` vault per file to the encrypted-output folder.
 - **Optional filename encryption** with authenticated name restoration.
+- **Built-in security tools:** authenticated text encryption/decryption,
+  SHA-256 hashing, and a cryptographically secure password generator.
 - **Batch decryption** for one file, multiple vaults, or entire folders.
 - **Per-vault progress and results** in a numbered queue.
 - **Explicit overwrite protection** for existing output.
@@ -88,6 +90,23 @@ and final status. One failed vault does not prevent later valid vaults from
 being processed.
 
 ![SafeFile batch decrypt and vault details](docs/images/decrypt-screen.png)
+
+### Tools
+
+Tools provides four focused utilities without sending data off the device:
+
+- **Encrypt text:** protects up to 1,000,000 characters with AES-256-GCM and a
+  password-derived Argon2id key, then produces a portable Base64URL string;
+- **Decrypt text:** automatically recognizes SafeFile encrypted text or a
+  standalone AES-encrypted filename. The `.safe` filename suffix is optional;
+- **SHA-256 Hash:** calculates lowercase hexadecimal or Base64 SHA-256 output;
+- **Password generator:** creates 4–64 character passwords with selected
+  uppercase, lowercase, number, and special-character groups. It defaults to
+  10 characters and uses a cryptographically secure random generator.
+
+Encrypted text and recovered plaintext can be copied or saved. Suggested text
+filenames use the lowercase SHA-256 hash of the original UTF-8 content. SHA-256
+protected filenames cannot be reversed from the visible name alone.
 
 ### Settings, logs, and About
 
@@ -206,6 +225,8 @@ dotnet.exe build SafeFile/SafeFile.csproj
 4. Start encryption and keep the resulting `.safe` vault.
 5. Open **Decrypt**, add the vaults, enter the exact password, and start the
    batch.
+6. Use **Tools** for short text protection, SHA-256 hashes, or generating a
+   random password without creating a vault.
 
 Default output locations:
 
