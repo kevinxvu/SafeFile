@@ -26,6 +26,7 @@ public sealed partial class ToolsViewModel : ViewModelBase
     private readonly IClipboardService _clipboard;
     private readonly IErrorDialogService _errorDialog;
     private readonly SettingsService _settingsService;
+    private readonly Microsoft.Extensions.Logging.ILogger<FileEncryptor> _fileEncryptorLogger;
     private readonly TextCryptoService _textCrypto = new();
 
     [ObservableProperty] private string _encryptInput = "";
@@ -102,12 +103,14 @@ public sealed partial class ToolsViewModel : ViewModelBase
         IFilePickerService filePicker,
         IClipboardService clipboard,
         IErrorDialogService errorDialog,
-        SettingsService settingsService)
+        SettingsService settingsService,
+        Microsoft.Extensions.Logging.ILogger<FileEncryptor> fileEncryptorLogger)
     {
         _filePicker = filePicker;
         _clipboard = clipboard;
         _errorDialog = errorDialog;
         _settingsService = settingsService;
+        _fileEncryptorLogger = fileEncryptorLogger;
 
         EncryptTextCommand = new AsyncRelayCommand(EncryptTextAsync);
         DecryptTextCommand = new AsyncRelayCommand(DecryptTextAsync);
@@ -221,7 +224,9 @@ public sealed partial class ToolsViewModel : ViewModelBase
             else
             {
                 var normalized = NormalizeEncryptedFileName(input);
-                DecryptResult = await new FileEncryptor(settings: _settingsService.Load())
+                DecryptResult = await new FileEncryptor(
+                        settings: _settingsService.Load(),
+                        logger: _fileEncryptorLogger)
                     .DecryptOutputFileNameAsync(normalized, passwordBytes);
                 DecryptResultIsFileName = true;
             }

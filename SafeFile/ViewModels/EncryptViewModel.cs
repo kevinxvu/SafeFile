@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
@@ -24,6 +25,7 @@ public sealed partial class EncryptViewModel : ViewModelBase
     private readonly IFilePickerService _filePicker;
     private readonly IErrorDialogService _errorDialog;
     private readonly SettingsService _settingsService;
+    private readonly Microsoft.Extensions.Logging.ILogger<FileEncryptor> _fileEncryptorLogger;
     private AppSettings _settings;
     private CancellationTokenSource? _activeCts;
     private CancellationTokenSource? _sourceInfoCts;
@@ -318,6 +320,9 @@ public sealed partial class EncryptViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(StatusDetails))]
     private string _statusCurrentFile = "";
 
+    [ObservableProperty]
+    private string _statusCurrentFilePath = "";
+
     [ObservableProperty] private double _statusProgress;
 
     [ObservableProperty]
@@ -326,15 +331,18 @@ public sealed partial class EncryptViewModel : ViewModelBase
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StatusDetails))]
+    [NotifyPropertyChangedFor(nameof(StatusTiming))]
     private string _statusSpeed = "";
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(StatusDetails))]
+    [NotifyPropertyChangedFor(nameof(StatusTiming))]
     private string _statusEta = "";
 
-    public string StatusDetails => string.Join(
+    public string StatusDetails => StatusBytes;
+
+    public string StatusTiming => string.Join(
         " \u2022 ",
-        new[] { StatusBytes, StatusSpeed, StatusEta }
+        new[] { StatusSpeed, StatusEta }
             .Where(s => !string.IsNullOrEmpty(s)));
 
     [ObservableProperty]
@@ -357,11 +365,13 @@ public sealed partial class EncryptViewModel : ViewModelBase
     public EncryptViewModel(
         IFilePickerService filePicker,
         IErrorDialogService errorDialog,
-        SettingsService settingsService)
+        SettingsService settingsService,
+        Microsoft.Extensions.Logging.ILogger<FileEncryptor> fileEncryptorLogger)
     {
         _filePicker = filePicker;
         _errorDialog = errorDialog;
         _settingsService = settingsService;
+        _fileEncryptorLogger = fileEncryptorLogger;
         _settings = _settingsService.Load();
         _encryptFileNames = false;
 
@@ -468,12 +478,14 @@ public sealed partial class EncryptViewModel : ViewModelBase
         StatusCurrentFile = IsMultipleFileSource
             ? F("FilesSelected", _sourcePaths.Count)
             : Path.GetFileName(SourcePath.TrimEnd(Path.DirectorySeparatorChar));
+        StatusCurrentFilePath = IsMultipleFileSource
+            ? FormatNumberedLines(_sourcePaths)
+            : SourcePath;
         StatusProgress = 0;
         StatusBytes = "";
         StatusSpeed = "";
         StatusEta = "";
 
-        var startTime = DateTime.UtcNow;
         var sourceMetrics = await Task.Run(() =>
         {
             var size = TryGetSourceSize();
@@ -490,6 +502,12 @@ public sealed partial class EncryptViewModel : ViewModelBase
         var failedFileCount = 0;
         var collisionFileCount = 0;
         var otherFailedFileCount = 0;
+        var etaEstimator = new EtaEstimator();
+        var completedPerFileBytes = 0L;
+        var completedPerFilePaths = new HashSet<string>(PathComparer);
+
+        if (sourceSize is > 0)
+            StatusEta = L("CalculatingEta");
 
         var progress = new Progress<double>(p =>
         {
@@ -501,11 +519,10 @@ public sealed partial class EncryptViewModel : ViewModelBase
                     (double)sourceSize.Value, 0, 1)
                 : p;
             StatusProgress = overallProgress;
-            var elapsed = (DateTime.UtcNow - startTime).TotalSeconds;
-            if (elapsed > 0.5 && sourceSize is > 0)
+            if (sourceSize is > 0)
             {
                 var bytesProcessed = (long)(sourceSize.Value * overallProgress);
-                var speed = bytesProcessed / elapsed;
+                var estimate = etaEstimator.Update(bytesProcessed, sourceSize.Value);
                 StatusBytes = IsMultipleFileSource
                     ? F(
                         "BatchSummary",
@@ -515,12 +532,15 @@ public sealed partial class EncryptViewModel : ViewModelBase
                             0,
                             _sourcePaths.Count - succeededFileCount - failedFileCount))
                     : FormatBytes(bytesProcessed) + " / " + FormatBytes(sourceSize.Value);
-                StatusSpeed = FormatSpeed(speed);
-                if (overallProgress > 0.001)
-                {
-                    var remaining = elapsed / overallProgress - elapsed;
-                    StatusEta = "ETA: " + FormatEta(remaining);
-                }
+                StatusSpeed = estimate.BytesPerSecond is > 0
+                    ? FormatSpeed(estimate.BytesPerSecond.Value)
+                    : "";
+                StatusEta = !IsFileSource && IsFolderModeZip &&
+                            overallProgress >= 0.99 && overallProgress < 1
+                    ? L("FinalizingEncryption")
+                    : estimate.RemainingSeconds is { } remaining
+                        ? F("EstimatedTimeRemaining", FormatEta(remaining))
+                        : L("CalculatingEta");
             }
         });
 
@@ -542,6 +562,7 @@ public sealed partial class EncryptViewModel : ViewModelBase
             }
 
             StatusCurrentFile = Path.GetFileName(p.SourceFilePath);
+            StatusCurrentFilePath = p.SourceFilePath;
             var completed = succeededFileCount + failedFileCount;
             StatusProgress = perFileTotal > 0
                 ? Math.Clamp(
@@ -555,8 +576,28 @@ public sealed partial class EncryptViewModel : ViewModelBase
                 succeededFileCount,
                 failedFileCount,
                 Math.Max(0, perFileTotal - completed));
-            StatusSpeed = "";
-            StatusEta = "";
+
+            if (sourceSize is > 0)
+            {
+                var fileSize = TryGetFileSize(p.SourceFilePath);
+                if (p.Result != PerFileResult.InProgress &&
+                    completedPerFilePaths.Add(p.SourceFilePath))
+                    completedPerFileBytes += fileSize;
+
+                var processedBytes = p.Result == PerFileResult.InProgress
+                    ? completedPerFileBytes + (long)(fileSize * p.Progress)
+                    : completedPerFileBytes;
+                var estimate = etaEstimator.Update(
+                    processedBytes,
+                    sourceSize.Value,
+                    includeSample: p.Result == PerFileResult.InProgress);
+                StatusSpeed = estimate.BytesPerSecond is > 0
+                    ? FormatSpeed(estimate.BytesPerSecond.Value)
+                    : "";
+                StatusEta = estimate.RemainingSeconds is { } remaining
+                    ? F("EstimatedTimeRemaining", FormatEta(remaining))
+                    : L("CalculatingEta");
+            }
         });
 
         byte[]? passwordBytes = null;
@@ -567,7 +608,8 @@ public sealed partial class EncryptViewModel : ViewModelBase
                 consumerThreads: _settings.MaxThreads,
                 progress: progress,
                 settings: _settings,
-                perFileProgress: perFileProgress);
+                perFileProgress: perFileProgress,
+                logger: _fileEncryptorLogger);
 
             var chunkSizeBytes = _settings.GetChunkSizeBytes();
             var kdfParams = _settings.GetKdfParameters();
@@ -583,6 +625,7 @@ public sealed partial class EncryptViewModel : ViewModelBase
                 {
                     cts.Token.ThrowIfCancellationRequested();
                     StatusCurrentFile = Path.GetFileName(sourceFile);
+                    StatusCurrentFilePath = sourceFile;
                     currentBatchFileBytes = new FileInfo(sourceFile).Length;
                     var destPath = Path.Combine(outputDirectory, Path.GetFileName(sourceFile) + ".safe");
                     try
@@ -646,6 +689,9 @@ public sealed partial class EncryptViewModel : ViewModelBase
             StatusCurrentFile = IsMultipleFileSource
                 ? F("FilesEncrypted", _sourcePaths.Count)
                 : Path.GetFileName(actualOutputPath);
+            StatusCurrentFilePath = IsMultipleFileSource
+                ? outputDirectory
+                : actualOutputPath;
             StatusEta = "";
             if (IsMultipleFileSource || perFileTotal > 0)
             {
@@ -790,9 +836,8 @@ public sealed partial class EncryptViewModel : ViewModelBase
             if (IsFileSource && File.Exists(SourcePath))
                 return _sourcePaths.Sum(path => new FileInfo(path).Length);
             if (!IsFileSource && Directory.Exists(SourcePath))
-                return new DirectoryInfo(SourcePath)
-                    .EnumerateFiles("*", SearchOption.AllDirectories)
-                    .Sum(f => f.Length);
+                return EnumerateRegularFiles(new DirectoryInfo(SourcePath))
+                    .Sum(file => file.Length);
         }
         catch { }
         return null;
@@ -803,15 +848,42 @@ public sealed partial class EncryptViewModel : ViewModelBase
         try
         {
             return Directory.Exists(SourcePath)
-                ? new DirectoryInfo(SourcePath)
-                    .EnumerateFiles("*", SearchOption.AllDirectories)
-                    .Count(file =>
-                        (file.Attributes & FileAttributes.ReparsePoint) == 0)
+                ? EnumerateRegularFiles(new DirectoryInfo(SourcePath)).Count()
                 : 0;
         }
         catch
         {
             return 0;
+        }
+    }
+
+    private static long TryGetFileSize(string path)
+    {
+        try
+        {
+            return File.Exists(path) ? new FileInfo(path).Length : 0;
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    private static IEnumerable<FileInfo> EnumerateRegularFiles(DirectoryInfo directory)
+    {
+        foreach (var file in directory.EnumerateFiles())
+        {
+            if ((file.Attributes & FileAttributes.ReparsePoint) == 0)
+                yield return file;
+        }
+
+        foreach (var subdirectory in directory.EnumerateDirectories())
+        {
+            if ((subdirectory.Attributes & FileAttributes.ReparsePoint) != 0)
+                continue;
+
+            foreach (var file in EnumerateRegularFiles(subdirectory))
+                yield return file;
         }
     }
 
@@ -840,6 +912,65 @@ public sealed partial class EncryptViewModel : ViewModelBase
             ? $"{(int)ts.TotalHours:D2}:{ts.Minutes:D2}:{ts.Seconds:D2}"
             : $"{ts.Minutes:D2}:{ts.Seconds:D2}";
     }
+
+    private sealed class EtaEstimator
+    {
+        private static readonly TimeSpan MinimumSampleInterval =
+            TimeSpan.FromMilliseconds(250);
+        private static readonly TimeSpan WarmupDuration =
+            TimeSpan.FromSeconds(1.5);
+        private const double SmoothingFactor = 0.2;
+
+        private readonly Stopwatch _stopwatch = Stopwatch.StartNew();
+        private TimeSpan _lastSampleTime;
+        private long _lastProcessedBytes;
+        private double? _smoothedBytesPerSecond;
+        private int _sampleCount;
+
+        public EtaEstimate Update(
+            long processedBytes,
+            long totalBytes,
+            bool includeSample = true)
+        {
+            processedBytes = Math.Clamp(processedBytes, 0, totalBytes);
+            var now = _stopwatch.Elapsed;
+            var elapsed = now - _lastSampleTime;
+            var deltaBytes = processedBytes - _lastProcessedBytes;
+
+            if (!includeSample)
+            {
+                _lastSampleTime = now;
+                _lastProcessedBytes = processedBytes;
+            }
+            else if (elapsed >= MinimumSampleInterval && deltaBytes > 0)
+            {
+                var instantaneousSpeed = deltaBytes / elapsed.TotalSeconds;
+                _smoothedBytesPerSecond = _smoothedBytesPerSecond is { } previous
+                    ? SmoothingFactor * instantaneousSpeed +
+                      (1 - SmoothingFactor) * previous
+                    : instantaneousSpeed;
+                _sampleCount++;
+                _lastSampleTime = now;
+                _lastProcessedBytes = processedBytes;
+            }
+
+            var isReady = _stopwatch.Elapsed >= WarmupDuration &&
+                          _sampleCount >= 2 &&
+                          _smoothedBytesPerSecond is > 0;
+            double? remainingSeconds = isReady
+                ? Math.Max(
+                    0,
+                    (totalBytes - processedBytes) /
+                    _smoothedBytesPerSecond!.Value)
+                : null;
+
+            return new EtaEstimate(_smoothedBytesPerSecond, remainingSeconds);
+        }
+    }
+
+    private readonly record struct EtaEstimate(
+        double? BytesPerSecond,
+        double? RemainingSeconds);
 
     private static string L(string key) => LocalizationService.Instance.Get(key);
     private static string F(string key, params object?[] args) =>

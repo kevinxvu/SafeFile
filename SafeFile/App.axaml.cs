@@ -5,7 +5,9 @@ using Avalonia.Platform;
 using Avalonia.Styling;
 using System;
 using System.IO;
+using Microsoft.Extensions.Logging;
 using SafeFile.Services;
+using SafeFile.Core.IO;
 using SafeFile.Core.Services;
 using SafeFile.ViewModels;
 using SafeFile.Views;
@@ -48,11 +50,13 @@ namespace SafeFile
                     ? ThemeVariant.Dark
                     : ThemeVariant.Light;
                 var logService = LogService.Instance;
+                var fileEncryptorLogger =
+                    Program.LoggerFactory.CreateLogger<FileEncryptor>();
                 desktop.MainWindow = new MainWindow
                 {
                     DataContext = new MainWindowViewModel(
                         filePicker, settingsService, errorDialog, logService,
-                        clipboard),
+                        clipboard, fileEncryptorLogger),
                 };
             }
 

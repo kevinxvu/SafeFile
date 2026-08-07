@@ -32,6 +32,7 @@ public sealed partial class DecryptViewModel : ViewModelBase
     private readonly IFilePickerService _filePicker;
     private readonly IErrorDialogService _errorDialog;
     private readonly SettingsService _settingsService;
+    private readonly Microsoft.Extensions.Logging.ILogger<FileEncryptor> _fileEncryptorLogger;
     private AppSettings _settings;
     private readonly HashSet<string> _sourcePaths = new(
         OperatingSystem.IsWindows()
@@ -148,11 +149,13 @@ public sealed partial class DecryptViewModel : ViewModelBase
     public DecryptViewModel(
         IFilePickerService filePicker,
         IErrorDialogService errorDialog,
-        SettingsService settingsService)
+        SettingsService settingsService,
+        Microsoft.Extensions.Logging.ILogger<FileEncryptor> fileEncryptorLogger)
     {
         _filePicker = filePicker;
         _errorDialog = errorDialog;
         _settingsService = settingsService;
+        _fileEncryptorLogger = fileEncryptorLogger;
         _settings = _settingsService.Load();
 
         BrowseSourceCommand = new AsyncRelayCommand(BrowseSourceAsync);
@@ -382,7 +385,8 @@ public sealed partial class DecryptViewModel : ViewModelBase
         {
             var metadata = await new FileEncryptor(
                 consumerThreads: _settings.MaxThreads,
-                settings: _settings).ReadVaultMetadataAsync(
+                settings: _settings,
+                logger: _fileEncryptorLogger).ReadVaultMetadataAsync(
                     item.SourcePath, passwordBytes, cancellationToken);
 
             item.OriginalFileName = metadata.OriginalFileName;
@@ -613,7 +617,10 @@ public sealed partial class DecryptViewModel : ViewModelBase
         }
 
         var encryptor = new FileEncryptor(
-            _settings.MaxThreads, progress, _settings);
+            _settings.MaxThreads,
+            progress,
+            _settings,
+            logger: _fileEncryptorLogger);
         switch (mode)
         {
             case VaultMode.File:

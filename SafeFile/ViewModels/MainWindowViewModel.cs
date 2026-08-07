@@ -2,6 +2,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SafeFile.Core.Services;
+using SafeFile.Core.IO;
 using SafeFile.Services;
 using Serilog;
 
@@ -55,16 +56,18 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         SettingsService settingsService,
         IErrorDialogService errorDialog,
         LogService logService,
-        IClipboardService clipboard)
+        IClipboardService clipboard,
+        Microsoft.Extensions.Logging.ILogger<FileEncryptor> fileEncryptorLogger)
     {
         _settingsService = settingsService;
         _errorDialog = errorDialog;
         _encryptPage = new EncryptViewModel(
-            filePicker, errorDialog, settingsService);
+            filePicker, errorDialog, settingsService, fileEncryptorLogger);
         _decryptPage = new DecryptViewModel(
-            filePicker, errorDialog, settingsService);
+            filePicker, errorDialog, settingsService, fileEncryptorLogger);
         _toolsPage = new ToolsViewModel(
-            filePicker, clipboard, errorDialog, settingsService);
+            filePicker, clipboard, errorDialog, settingsService,
+            fileEncryptorLogger);
         _settingsPage = new SettingsViewModel(
             settingsService, filePicker, errorDialog);
         _logsPage = new LogViewModel(logService, filePicker, errorDialog);

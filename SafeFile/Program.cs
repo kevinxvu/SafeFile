@@ -1,15 +1,21 @@
 ﻿using Avalonia;
 using System;
 using System.Diagnostics;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using SafeFile.Services;
 using Serilog;
 using Serilog.Debugging;
 using Serilog.Events;
+using Serilog.Extensions.Logging;
 
 namespace SafeFile
 {
     internal sealed class Program
     {
+        internal static ILoggerFactory LoggerFactory { get; private set; } =
+            NullLoggerFactory.Instance;
+
         // Initialization code. Don't use any Avalonia, third-party APIs or any
         // SynchronizationContext-reliant code before AppMain is called: things aren't initialized
         // yet and stuff might break.
@@ -32,6 +38,7 @@ namespace SafeFile
             }
             finally
             {
+                LoggerFactory.Dispose();
                 Log.CloseAndFlush();
             }
         }
@@ -57,6 +64,10 @@ namespace SafeFile
                         "[{Level:u3}] {Message:lj}{NewLine}{Exception}"))
                 .WriteTo.Sink(new UiLogSink(logService))
                 .CreateLogger();
+
+            LoggerFactory = new SerilogLoggerFactory(
+                Log.Logger,
+                dispose: false);
         }
 
         // Avalonia configuration, don't remove; also used by visual designer.

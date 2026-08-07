@@ -25,7 +25,7 @@ public sealed class FilePickerService : IFilePickerService
             AllowMultiple = false,
             FileTypeFilter = filters
         });
-        return results.Count > 0 ? results[0].Path.LocalPath : null;
+        return results.FirstOrDefault()?.TryGetLocalPath();
     }
 
     public async Task<IReadOnlyList<string>> PickFilesAsync(
@@ -43,7 +43,10 @@ public sealed class FilePickerService : IFilePickerService
                 AllowMultiple = true,
                 FileTypeFilter = filters
             });
-        return results.Select(file => file.Path.LocalPath).ToArray();
+        return results
+            .Select(file => file.TryGetLocalPath())
+            .OfType<string>()
+            .ToArray();
     }
 
     public async Task<string?> PickFolderAsync(string title)
@@ -55,7 +58,7 @@ public sealed class FilePickerService : IFilePickerService
             Title = title,
             AllowMultiple = false
         });
-        return results.Count > 0 ? results[0].Path.LocalPath : null;
+        return results.FirstOrDefault()?.TryGetLocalPath();
     }
 
     public async Task<string?> PickSaveFileAsync(
@@ -75,7 +78,7 @@ public sealed class FilePickerService : IFilePickerService
                 FileTypeChoices = filters,
                 ShowOverwritePrompt = true
             });
-        return result?.Path.LocalPath;
+        return result?.TryGetLocalPath();
     }
 
     public void OpenFolder(string path)

@@ -2,6 +2,8 @@ using System.Buffers;
 using System.Buffers.Binary;
 using System.IO.Pipelines;
 using System.Security.Cryptography;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using SafeFile.Core.Crypto;
 using SafeFile.Core.Format;
 using SafeFile.Core.IO;
@@ -15,16 +17,19 @@ public sealed class FileEncryptor
     private readonly CryptoPipeline _pipeline;
     private readonly IProgress<double>? _progress;
     private readonly IProgress<PerFileProgress>? _perFileProgress;
+    private readonly ILogger<FileEncryptor> _logger;
     private readonly int _minimumPasswordLength;
 
     public FileEncryptor(
         int consumerThreads = -1,
         IProgress<double>? progress = null,
         AppSettings? settings = null,
-        IProgress<PerFileProgress>? perFileProgress = null)
+        IProgress<PerFileProgress>? perFileProgress = null,
+        ILogger<FileEncryptor>? logger = null)
     {
         _progress = progress;
         _perFileProgress = perFileProgress;
+        _logger = logger ?? NullLogger<FileEncryptor>.Instance;
         var effectiveSettings = settings ?? AppSettings.GetDefaults();
         _minimumPasswordLength = effectiveSettings.MinPasswordLength;
         if (_minimumPasswordLength < 1 || _minimumPasswordLength > 128)
@@ -213,18 +218,13 @@ public sealed class FileEncryptor
                     await pipe.Reader.CompleteAsync().ConfigureAwait(false);
                 }
         }
-        catch
+        catch (Exception ex)
         {
-            if (destinationOpened && File.Exists(actualDestinationPath))
-            {
-                try
-                {
-                    File.Delete(actualDestinationPath);
-                }
-                catch
-                {
-                }
-            }
+            if (destinationOpened)
+                TryDeleteFile(
+                    actualDestinationPath,
+                    FileCleanupKind.IncompleteEncryptionOutput,
+                    ex is OperationCanceledException);
 
             throw;
         }
@@ -337,7 +337,10 @@ public sealed class FileEncryptor
                 }
                 finally
                 {
-                    TryDeleteFile(tempZipPath);
+                    TryDeleteFile(
+                        tempZipPath,
+                        FileCleanupKind.TemporaryDecryptionFile,
+                        cancellationToken.IsCancellationRequested);
                 }
             }
             finally
@@ -862,18 +865,13 @@ public sealed class FileEncryptor
                 throw new IOException("Source file size changed while it was being encrypted.");
             }
         }
-        catch
+        catch (Exception ex)
         {
-            if (destinationOpened && File.Exists(actualDestinationPath))
-            {
-                try
-                {
-                    File.Delete(actualDestinationPath);
-                }
-                catch
-                {
-                }
-            }
+            if (destinationOpened)
+                TryDeleteFile(
+                    actualDestinationPath,
+                    FileCleanupKind.IncompleteEncryptionOutput,
+                    ex is OperationCanceledException);
 
             throw;
         }
@@ -1400,15 +1398,39 @@ public sealed class FileEncryptor
             progressCallback).ConfigureAwait(false);
     }
 
-    private static void TryDeleteFile(string path)
+    private void TryDeleteFile(
+        string path,
+        FileCleanupKind kind,
+        bool causedByCancellation)
     {
         try
         {
             if (File.Exists(path))
+            {
                 File.Delete(path);
+                _logger.LogInformation(
+                    "Deleted cleanup file {Path} ({CleanupKind}); cancellation: {CausedByCancellation}",
+                    path,
+                    kind,
+                    causedByCancellation);
+            }
+            else
+            {
+                _logger.LogInformation(
+                    "Cleanup file was already absent: {Path} ({CleanupKind}); cancellation: {CausedByCancellation}",
+                    path,
+                    kind,
+                    causedByCancellation);
+            }
         }
-        catch
+        catch (Exception ex)
         {
+            _logger.LogWarning(
+                ex,
+                "Failed to delete cleanup file {Path} ({CleanupKind}); cancellation: {CausedByCancellation}",
+                path,
+                kind,
+                causedByCancellation);
         }
     }
 
@@ -1429,6 +1451,12 @@ public sealed record PerFileProgress(
     string SourceFilePath,
     double Progress,
     PerFileResult Result = PerFileResult.InProgress);
+
+internal enum FileCleanupKind
+{
+    IncompleteEncryptionOutput,
+    TemporaryDecryptionFile
+}
 
 public enum PerFileResult
 {
