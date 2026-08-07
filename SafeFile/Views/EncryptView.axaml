@@ -246,7 +246,7 @@
 
         <TextBlock Grid.Column="1" Grid.Row="1"
                    VerticalAlignment="Center" HorizontalAlignment="Center"
-                   Text="{Binding StatusProgress, StringFormat={}{0:P0}}"
+                   Text="{Binding StatusProgressPercent, StringFormat={}{0}%}"
                    FontSize="12" FontWeight="SemiBold"
                    Foreground="{DynamicResource TertiaryTextBrush}"/>
 

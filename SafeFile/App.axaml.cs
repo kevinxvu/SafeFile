@@ -52,11 +52,14 @@ namespace SafeFile
                 var logService = LogService.Instance;
                 var fileEncryptorLogger =
                     Program.LoggerFactory.CreateLogger<FileEncryptor>();
+                var folderNameProtectionService = new FolderNameProtectionService(
+                    new TextCryptoService(),
+                    Program.LoggerFactory.CreateLogger<FolderNameProtectionService>());
                 desktop.MainWindow = new MainWindow
                 {
                     DataContext = new MainWindowViewModel(
                         filePicker, settingsService, errorDialog, logService,
-                        clipboard, fileEncryptorLogger),
+                        clipboard, fileEncryptorLogger, folderNameProtectionService),
                 };
             }
 

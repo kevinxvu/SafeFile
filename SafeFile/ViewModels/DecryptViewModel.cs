@@ -73,7 +73,13 @@ public sealed partial class DecryptViewModel : ViewModelBase
     [ObservableProperty] private bool _isStatusBarVisible;
     [ObservableProperty] private string _statusAction = "";
     [ObservableProperty] private string _statusCurrentFile = "";
-    [ObservableProperty] private double _statusProgress;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StatusProgressPercent))]
+    private double _statusProgress;
+
+    public int StatusProgressPercent => StatusProgress >= 1
+        ? 100
+        : (int)Math.Floor(Math.Clamp(StatusProgress, 0, 1) * 100);
     [ObservableProperty] private string _statusDetails = "";
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasStatusMessage))]

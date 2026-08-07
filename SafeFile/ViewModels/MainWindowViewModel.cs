@@ -8,7 +8,7 @@ using Serilog;
 
 namespace SafeFile.ViewModels;
 
-public enum NavItem { Encrypt, Decrypt, Tools, Logs, Settings, About }
+public enum NavItem { Encrypt, Decrypt, FolderNames, Tools, Logs, Settings, About }
 
 public sealed partial class MainWindowViewModel : ViewModelBase
 {
@@ -18,6 +18,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private readonly IErrorDialogService _errorDialog;
     private readonly EncryptViewModel _encryptPage;
     private readonly DecryptViewModel _decryptPage;
+    private readonly FolderNamesViewModel _folderNamesPage;
     private readonly ToolsViewModel _toolsPage;
     private readonly LogViewModel _logsPage;
     private readonly SettingsViewModel _settingsPage;
@@ -30,6 +31,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsEncryptActive))]
     [NotifyPropertyChangedFor(nameof(IsDecryptActive))]
+    [NotifyPropertyChangedFor(nameof(IsFolderNamesActive))]
     [NotifyPropertyChangedFor(nameof(IsToolsActive))]
     [NotifyPropertyChangedFor(nameof(IsLogsActive))]
     [NotifyPropertyChangedFor(nameof(IsSettingsActive))]
@@ -38,6 +40,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     public bool IsEncryptActive  => ActiveNav == NavItem.Encrypt;
     public bool IsDecryptActive  => ActiveNav == NavItem.Decrypt;
+    public bool IsFolderNamesActive => ActiveNav == NavItem.FolderNames;
     public bool IsToolsActive    => ActiveNav == NavItem.Tools;
     public bool IsLogsActive     => ActiveNav == NavItem.Logs;
     public bool IsSettingsActive => ActiveNav == NavItem.Settings;
@@ -46,6 +49,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     // ── Commands ──────────────────────────────────────────────────
     public IRelayCommand NavigateToEncryptCommand { get; }
     public IRelayCommand NavigateToDecryptCommand { get; }
+    public IRelayCommand NavigateToFolderNamesCommand { get; }
     public IRelayCommand NavigateToToolsCommand { get; }
     public IRelayCommand NavigateToLogsCommand { get; }
     public IRelayCommand NavigateToSettingsCommand { get; }
@@ -57,7 +61,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         IErrorDialogService errorDialog,
         LogService logService,
         IClipboardService clipboard,
-        Microsoft.Extensions.Logging.ILogger<FileEncryptor> fileEncryptorLogger)
+        Microsoft.Extensions.Logging.ILogger<FileEncryptor> fileEncryptorLogger,
+        FolderNameProtectionService folderNameProtectionService)
     {
         _settingsService = settingsService;
         _errorDialog = errorDialog;
@@ -65,6 +70,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             filePicker, errorDialog, settingsService, fileEncryptorLogger);
         _decryptPage = new DecryptViewModel(
             filePicker, errorDialog, settingsService, fileEncryptorLogger);
+        _folderNamesPage = new FolderNamesViewModel(
+            filePicker, errorDialog, settingsService, folderNameProtectionService);
         _toolsPage = new ToolsViewModel(
             filePicker, clipboard, errorDialog, settingsService,
             fileEncryptorLogger);
@@ -92,6 +99,14 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             _decryptPage.RefreshSettings();
             CurrentPage = _decryptPage;
             Logger.Debug("Navigated to Decrypt page");
+        });
+        NavigateToFolderNamesCommand = new RelayCommand(() =>
+        {
+            ActiveNav = NavItem.FolderNames;
+            RefreshLocalizedPageTitle();
+            _folderNamesPage.RefreshSettings();
+            CurrentPage = _folderNamesPage;
+            Logger.Debug("Navigated to Folder Names page");
         });
         NavigateToToolsCommand = new RelayCommand(() =>
         {
@@ -134,6 +149,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         {
             NavItem.Encrypt => "PageEncrypt",
             NavItem.Decrypt => "PageDecrypt",
+            NavItem.FolderNames => "PageFolderNames",
             NavItem.Tools => "PageTools",
             NavItem.Logs => "PageLogs",
             NavItem.Settings => "PageSettings",

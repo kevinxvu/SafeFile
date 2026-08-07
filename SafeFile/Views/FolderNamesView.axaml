@@ -1,0 +1,76 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:vm="using:SafeFile.ViewModels" xmlns:loc="using:SafeFile.Markup" x:Class="SafeFile.Views.FolderNamesView"
+ x:DataType="vm:FolderNamesViewModel" Foreground="{DynamicResource PrimaryTextBrush}">
+ <UserControl.Styles>
+  <Style Selector="Border.source-drop-zone"><Setter Property="Background" Value="{DynamicResource SubtleSurfaceBrush}"/><Setter Property="BorderBrush" Value="{DynamicResource StrongBorderBrush}"/></Style>
+  <Style Selector="Border.source-drop-zone.drag-active"><Setter Property="Background" Value="{DynamicResource AccentHoverBrush}"/><Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/></Style>
+ </UserControl.Styles>
+ <Grid RowDefinitions="*,Auto">
+  <ScrollViewer><StackPanel Margin="24,16,24,24" Spacing="16">
+   <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="16" IsEnabled="{Binding !IsBusy}">
+    <StackPanel Spacing="10"><TextBlock Text="{loc:Tr FolderNamesSource}" FontSize="16" FontWeight="SemiBold"/><TextBlock Text="{loc:Tr FolderNamesSelectionHint}" FontSize="12" Foreground="{DynamicResource SecondaryTextBrush}"/>
+     <Border Classes="source-drop-zone" BorderThickness="2" CornerRadius="6" Height="120" DragDrop.AllowDrop="True" DragDrop.DragEnter="OnDragEnter" DragDrop.DragLeave="OnDragLeave" DragDrop.DragOver="OnDragOver" DragDrop.Drop="OnDrop">
+      <Grid ColumnDefinitions="*,Auto" Margin="22,12"><StackPanel VerticalAlignment="Center" Spacing="5">
+       <StackPanel Orientation="Horizontal" Spacing="10"><PathIcon Data="{StaticResource FolderIcon}" Width="28" Height="28" Foreground="{DynamicResource SecondaryTextBrush}"/><StackPanel>
+        <TextBlock Text="{loc:Tr DropFolderNamesSource}" FontWeight="Medium"/><TextBlock Text="{loc:Tr FolderNamesDropHint}" FontSize="11" Foreground="{DynamicResource SecondaryTextBrush}"/>
+        <TextBlock Text="{Binding RootName}" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" IsVisible="{Binding HasFolder}"/>
+        <TextBlock Text="{Binding RootPath}" FontSize="10" MaxWidth="520" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding RootPath}" IsVisible="{Binding HasFolder}"/>
+       </StackPanel></StackPanel></StackPanel>
+       <Button Grid.Column="1" VerticalAlignment="Center" Theme="{StaticResource PrimaryButtonTheme}" Command="{Binding BrowseCommand}" Content="{loc:Tr SelectFolder}"/>
+      </Grid>
+     </Border>
+    </StackPanel>
+   </Border>
+   <Border Background="{DynamicResource WarningSubtleBrush}"
+           CornerRadius="8" Padding="14,11"
+           IsVisible="{Binding HasManifest}">
+    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+     <TextBlock Text="⚠" FontSize="18"
+                Foreground="{DynamicResource WarningBrush}"
+                VerticalAlignment="Top"/>
+     <StackPanel Grid.Column="1" Spacing="2">
+      <TextBlock Text="{loc:Tr FolderManifestKeepTitle}"
+                 FontWeight="SemiBold"
+                 Foreground="{DynamicResource WarningBrush}"/>
+      <TextBlock Text="{loc:Tr FolderManifestKeepWarning}"
+                 FontSize="11" TextWrapping="Wrap"
+                 Foreground="{DynamicResource WarningBrush}"/>
+     </StackPanel>
+    </Grid>
+   </Border>
+   <Grid ColumnDefinitions="*,16,*" IsEnabled="{Binding !IsBusy}">
+    <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="16"><StackPanel Spacing="9">
+     <TextBlock Text="{loc:Tr FolderStatistics}" FontSize="15" FontWeight="SemiBold"/><TextBlock Text="{Binding ManifestStatus}" Foreground="{DynamicResource AccentBrush}"/>
+     <Grid ColumnDefinitions="*,Auto"><TextBlock Text="{loc:Tr TotalFolders}"/><TextBlock Grid.Column="1" Text="{Binding TotalFolders}"/></Grid>
+     <Grid ColumnDefinitions="*,Auto"><TextBlock Text="{loc:Tr ProtectedFolders}"/><TextBlock Grid.Column="1" Text="{Binding ProtectedFolders}"/></Grid>
+     <Grid ColumnDefinitions="*,Auto"><TextBlock Text="{loc:Tr ClearFolders}"/><TextBlock Grid.Column="1" Text="{Binding ClearFolders}"/></Grid>
+     <Grid ColumnDefinitions="*,Auto"><TextBlock Text="{loc:Tr NewFolders}"/><TextBlock Grid.Column="1" Text="{Binding NewFolders}"/></Grid>
+     <Grid ColumnDefinitions="*,Auto"><TextBlock Text="{loc:Tr ConflictingFolders}"/><TextBlock Grid.Column="1" Text="{Binding ConflictingFolders}" Foreground="#E53935"/></Grid>
+    </StackPanel></Border>
+    <Border Grid.Column="2" Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="16"><StackPanel Spacing="8">
+     <TextBlock Text="{loc:Tr FolderNameSecurity}" FontSize="15" FontWeight="SemiBold"/><TextBlock Text="{loc:Tr Password}"/>
+     <Grid ColumnDefinitions="*,Auto"><TextBox Text="{Binding Password}" PasswordChar="{Binding PasswordChar}"/><Button Grid.Column="1" Margin="6,0,0,0" Width="38" Theme="{StaticResource OutlinedButtonTheme}" Command="{Binding TogglePasswordVisibilityCommand}"><PathIcon Data="{StaticResource EyeIcon}" Width="17"/></Button></Grid>
+     <TextBlock Text="{loc:Tr ConfirmPassword}" IsVisible="{Binding IsPasswordConfirmationRequired}"/><Grid ColumnDefinitions="*,Auto" IsVisible="{Binding IsPasswordConfirmationRequired}"><TextBox Text="{Binding ConfirmPassword}" PasswordChar="{Binding ConfirmPasswordChar}"/><Button Grid.Column="1" Margin="6,0,0,0" Width="38" Theme="{StaticResource OutlinedButtonTheme}" Command="{Binding ToggleConfirmPasswordVisibilityCommand}"><PathIcon Data="{StaticResource EyeIcon}" Width="17"/></Button></Grid>
+     <Button Theme="{StaticResource OutlinedButtonTheme}" Command="{Binding CheckManifestCommand}" IsEnabled="{Binding CanCheckManifest}" Content="{loc:Tr CheckManifest}"/>
+     <TextBlock Text="{loc:Tr FolderNameMethod}" FontWeight="Medium"/><StackPanel Orientation="Horizontal" Spacing="16" IsEnabled="{Binding !IsModeLocked}"><RadioButton Content="AES" IsChecked="{Binding IsAesMode}" GroupName="FolderNameMode"/><RadioButton Content="SHA-256" IsChecked="{Binding IsShaMode}" GroupName="FolderNameMode"/></StackPanel>
+     <TextBlock Text="{loc:Tr FolderModeLocked}" FontSize="11" Foreground="{DynamicResource SecondaryTextBrush}" IsVisible="{Binding IsModeLocked}"/>
+    </StackPanel></Border>
+   </Grid>
+   <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="16"><Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto">
+    <TextBlock Text="{Binding StatusMessage}" VerticalAlignment="Center" TextWrapping="Wrap"/>
+    <Button Grid.Column="1" Margin="8,0" Theme="{StaticResource OutlinedButtonTheme}" Command="{Binding ResetCommand}"><StackPanel Orientation="Horizontal" Spacing="6"><PathIcon Data="{StaticResource RefreshIcon}" Width="15" Height="15"/><TextBlock Text="{loc:Tr Reset}" VerticalAlignment="Center"/></StackPanel></Button>
+    <Button Grid.Column="2" Margin="0,0,8,0" Theme="{StaticResource OutlinedButtonTheme}" Command="{Binding OpenFolderCommand}" IsEnabled="{Binding HasFolder}"><StackPanel Orientation="Horizontal" Spacing="6"><PathIcon Data="{StaticResource FolderIcon}" Width="15" Height="15"/><TextBlock Text="{loc:Tr OpenOutputFolder}" VerticalAlignment="Center"/></StackPanel></Button>
+    <Button Grid.Column="3" Margin="0,0,8,0" Theme="{StaticResource OutlinedButtonTheme}" Command="{Binding DecryptCommand}" IsEnabled="{Binding CanDecrypt}"><StackPanel Orientation="Horizontal" Spacing="7"><PathIcon Data="{StaticResource LockOpenIcon}" Width="15" Height="15"/><TextBlock Text="{loc:Tr DecryptFolderNames}" VerticalAlignment="Center"/></StackPanel></Button>
+    <Button Grid.Column="4" Theme="{StaticResource PrimaryButtonTheme}" Command="{Binding EncryptCommand}" IsEnabled="{Binding CanEncrypt}"><StackPanel Orientation="Horizontal" Spacing="7"><PathIcon Data="{StaticResource LockIcon}" Width="15" Height="15"/><TextBlock Text="{loc:Tr EncryptFolderNames}" VerticalAlignment="Center"/></StackPanel></Button>
+   </Grid></Border>
+  </StackPanel></ScrollViewer>
+  <Border Grid.Row="1" IsVisible="{Binding IsStatusBarVisible}" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="20,10">
+   <Grid ColumnDefinitions="300,*"><StackPanel Spacing="3"><TextBlock Text="{Binding StatusAction}" FontWeight="SemiBold"/><TextBlock Text="{Binding StatusDetails}" FontSize="11" Foreground="{DynamicResource SecondaryTextBrush}"/></StackPanel>
+    <Grid Grid.Column="1" ColumnDefinitions="*,56,Auto" RowDefinitions="Auto,Auto" RowSpacing="3"><TextBlock Grid.ColumnSpan="3" Margin="16,0" Text="{Binding StatusCurrentFolder}" ToolTip.Tip="{Binding StatusCurrentPath}" TextTrimming="CharacterEllipsis"/>
+     <ProgressBar Grid.Row="1" Margin="16,0" Height="8" Maximum="1" Value="{Binding StatusProgress}"/><TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding StatusProgressPercent, StringFormat={}{0}%}" HorizontalAlignment="Center"/>
+     <Button Grid.Row="1" Grid.Column="2" Theme="{StaticResource CancelButtonTheme}" Command="{Binding CloseStatusCommand}" ToolTip.Tip="{loc:Tr FolderNamesCancelTooltip}"><PathIcon Data="{StaticResource CancelCircleIcon}" Width="18"/></Button>
+    </Grid>
+   </Grid>
+  </Border>
+ </Grid>
+</UserControl>

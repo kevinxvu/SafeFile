@@ -323,7 +323,13 @@ public sealed partial class EncryptViewModel : ViewModelBase
     [ObservableProperty]
     private string _statusCurrentFilePath = "";
 
-    [ObservableProperty] private double _statusProgress;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StatusProgressPercent))]
+    private double _statusProgress;
+
+    public int StatusProgressPercent => StatusProgress >= 1
+        ? 100
+        : (int)Math.Floor(Math.Clamp(StatusProgress, 0, 1) * 100);
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StatusDetails))]

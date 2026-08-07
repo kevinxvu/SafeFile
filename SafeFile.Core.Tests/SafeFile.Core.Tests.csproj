@@ -16,5 +16,6 @@
 
   <ItemGroup>
     <ProjectReference Include="../SafeFile.Core/SafeFile.Core.csproj" />
+    <ProjectReference Include="../SafeFile/SafeFile.csproj" />
   </ItemGroup>
 </Project>

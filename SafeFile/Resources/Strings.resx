@@ -235,4 +235,37 @@
   <data name="CannotGeneratePassword" xml:space="preserve"><value>Unable to generate password</value></data>
   <data name="CannotCopyResult" xml:space="preserve"><value>Unable to copy result</value></data>
   <data name="CannotSaveResult" xml:space="preserve"><value>Unable to save result</value></data>
+  <data name="NavFolderNames" xml:space="preserve"><value>Folder Names</value></data>
+  <data name="PageFolderNames" xml:space="preserve"><value>Protect folder names</value></data>
+  <data name="FolderNamesSource" xml:space="preserve"><value>Root folder</value></data>
+  <data name="FolderNamesSelectionHint" xml:space="preserve"><value>Only child folder names are changed. Files and the selected root folder remain unchanged.</value></data>
+  <data name="DropFolderNamesSource" xml:space="preserve"><value>Drop one folder here</value></data>
+  <data name="FolderNamesDropHint" xml:space="preserve"><value>Select the root whose child folder names you want to protect or restore.</value></data>
+  <data name="SelectFolderNameRoot" xml:space="preserve"><value>Select root folder</value></data>
+  <data name="FolderStatistics" xml:space="preserve"><value>Folder status</value></data>
+  <data name="FolderNameSecurity" xml:space="preserve"><value>Security and naming</value></data>
+  <data name="FolderManifestNone" xml:space="preserve"><value>No manifest</value></data>
+  <data name="FolderManifestDetected" xml:space="preserve"><value>Manifest detected — enter the password and check it</value></data>
+  <data name="FolderManifestVerified" xml:space="preserve"><value>Manifest verified</value></data>
+  <data name="FolderManifestInvalid" xml:space="preserve"><value>Unable to verify manifest</value></data>
+  <data name="TotalFolders" xml:space="preserve"><value>Total folders</value></data>
+  <data name="ProtectedFolders" xml:space="preserve"><value>Protected</value></data>
+  <data name="ClearFolders" xml:space="preserve"><value>Clear / pending</value></data>
+  <data name="NewFolders" xml:space="preserve"><value>New</value></data>
+  <data name="ConflictingFolders" xml:space="preserve"><value>Conflicts</value></data>
+  <data name="CheckManifest" xml:space="preserve"><value>Check manifest</value></data>
+  <data name="FolderNameMethod" xml:space="preserve"><value>Folder name method</value></data>
+  <data name="FolderModeLocked" xml:space="preserve"><value>Mode locked by manifest</value></data>
+  <data name="EncryptFolderNames" xml:space="preserve"><value>Encrypt</value></data>
+  <data name="DecryptFolderNames" xml:space="preserve"><value>Decrypt</value></data>
+  <data name="FolderNamesManifestRequired" xml:space="preserve"><value>Check the manifest with its password before continuing.</value></data>
+  <data name="FolderNamesCannotProcess" xml:space="preserve"><value>Unable to process folder names</value></data>
+  <data name="FolderNamesEncrypting" xml:space="preserve"><value>Encrypting folder names</value></data>
+  <data name="FolderNamesDecrypting" xml:space="preserve"><value>Decrypting folder names</value></data>
+  <data name="FolderNamesEncrypted" xml:space="preserve"><value>Folder names encrypted successfully.</value></data>
+  <data name="FolderNamesDecrypted" xml:space="preserve"><value>Folder names restored successfully.</value></data>
+  <data name="FolderNamesCancelled" xml:space="preserve"><value>Operation cancelled — progress is safely resumable.</value></data>
+  <data name="FolderNamesCancelTooltip" xml:space="preserve"><value>Cancel folder-name operation</value></data>
+  <data name="FolderManifestKeepTitle" xml:space="preserve"><value>Keep the .safefile-names file</value></data>
+  <data name="FolderManifestKeepWarning" xml:space="preserve"><value>Do not delete, rename, edit, or move this file. It is required to restore the original folder names.</value></data>
 </root>

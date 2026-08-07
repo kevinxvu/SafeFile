@@ -94,4 +94,37 @@
   <data name="CannotGeneratePassword" xml:space="preserve"><value>Không thể tạo mật khẩu</value></data>
   <data name="CannotCopyResult" xml:space="preserve"><value>Không thể sao chép kết quả</value></data>
   <data name="CannotSaveResult" xml:space="preserve"><value>Không thể lưu kết quả</value></data>
+  <data name="NavFolderNames" xml:space="preserve"><value>Tên thư mục</value></data>
+  <data name="PageFolderNames" xml:space="preserve"><value>Bảo vệ tên thư mục</value></data>
+  <data name="FolderNamesSource" xml:space="preserve"><value>Thư mục gốc</value></data>
+  <data name="FolderNamesSelectionHint" xml:space="preserve"><value>Chỉ đổi tên thư mục con. File và tên thư mục gốc được giữ nguyên.</value></data>
+  <data name="DropFolderNamesSource" xml:space="preserve"><value>Thả một thư mục vào đây</value></data>
+  <data name="FolderNamesDropHint" xml:space="preserve"><value>Chọn thư mục gốc có các thư mục con cần bảo vệ hoặc khôi phục tên.</value></data>
+  <data name="SelectFolderNameRoot" xml:space="preserve"><value>Chọn thư mục gốc</value></data>
+  <data name="FolderStatistics" xml:space="preserve"><value>Trạng thái thư mục</value></data>
+  <data name="FolderNameSecurity" xml:space="preserve"><value>Bảo mật và cách đặt tên</value></data>
+  <data name="FolderManifestNone" xml:space="preserve"><value>Chưa có manifest</value></data>
+  <data name="FolderManifestDetected" xml:space="preserve"><value>Đã phát hiện manifest — nhập mật khẩu và kiểm tra</value></data>
+  <data name="FolderManifestVerified" xml:space="preserve"><value>Manifest hợp lệ</value></data>
+  <data name="FolderManifestInvalid" xml:space="preserve"><value>Không thể xác thực manifest</value></data>
+  <data name="TotalFolders" xml:space="preserve"><value>Tổng thư mục</value></data>
+  <data name="ProtectedFolders" xml:space="preserve"><value>Đã bảo vệ</value></data>
+  <data name="ClearFolders" xml:space="preserve"><value>Chưa mã hóa / đang chờ</value></data>
+  <data name="NewFolders" xml:space="preserve"><value>Mới</value></data>
+  <data name="ConflictingFolders" xml:space="preserve"><value>Xung đột</value></data>
+  <data name="CheckManifest" xml:space="preserve"><value>Kiểm tra manifest</value></data>
+  <data name="FolderNameMethod" xml:space="preserve"><value>Phương thức đặt tên</value></data>
+  <data name="FolderModeLocked" xml:space="preserve"><value>Phương thức đã bị khóa bởi manifest</value></data>
+  <data name="EncryptFolderNames" xml:space="preserve"><value>Mã hóa</value></data>
+  <data name="DecryptFolderNames" xml:space="preserve"><value>Giải mã</value></data>
+  <data name="FolderNamesManifestRequired" xml:space="preserve"><value>Hãy kiểm tra manifest bằng đúng mật khẩu trước khi tiếp tục.</value></data>
+  <data name="FolderNamesCannotProcess" xml:space="preserve"><value>Không thể xử lý tên thư mục</value></data>
+  <data name="FolderNamesEncrypting" xml:space="preserve"><value>Đang mã hóa tên thư mục</value></data>
+  <data name="FolderNamesDecrypting" xml:space="preserve"><value>Đang giải mã tên thư mục</value></data>
+  <data name="FolderNamesEncrypted" xml:space="preserve"><value>Đã mã hóa tên thư mục thành công.</value></data>
+  <data name="FolderNamesDecrypted" xml:space="preserve"><value>Đã khôi phục tên thư mục thành công.</value></data>
+  <data name="FolderNamesCancelled" xml:space="preserve"><value>Đã hủy — có thể chạy lại an toàn để tiếp tục.</value></data>
+  <data name="FolderNamesCancelTooltip" xml:space="preserve"><value>Hủy thao tác tên thư mục</value></data>
+  <data name="FolderManifestKeepTitle" xml:space="preserve"><value>Hãy giữ file .safefile-names</value></data>
+  <data name="FolderManifestKeepWarning" xml:space="preserve"><value>Không xóa, đổi tên, chỉnh sửa hoặc di chuyển file này. File này bắt buộc phải có để khôi phục tên thư mục ban đầu.</value></data>
 </root>

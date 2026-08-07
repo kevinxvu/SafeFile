@@ -387,7 +387,7 @@
                      Minimum="0" Maximum="1"
                      Value="{Binding StatusProgress}" CornerRadius="4"/>
         <TextBlock Grid.Column="2" HorizontalAlignment="Center"
-                   Text="{Binding StatusProgress, StringFormat={}{0:P0}}"/>
+                   Text="{Binding StatusProgressPercent, StringFormat={}{0}%}"/>
         <Button Grid.Column="3" Theme="{StaticResource CancelButtonTheme}"
                 Command="{Binding CloseStatusCommand}">
           <PathIcon Data="{StaticResource CancelCircleIcon}"
