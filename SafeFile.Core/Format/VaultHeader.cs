@@ -8,7 +8,10 @@ public sealed class VaultHeader
 {
     private const byte ProtectOutputFileNameFlag = 1 << 0;
     private const byte Sha256OutputFileNameFlag = 1 << 1;
-    private const byte KnownFlags = ProtectOutputFileNameFlag | Sha256OutputFileNameFlag;
+    private const byte Md5OutputFileNameFlag = 1 << 2;
+    private const byte KnownFlags = ProtectOutputFileNameFlag |
+                                    Sha256OutputFileNameFlag |
+                                    Md5OutputFileNameFlag;
     private static readonly byte[] Magic = Encoding.ASCII.GetBytes("SAFE");
     public static ReadOnlySpan<byte> MagicBytes => Magic;
     public const byte CurrentVersion = 1;
@@ -110,6 +113,7 @@ public sealed class VaultHeader
             0 => OutputFileNameMode.None,
             ProtectOutputFileNameFlag => OutputFileNameMode.Aes,
             ProtectOutputFileNameFlag | Sha256OutputFileNameFlag => OutputFileNameMode.Sha256,
+            ProtectOutputFileNameFlag | Md5OutputFileNameFlag => OutputFileNameMode.Md5,
             _ => throw new InvalidDataException($"Invalid vault flags: {flags}.")
         };
 
@@ -216,6 +220,7 @@ public sealed class VaultHeader
         OutputFileNameMode.None => 0,
         OutputFileNameMode.Aes => ProtectOutputFileNameFlag,
         OutputFileNameMode.Sha256 => ProtectOutputFileNameFlag | Sha256OutputFileNameFlag,
+        OutputFileNameMode.Md5 => ProtectOutputFileNameFlag | Md5OutputFileNameFlag,
         _ => throw new InvalidOperationException($"Unsupported output filename mode: {mode}.")
     };
 }

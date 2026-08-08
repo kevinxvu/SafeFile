@@ -15,7 +15,8 @@ namespace SafeFile.Services;
 public enum FolderNameProtectionMode
 {
     Aes,
-    Sha256
+    Sha256,
+    Md5
 }
 
 public enum FolderNameEntryState
@@ -53,11 +54,11 @@ public sealed class FolderNameSession
 
     public string RootPath { get; }
     public FolderNameProtectionMode Mode { get; }
-    public int TotalCount => Nodes.Count(node => node.State != FolderNameEntryState.Stale);
-    public int ProtectedCount => Nodes.Count(node => node.State == FolderNameEntryState.Protected);
-    public int ClearCount => Nodes.Count(node => node.State == FolderNameEntryState.Original);
-    public int ConflictCount => Nodes.Count(node => node.State == FolderNameEntryState.Conflict);
-    public int NewCount => Nodes.Count(node => node.IsNew && node.State == FolderNameEntryState.Original);
+    public int TotalCount => Nodes.Count(node => !node.IsExcluded && node.State != FolderNameEntryState.Stale);
+    public int ProtectedCount => Nodes.Count(node => !node.IsExcluded && node.State == FolderNameEntryState.Protected);
+    public int ClearCount => Nodes.Count(node => !node.IsExcluded && node.State == FolderNameEntryState.Original);
+    public int ConflictCount => Nodes.Count(node => !node.IsExcluded && node.State == FolderNameEntryState.Conflict);
+    public int NewCount => Nodes.Count(node => !node.IsExcluded && node.IsNew && node.State == FolderNameEntryState.Original);
 
     internal FolderNameManifest Manifest { get; }
     internal IReadOnlyList<FolderNameNode> Nodes { get; }
@@ -89,11 +90,13 @@ public sealed class FolderNameProtectionService
 
     public Task<FolderNameScanResult> ScanAsync(
         string rootPath,
-        CancellationToken cancellationToken = default) =>
+        CancellationToken cancellationToken = default,
+        IReadOnlyCollection<string>? excludedFolderPaths = null) =>
         Task.Run(() =>
         {
             var root = ValidateRoot(rootPath);
-            var count = EnumerateDirectories(root, cancellationToken).Count();
+            var excludedPaths = ValidateExcludedPaths(root.FullName, excludedFolderPaths);
+            var count = EnumerateDirectories(root, excludedPaths, cancellationToken).Count();
             return new FolderNameScanResult(
                 root.FullName,
                 File.Exists(GetManifestPath(root.FullName)),
@@ -103,10 +106,12 @@ public sealed class FolderNameProtectionService
     public Task<FolderNameSession> CreateSessionAsync(
         string rootPath,
         FolderNameProtectionMode mode,
-        CancellationToken cancellationToken = default) =>
+        CancellationToken cancellationToken = default,
+        IReadOnlyCollection<string>? excludedFolderPaths = null) =>
         Task.Run(() =>
         {
             var root = ValidateRoot(rootPath);
+            var excludedPaths = ValidateExcludedPaths(root.FullName, excludedFolderPaths);
             if (File.Exists(GetManifestPath(root.FullName)))
                 throw new InvalidOperationException("A folder-name manifest already exists. Verify it before continuing.");
 
@@ -116,15 +121,19 @@ public sealed class FolderNameProtectionService
                 Version = ManifestVersion,
                 NameMode = mode
             };
-            return Analyze(root, manifest, includeNewDirectories: true, cancellationToken);
+            return Analyze(
+                root, manifest, includeNewDirectories: true,
+                excludedPaths, cancellationToken);
         }, cancellationToken);
 
     public async Task<FolderNameSession> VerifyManifestAsync(
         string rootPath,
         byte[] passwordBytes,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IReadOnlyCollection<string>? excludedFolderPaths = null)
     {
         var root = ValidateRoot(rootPath);
+        var excludedPaths = ValidateExcludedPaths(root.FullName, excludedFolderPaths);
         var manifestPath = GetManifestPath(root.FullName);
         if (!File.Exists(manifestPath))
             throw new FileNotFoundException("The folder-name manifest was not found.", manifestPath);
@@ -141,7 +150,9 @@ public sealed class FolderNameProtectionService
         ValidateManifest(manifest);
 
         return await Task.Run(
-            () => Analyze(root, manifest, includeNewDirectories: true, cancellationToken),
+            () => Analyze(
+                root, manifest, includeNewDirectories: true,
+                excludedPaths, cancellationToken),
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -154,13 +165,16 @@ public sealed class FolderNameProtectionService
         ArgumentNullException.ThrowIfNull(session);
         EnsureNoConflicts(session);
 
-        var activeEntries = session.Nodes
-            .Where(node => node.State != FolderNameEntryState.Stale)
-            .Select(node => node.Entry)
+        var stalePaths = session.Nodes
+            .Where(node => !node.IsExcluded && node.State == FolderNameEntryState.Stale)
+            .Select(node => node.Entry.OriginalPath)
+            .ToHashSet(PathComparer);
+        var retainedEntries = session.Manifest.Directories
+            .Where(entry => !stalePaths.Contains(entry.OriginalPath))
             .DistinctBy(entry => entry.OriginalPath, PathComparer)
             .OrderBy(entry => GetDepth(entry.OriginalPath))
             .ToList();
-        session.Manifest.Directories = activeEntries;
+        session.Manifest.Directories = retainedEntries;
         await WriteManifestAsync(
             session.RootPath,
             session.Manifest,
@@ -168,7 +182,7 @@ public sealed class FolderNameProtectionService
             cancellationToken).ConfigureAwait(false);
 
         var pending = session.Nodes
-            .Where(node => node.State == FolderNameEntryState.Original)
+            .Where(node => !node.IsExcluded && node.State == FolderNameEntryState.Original)
             .OrderByDescending(node => node.Depth)
             .ToArray();
         await RenameNodesAsync(
@@ -215,6 +229,7 @@ public sealed class FolderNameProtectionService
             ValidateRoot(session.RootPath),
             session.Manifest,
             includeNewDirectories: false,
+            excludedPaths: [],
             cancellationToken);
         if (refreshed.ProtectedCount == 0 && refreshed.ConflictCount == 0)
             File.Delete(GetManifestPath(session.RootPath));
@@ -228,6 +243,7 @@ public sealed class FolderNameProtectionService
         DirectoryInfo root,
         FolderNameManifest manifest,
         bool includeNewDirectories,
+        IReadOnlyCollection<string> excludedPaths,
         CancellationToken cancellationToken)
     {
         ValidateManifest(manifest);
@@ -250,6 +266,7 @@ public sealed class FolderNameProtectionService
             nodes,
             manifest.NameMode,
             includeNewDirectories,
+            excludedPaths,
             cancellationToken);
 
         manifest.Directories = entries
@@ -268,6 +285,7 @@ public sealed class FolderNameProtectionService
         List<FolderNameNode> nodes,
         FolderNameProtectionMode mode,
         bool includeNewDirectories,
+        IReadOnlyCollection<string> excludedPaths,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -320,14 +338,21 @@ public sealed class FolderNameProtectionService
                 hasMissingMapping = true;
             }
 
+            var isExcluded =
+                (originalDirectory is not null && IsExcluded(originalDirectory, excludedPaths)) ||
+                (protectedDirectory is not null && IsExcluded(protectedDirectory, excludedPaths));
+
             var node = new FolderNameNode(
                 entry,
                 state,
                 currentDirectory?.FullName,
                 IsNew: false,
-                GetDepth(entry.OriginalPath));
+                GetDepth(entry.OriginalPath),
+                IsExcluded: isExcluded);
             nodes.Add(node);
-            if (currentDirectory is not null && state != FolderNameEntryState.Conflict)
+            if (currentDirectory is not null &&
+                state != FolderNameEntryState.Conflict &&
+                !isExcluded)
             {
                 AnalyzeChildren(
                     currentDirectory,
@@ -338,6 +363,7 @@ public sealed class FolderNameProtectionService
                     nodes,
                     mode,
                     includeNewDirectories,
+                    excludedPaths,
                     cancellationToken);
             }
         }
@@ -352,6 +378,8 @@ public sealed class FolderNameProtectionService
         {
             foreach (var directory in unknown)
             {
+                if (IsExcluded(directory, excludedPaths))
+                    continue;
                 var conflictEntry = new FolderNameMapEntry
                 {
                     OriginalPath = JoinManifestPath(logicalOriginalParent, directory.Name),
@@ -362,7 +390,8 @@ public sealed class FolderNameProtectionService
                     FolderNameEntryState.Conflict,
                     directory.FullName,
                     IsNew: true,
-                    GetDepth(conflictEntry.OriginalPath)));
+                    GetDepth(conflictEntry.OriginalPath),
+                    IsExcluded: false));
             }
             return;
         }
@@ -370,6 +399,8 @@ public sealed class FolderNameProtectionService
         foreach (var directory in unknown)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (IsExcluded(directory, excludedPaths))
+                continue;
             var originalPath = JoinManifestPath(logicalOriginalParent, directory.Name);
             if (!originalPaths.Add(originalPath))
                 continue;
@@ -386,7 +417,7 @@ public sealed class FolderNameProtectionService
                            protectedName,
                            PathComparison)))
             {
-                if (mode == FolderNameProtectionMode.Sha256)
+                if (mode != FolderNameProtectionMode.Aes)
                     throw new IOException("A protected folder-name collision was detected.");
                 protectedName = CreateProtectedName(mode, originalPath);
             }
@@ -402,7 +433,8 @@ public sealed class FolderNameProtectionService
                 FolderNameEntryState.Original,
                 directory.FullName,
                 IsNew: true,
-                GetDepth(originalPath));
+                GetDepth(originalPath),
+                IsExcluded: false);
             nodes.Add(node);
             AnalyzeChildren(
                 directory,
@@ -413,6 +445,7 @@ public sealed class FolderNameProtectionService
                 nodes,
                 mode,
                 includeNewDirectories,
+                excludedPaths,
                 cancellationToken);
         }
     }
@@ -594,16 +627,33 @@ public sealed class FolderNameProtectionService
 
     private static IEnumerable<DirectoryInfo> EnumerateDirectories(
         DirectoryInfo root,
+        IReadOnlyCollection<string> excludedPaths,
         CancellationToken cancellationToken)
     {
         foreach (var directory in EnumerateDirectDirectories(root))
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (IsExcluded(directory, excludedPaths))
+                continue;
             yield return directory;
-            foreach (var descendant in EnumerateDirectories(directory, cancellationToken))
+            foreach (var descendant in EnumerateDirectories(
+                         directory, excludedPaths, cancellationToken))
                 yield return descendant;
         }
     }
+
+    private static IReadOnlyCollection<string> ValidateExcludedPaths(
+        string rootPath,
+        IReadOnlyCollection<string>? excludedFolderPaths) =>
+        ExcludedFolderPathValidator.MergeAndValidate(
+            excludedFolderPaths ?? [], [rootPath], []);
+
+    private static bool IsExcluded(
+        DirectoryInfo directory,
+        IReadOnlyCollection<string> excludedPaths) =>
+        excludedPaths.Any(path =>
+            ExcludedFolderPathValidator.IsSameOrDescendant(
+                path, directory.FullName));
 
     private static IEnumerable<DirectoryInfo> EnumerateDirectDirectories(DirectoryInfo root)
     {
@@ -630,7 +680,13 @@ public sealed class FolderNameProtectionService
                 .Replace('/', '_');
         }
 
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(originalPath));
+        var pathBytes = Encoding.UTF8.GetBytes(originalPath);
+        var hash = mode switch
+        {
+            FolderNameProtectionMode.Sha256 => SHA256.HashData(pathBytes),
+            FolderNameProtectionMode.Md5 => MD5.HashData(pathBytes),
+            _ => throw new ArgumentOutOfRangeException(nameof(mode), mode, "Unsupported folder-name mode.")
+        };
         return Convert.ToHexStringLower(hash);
     }
 
@@ -683,4 +739,5 @@ internal sealed record FolderNameNode(
     FolderNameEntryState State,
     string? CurrentPath,
     bool IsNew,
-    int Depth);
+    int Depth,
+    bool IsExcluded);

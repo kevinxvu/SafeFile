@@ -114,6 +114,29 @@ public sealed class PerFileModeTests
     }
 
     [Fact]
+    public async Task PerFileOption_ExcludedFolderAndDescendants_AreSkipped()
+    {
+        using var temp = new TempDirectory();
+        var source = Directory.CreateDirectory(Path.Combine(temp.Path, "source")).FullName;
+        var excluded = Directory.CreateDirectory(Path.Combine(source, "excluded", "nested")).Parent!.FullName;
+        await File.WriteAllTextAsync(Path.Combine(source, "keep.txt"), "keep");
+        await File.WriteAllTextAsync(Path.Combine(excluded, "nested", "skip.txt"), "skip");
+        var encrypted = Path.Combine(temp.Path, "encrypted");
+        var restored = Path.Combine(temp.Path, "restored");
+        var password = "excluded-folder-password"u8.ToArray();
+        var encryptor = new FileEncryptor(consumerThreads: 2);
+
+        await encryptor.EncryptFolderPerFileAsync(
+            source, encrypted, password, 1_048_576, FastKdf,
+            excludedFolderPaths: [excluded]);
+        await encryptor.DecryptFolderPerFileAsync(encrypted, restored, password);
+
+        Assert.Equal("keep", await File.ReadAllTextAsync(Path.Combine(restored, "keep.txt")));
+        Assert.False(Directory.Exists(Path.Combine(encrypted, "excluded")));
+        Assert.False(Directory.Exists(Path.Combine(restored, "excluded")));
+    }
+
+    [Fact]
     public async Task PerFileOption_ExistingDestination_ContinuesAndHonorsOverwriteChoice()
     {
         using var temp = new TempDirectory();

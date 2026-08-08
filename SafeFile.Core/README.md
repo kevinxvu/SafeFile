@@ -34,6 +34,11 @@ Core also provides non-vault utilities:
 - `PasswordGenerator` creates cryptographically random passwords while
   guaranteeing that every selected character group occurs at least once.
 
+The desktop application also provides folder-name protection through the
+app-side `FolderNameProtectionService`. It is intentionally not a production
+Core API: it orchestrates directory renames and reuses Core's
+`TextCryptoService` only for its encrypted manifest. See section 6.3.
+
 ## 2. Package layout
 
 ```text
@@ -161,7 +166,7 @@ UI inputs:
 - `passwordBytes`: UTF-8 password bytes.
 - `chunkSizeBytes`: 1–16 MiB.
 - `kdfParams`: normally `settings.GetKdfParameters()`.
-- `outputFileNameMode`: pass `None`, `Aes`, or `Sha256` from the encryption form; it defaults to `None`.
+- `outputFileNameMode`: pass `None`, `Aes`, `Sha256`, or `Md5` from the encryption form; it defaults to `None`.
 - `cancellationToken`: token owned by the UI operation.
 - `overwriteExisting`: replace an existing vault only after explicit user
   confirmation; the default `false` preserves an existing destination.
@@ -171,6 +176,7 @@ Return value:
 - `None`: returns `destinationPath`;
 - `Aes`: returns the actual Base64URL `.safe` path in the same parent directory;
 - `Sha256`: returns `lowercase_hex(SHA256(UTF8(originalFileName))) + ".safe"` in the same parent directory.
+- `Md5`: returns `lowercase_hex(MD5(UTF8(originalFileName))) + ".safe"` in the same parent directory.
 
 When filename encryption is on, Core derives the final encrypted path before opening output. The clear-name `destinationPath` is not created or truncated. The UI must use the returned path for notifications, recent files, reveal-in-folder, and subsequent decrypt operations.
 
@@ -228,12 +234,16 @@ Task<string> EncryptFolderZipAsync(
     Argon2Parameters? kdfParams = null,
     OutputFileNameMode outputFileNameMode = OutputFileNameMode.None,
     CancellationToken cancellationToken = default,
-    bool overwriteExisting = false);
+    bool overwriteExisting = false,
+    IReadOnlyCollection<string>? excludedFolderPaths = null);
 ```
 
 UI inputs match single-file encryption, except the source is an existing folder. `destinationPath` must be outside the source tree.
 `overwriteExisting` follows the same explicit-confirmation rule as
 `EncryptFileAsync`.
+`excludedFolderPaths` may contain existing descendant directories of the source
+root. Each selected directory and its complete subtree is omitted from the ZIP;
+the source root, outside paths, and reparse points are rejected.
 
 Return value follows the same naming rule as `EncryptFileAsync`. Store and display the returned actual vault path.
 
@@ -288,7 +298,8 @@ Task EncryptFolderPerFileAsync(
     Argon2Parameters? kdfParams = null,
     OutputFileNameMode outputFileNameMode = OutputFileNameMode.None,
     CancellationToken cancellationToken = default,
-    bool overwriteExisting = false);
+    bool overwriteExisting = false,
+    IReadOnlyCollection<string>? excludedFolderPaths = null);
 ```
 
 UI inputs:
@@ -297,6 +308,8 @@ UI inputs:
 - destination folder may already exist but must be outside the source tree;
 - pass `outputFileNameMode` explicitly from the encryption form; it defaults to `None`.
 - `overwriteExisting` controls whether existing per-file vaults are replaced.
+- `excludedFolderPaths` omits matching descendant directories and every file
+  below them; validation matches ZIP-folder encryption.
 
 Core preserves relative subfolder structure but does not preserve empty directories. Each regular file receives its own salt, key, header, filename chunk, and data chunks.
 When overwrite is disabled, an existing vault is preserved and recorded as a
@@ -304,7 +317,7 @@ per-file failure. Core continues encrypting later source files and throws one
 summary error after every file has been attempted. Successful outputs and the
 destination directory are preserved.
 
-For `None` and `Sha256`, Core can determine the final output path without the
+For `None`, `Sha256`, and `Md5`, Core can determine the final output path without the
 vault key. It checks that path before Argon2id and reports an existing vault as
 `PerFileResult.DestinationExists` without throwing an exception for that item.
 This avoids KDF work and exception/stack-trace allocation when resuming a large
@@ -366,7 +379,7 @@ Inputs:
 
 The returned value is the standalone filename stored in the Base64URL name. For long names, this value may have a shortened stem while preserving the final extension. Full vault decryption still restores the complete filename from the encrypted filename chunk inside the vault.
 
-This API accepts only AES Base64URL output names. A SHA-256 output name is not reversible; use `ReadVaultMetadataAsync` with the vault file to recover its authenticated original filename.
+This API accepts only AES Base64URL output names. SHA-256 and MD5 output names are not reversible; use `ReadVaultMetadataAsync` with the vault file to recover its authenticated original filename.
 
 Argon2 runs on a background task. Cancellation is checked before scheduling; the current Argon2 library cannot interrupt a KDF invocation that has already started.
 
@@ -460,9 +473,13 @@ logged.
 
 ## 5. Output filename protection
 
-Filename protection is an operation-level choice, not a persisted `AppSettings` value. The desktop encryption form owns the checkbox and AES/SHA-256 choice and passes `OutputFileNameMode` explicitly to `EncryptFileAsync`, `EncryptFolderZipAsync`, or `EncryptFolderPerFileAsync`.
+Filename protection is an operation-level choice, not a persisted `AppSettings`
+value. The desktop encryption form presents MD5, SHA-256, and AES in that order,
+defaults the enabled control to MD5 (including after Reset), and passes
+`OutputFileNameMode` explicitly to `EncryptFileAsync`,
+`EncryptFolderZipAsync`, or `EncryptFolderPerFileAsync`.
 
-AES keeps the reversible Base64URL output-name format described below. SHA-256 directly hashes the original UTF-8 filename without a salt, password, or master key and writes the lowercase 64-character hexadecimal digest with `.safe`. SHA-256 names cannot be reversed independently; the complete original filename remains authenticated and encrypted with AES-256-GCM inside the vault and is restored from there during decryption.
+AES keeps the reversible Base64URL output-name format described below. SHA-256 and MD5 directly hash the original UTF-8 filename without a salt, password, or master key and write lowercase hexadecimal digests with `.safe` (64 characters for SHA-256 and 32 for MD5). Hashed names cannot be reversed independently; the complete original filename remains authenticated and encrypted with AES-256-GCM inside the vault and is restored from there during decryption. MD5 is provided only for shorter name obfuscation, not cryptographic security.
 
 In AES mode, the visible output name is a self-contained Base64URL payload containing:
 
@@ -483,8 +500,8 @@ The output component ends in `.safe`. To fit the common 255-byte filesystem comp
 
 ## 6. Desktop integration summary
 
-The desktop shell caches Encrypt, Decrypt, Tools, Logs, Settings, and About
-ViewModels. UI strings live in matching neutral-English and Vietnamese resource
+The desktop shell caches Encrypt, Decrypt, Folder Names, Tools, Logs, Settings,
+and About ViewModels. UI strings live in matching neutral-English and Vietnamese resource
 files; language and theme changes apply only after Settings is saved. Submit
 errors use the shared dialog service, while Serilog records technical events
 without sensitive content.
@@ -494,9 +511,17 @@ without sensitive content.
 - Encrypt accepts multiple files or one folder. It reads performance/KDF values
   from Settings, keeps filename protection on the form, processes batches past
   individual failures, and always uses Core's returned output path.
+- Folder encryption exposes an operation-scoped multi-folder exclusion list.
+  Exclusions are normalized absolute descendant paths, deduplicated, collapsed
+  beneath selected parents, and cleared by Reset or a primary-source change.
+  The source summary and progress denominator include only non-excluded files.
 - Decrypt queues files or folders and isolates per-vault results. Header display
   is unauthenticated until an explicit **Check password** call to
   `ReadVaultMetadataAsync`; changing the password clears verified metadata.
+- Decrypt exclusions apply only to physical folders containing `.safe` files,
+  not entries inside ZIP vaults. Adding one removes matching queue rows; removing
+  one or using Clear all rescans the selected folder roots and restores eligible
+  vaults. Reset clears both source roots and exclusions.
 - Overwrite is always explicit. File and PerFile output may be overwritten only
   when enabled; ZIP destinations remain new. Failures and cancellation preserve
   existing, completed, and partial decryption output.
@@ -509,13 +534,83 @@ without sensitive content.
 - Tools exposes the text crypto, hashing, and password APIs from sections
   4.9–4.11 through four compact tabs.
 - Decrypt auto-detects current or legacy text payloads and standalone AES
-  filenames; `.safe` is optional. SHA-256 names are not reversible and no vault
+  filenames; `.safe` is optional. SHA-256 and MD5 names are not reversible and no vault
   picker is offered.
 - Text and hashes support copy/save; recovered filenames are copy-only. Text
   save names are `lowercase_hex(SHA256(UTF8(original content))) + ".txt"`.
 - Tools never logs input, output, hashes, passwords, or generated passwords.
 
-### 6.3 Progress behavior
+### 6.3 Folder-name protection
+
+The desktop **Folder Names** page protects descendant directory names without
+renaming the selected root or modifying any regular filename or file content.
+Its naming choices are MD5, SHA-256, and AES in that order, with MD5 selected
+for a new clear root and after Reset; an existing manifest restores and locks
+its recorded mode.
+It stores an SFTX-encrypted JSON manifest at:
+
+```text
+<selected root>/.safefile-names
+```
+
+Only `.safefile-names` is recognized. The file must stay alongside the
+processed tree: deleting, renaming, editing, or moving it prevents reliable
+restoration. The page shows this warning below its action card whenever the
+manifest exists.
+
+Manifest plaintext version 1 has this logical shape before SFTX encryption:
+
+```json
+{
+  "format": "SafeFileFolderMap",
+  "version": 1,
+  "nameMode": "Aes",
+  "directories": [
+    {
+      "originalPath": "Photos/2025",
+      "protectedPath": "Photos/A1b2C3d4E5f6"
+    }
+  ]
+}
+```
+
+Paths use portable `/` separators and begin with the selected root basename;
+they are not absolute. AES produces a random unpadded Base64URL token. SHA-256
+and MD5 produce deterministic lowercase hashes of the complete logical original path.
+Neither form uses a `d_` prefix. Existing manifest mappings preserve their
+token and lock the password and AES/SHA-256/MD5 mode for incremental runs.
+
+Folder-name encryption may exclude operation-scoped descendant directories.
+Excluded branches are not renamed or added as new mappings, while mappings
+already stored below an excluded branch remain in the encrypted manifest.
+Folder-name decryption is disabled until the exclusion list is cleared. The
+list supports multiple folders, parent/child collapsing, individual removal,
+and Clear all; it is cleared by Reset or a root-folder change.
+
+The app service flushes a sibling temporary manifest and atomically replaces
+`.safefile-names` before renaming directories deepest first. This makes mixed
+states resumable without rollback after cancellation or a crash:
+
+- Encrypt resumes original/clear mappings and discovers new folders under both
+  clear and protected parents.
+- Decrypt restores protected mappings, keeps new unmapped clear folders, and
+  removes the manifest only after all mapped folders are clear.
+- An original-only mapping is pending Encrypt, a protected-only mapping is
+  pending Decrypt, both paths existing is a conflict, and neither is stale.
+- Manual token renames are inconsistent and are not guessed. Symlinks,
+  junctions, and reparse points are skipped.
+
+Password changes invalidate verification without invoking Argon2. Verification
+runs from explicit **Check manifest** or an operation, and caller-owned password
+bytes are zeroed afterward. Logs include operation, mode, counts, cancellation,
+cleanup, and errors but exclude passwords, plaintext manifests, and mappings.
+After Encrypt, cancel, failure, or another operation leaves a manifest, the
+ViewModel refreshes the scan and directly verifies that manifest with the
+current password. It restores the session, mode, counts, and verified state so
+the Folder Names Encrypt and Decrypt buttons immediately reflect the refreshed
+state; this automatic path does not depend on the guarded Check manifest command.
+
+### 6.4 Progress behavior
 
 | Operation | Progress source |
 |---|---|
@@ -526,6 +621,11 @@ without sensitive content.
 | PerFile | Includes `SourceFilePath`; overall UI progress is `(completed files + current file progress) / total files` |
 
 ZIP encryption remains below 100% until both ZIP production and encryption finish.
+
+The desktop floors incomplete percentage labels, so 99.52% displays as 99%.
+It displays 100% only when the operation reports exactly `1.0`. PerFile status
+also reports succeeded, failed, and remaining counts plus byte-based speed and
+ETA.
 
 Progress callbacks may be marshalled by `Progress<T>` to the UI synchronization context. The UI should treat progress as display-only and not use it for correctness decisions.
 
@@ -638,7 +738,7 @@ The header is 47 bytes. Multi-byte integers are little-endian.
 | 0 | 4 | ASCII magic `SAFE` |
 | 4 | 1 | Version |
 | 5 | 1 | `VaultMode` |
-| 6 | 1 | Flags: `0` none, `1` AES, `3` SHA-256; bit 0 means protected, bit 1 selects SHA-256, bits 2–7 are reserved |
+| 6 | 1 | Flags: `0` none, `1` AES, `3` SHA-256, `5` MD5; bit 0 means protected, bit 1 selects SHA-256, bit 2 selects MD5, bits 3–7 are reserved |
 | 7 | 4 | Argon2 memory KiB |
 | 11 | 4 | Argon2 iterations |
 | 15 | 4 | Argon2 parallelism |

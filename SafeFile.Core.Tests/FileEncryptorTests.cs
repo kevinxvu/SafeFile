@@ -113,6 +113,47 @@ public sealed class FileEncryptorTests
     }
 
     [Fact]
+    public async Task FileRoundTrip_Md5OutputName_HashesNameAndRestoresFromVault()
+    {
+        using var temp = new TempDirectory();
+        var sourceFolder = Directory.CreateDirectory(Path.Combine(temp.Path, "source")).FullName;
+        var restoredFolder = Directory.CreateDirectory(Path.Combine(temp.Path, "restored")).FullName;
+        const string originalFileName = "private-name.txt";
+        var source = Path.Combine(sourceFolder, originalFileName);
+        var requestedVault = Path.Combine(temp.Path, originalFileName + ".safe");
+        await File.WriteAllTextAsync(source, "md5 filename");
+        var password = "md5-test-password"u8.ToArray();
+        var encryptor = new FileEncryptor(consumerThreads: 2);
+
+        var actualVault = await encryptor.EncryptFileAsync(
+            source,
+            requestedVault,
+            password,
+            1_048_576,
+            FastKdf,
+            outputFileNameMode: OutputFileNameMode.Md5);
+
+        var expectedHash = Convert.ToHexStringLower(
+            MD5.HashData(System.Text.Encoding.UTF8.GetBytes(originalFileName)));
+        Assert.Equal(expectedHash + ".safe", Path.GetFileName(actualVault));
+
+        Assert.Equal(5, (await File.ReadAllBytesAsync(actualVault))[6]);
+        using (var stream = File.OpenRead(actualVault))
+            Assert.Equal(OutputFileNameMode.Md5, VaultHeader.ReadFrom(stream).OutputFileNameMode);
+
+        await Assert.ThrowsAsync<InvalidDataException>(() =>
+            encryptor.DecryptOutputFileNameAsync(Path.GetFileName(actualVault), password));
+
+        var actualRestored = await encryptor.DecryptFileAsync(
+            actualVault,
+            Path.Combine(restoredFolder, "ignored-name"),
+            password);
+
+        Assert.Equal(Path.Combine(restoredFolder, originalFileName), actualRestored);
+        Assert.Equal("md5 filename", await File.ReadAllTextAsync(actualRestored));
+    }
+
+    [Fact]
     public async Task ReadVaultMetadata_ValidatesPasswordAndReturnsFullOriginalName()
     {
         using var temp = new TempDirectory();
@@ -448,6 +489,56 @@ public sealed class FileEncryptorTests
         Assert.Contains(decryptProgress.Values, value => value is >= 0.6 and < 1);
         Assert.Equal("hello", await File.ReadAllTextAsync(Path.Combine(destination, "nested", "hello.txt")));
         Assert.Equal(largeContent, await File.ReadAllBytesAsync(Path.Combine(destination, "large.bin")));
+    }
+
+    [Fact]
+    public async Task FolderZip_ExcludedFolderAndDescendants_AreNotEncrypted()
+    {
+        using var temp = new TempDirectory();
+        var source = Directory.CreateDirectory(Path.Combine(temp.Path, "source")).FullName;
+        var included = Directory.CreateDirectory(Path.Combine(source, "included")).FullName;
+        var excluded = Directory.CreateDirectory(Path.Combine(source, "excluded", "nested")).Parent!.FullName;
+        await File.WriteAllTextAsync(Path.Combine(included, "keep.txt"), "keep");
+        await File.WriteAllTextAsync(Path.Combine(excluded, "nested", "skip.txt"), "skip");
+        var vault = Path.Combine(temp.Path, "folder.safe");
+        var restored = Path.Combine(temp.Path, "restored");
+        var password = "excluded-folder-password"u8.ToArray();
+        var progress = new RecordingProgress();
+        var encryptor = new FileEncryptor(consumerThreads: 2, progress);
+
+        await encryptor.EncryptFolderZipAsync(
+            source, vault, password, 1_048_576, FastKdf,
+            excludedFolderPaths: [excluded]);
+        await encryptor.DecryptFolderZipAsync(vault, restored, password);
+
+        Assert.Equal("keep", await File.ReadAllTextAsync(
+            Path.Combine(restored, "included", "keep.txt")));
+        Assert.False(Directory.Exists(Path.Combine(restored, "excluded")));
+        Assert.Equal(1, progress.Values.Last());
+    }
+
+    [Fact]
+    public async Task FolderZip_RejectsExcludedFolderOutsideSourceOrSourceRoot()
+    {
+        using var temp = new TempDirectory();
+        var source = Directory.CreateDirectory(Path.Combine(temp.Path, "source")).FullName;
+        var outside = Directory.CreateDirectory(Path.Combine(temp.Path, "outside")).FullName;
+        var encryptor = new FileEncryptor(consumerThreads: 2);
+
+        await Assert.ThrowsAsync<IOException>(() => encryptor.EncryptFolderZipAsync(
+            source,
+            Path.Combine(temp.Path, "root.safe"),
+            "excluded-folder-password"u8.ToArray(),
+            1_048_576,
+            FastKdf,
+            excludedFolderPaths: [source]));
+        await Assert.ThrowsAsync<IOException>(() => encryptor.EncryptFolderZipAsync(
+            source,
+            Path.Combine(temp.Path, "outside.safe"),
+            "excluded-folder-password"u8.ToArray(),
+            1_048_576,
+            FastKdf,
+            excludedFolderPaths: [outside]));
     }
 
     [Fact]

@@ -11,6 +11,7 @@ public interface IFilePickerService
         string title,
         IReadOnlyList<FilePickerFileType>? filters = null);
     Task<string?> PickFolderAsync(string title);
+    Task<IReadOnlyList<string>> PickFoldersAsync(string title);
     Task<string?> PickSaveFileAsync(
         string title,
         string suggestedFileName,

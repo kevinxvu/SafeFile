@@ -59,9 +59,12 @@
   <data name="OutputFileNameMethod" xml:space="preserve"><value>File name protection method</value></data>
   <data name="OutputFileNameAes" xml:space="preserve"><value>AES</value></data>
   <data name="OutputFileNameSha256" xml:space="preserve"><value>SHA-256</value></data>
+  <data name="OutputFileNameMd5" xml:space="preserve"><value>MD5</value></data>
   <data name="AesOutputFileNameHint" xml:space="preserve"><value>Encrypts the visible output name and allows password-based name preview.</value></data>
   <data name="Sha256OutputFileNameHint" xml:space="preserve"><value>Hashes the visible output name; the original name is restored from the vault.</value></data>
+  <data name="Md5OutputFileNameHint" xml:space="preserve"><value>Creates a shorter one-way hash of the visible output name; MD5 is intended only for name obfuscation.</value></data>
   <data name="Sha256FileNamePlaceholder" xml:space="preserve"><value>[SHA-256 hash].safe</value></data>
+  <data name="Md5FileNamePlaceholder" xml:space="preserve"><value>[MD5 hash].safe</value></data>
   <data name="OverwriteSafe" xml:space="preserve"><value>Overwrite an existing .safe file</value></data>
   <data name="EncryptedNameHint" xml:space="preserve"><value>The output name will be encrypted and restored during decryption.</value></data>
   <data name="FolderProcessing" xml:space="preserve"><value>Folder processing</value></data>
@@ -268,4 +271,17 @@
   <data name="FolderNamesCancelTooltip" xml:space="preserve"><value>Cancel folder-name operation</value></data>
   <data name="FolderManifestKeepTitle" xml:space="preserve"><value>Keep the .safefile-names file</value></data>
   <data name="FolderManifestKeepWarning" xml:space="preserve"><value>Do not delete, rename, edit, or move this file. It is required to restore the original folder names.</value></data>
+  <data name="ExcludedFolders" xml:space="preserve"><value>Excluded folders</value></data>
+  <data name="ExcludedFoldersHint" xml:space="preserve"><value>These folders and all of their contents will not be encrypted.</value></data>
+  <data name="DecryptExcludedFoldersHint" xml:space="preserve"><value>Vaults inside these physical folders will be excluded from the decryption queue.</value></data>
+  <data name="FolderNamesExcludedFoldersHint" xml:space="preserve"><value>Folder names in these branches will remain unchanged during encryption.</value></data>
+  <data name="SelectExcludedFolders" xml:space="preserve"><value>Select folders to exclude</value></data>
+  <data name="CannotAddExcludedFolders" xml:space="preserve"><value>Unable to add excluded folders</value></data>
+  <data name="AddFolders" xml:space="preserve"><value>Add folders</value></data>
+  <data name="FolderNamesClearExclusionsBeforeDecrypt" xml:space="preserve"><value>Clear all excluded folders before decrypting folder names.</value></data>
+  <data name="ExcludeSelectSourceFirst" xml:space="preserve"><value>Select a source folder before adding exclusions.</value></data>
+  <data name="ExcludeFolderNotFound" xml:space="preserve"><value>One of the selected folders no longer exists.</value></data>
+  <data name="ExcludeReparseNotAllowed" xml:space="preserve"><value>A symbolic link, junction, or reparse point cannot be excluded.</value></data>
+  <data name="ExcludeSourceRootNotAllowed" xml:space="preserve"><value>A selected source root cannot be excluded.</value></data>
+  <data name="ExcludeOutsideSource" xml:space="preserve"><value>Every excluded folder must be inside a selected source folder.</value></data>
 </root>

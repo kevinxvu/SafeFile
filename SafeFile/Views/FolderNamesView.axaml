@@ -21,6 +21,43 @@
      </Border>
     </StackPanel>
    </Border>
+   <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="16" IsVisible="{Binding HasFolder}" IsEnabled="{Binding !IsBusy}">
+    <StackPanel Spacing="10">
+     <Grid ColumnDefinitions="*,Auto,Auto"><StackPanel Spacing="2"><TextBlock Text="{loc:Tr ExcludedFolders}" FontSize="15" FontWeight="SemiBold"/><TextBlock Text="{loc:Tr FolderNamesExcludedFoldersHint}" FontSize="11" Foreground="{DynamicResource SecondaryTextBrush}"/></StackPanel>
+      <Button Grid.Column="1" Margin="8,0" Theme="{StaticResource OutlinedButtonTheme}" Command="{Binding ClearExcludedFoldersCommand}" IsVisible="{Binding HasExcludedFolders}" Content="{loc:Tr ClearAll}"/>
+      <Button Grid.Column="2" Theme="{StaticResource OutlinedButtonTheme}" Command="{Binding BrowseExcludedFoldersCommand}" Content="{loc:Tr AddFolders}"/>
+     </Grid>
+     <ItemsControl ItemsSource="{Binding ExcludedFolders}" IsVisible="{Binding HasExcludedFolders}"><ItemsControl.ItemTemplate><DataTemplate>
+      <Border Background="{DynamicResource SubtleSurfaceBrush}" CornerRadius="5" Padding="10,6" Margin="0,2"><Grid ColumnDefinitions="*,Auto"><StackPanel><TextBlock Text="{Binding DisplayName}" FontWeight="Medium"/><TextBlock Text="{Binding FullPath}" FontSize="10" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding FullPath}" Foreground="{DynamicResource SecondaryTextBrush}"/></StackPanel><Button Grid.Column="1" Command="{Binding RemoveCommand}" Theme="{StaticResource OutlinedButtonTheme}" Content="×"/></Grid></Border>
+     </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+     <TextBlock Text="{loc:Tr FolderNamesClearExclusionsBeforeDecrypt}" FontSize="11" Foreground="{DynamicResource WarningBrush}" IsVisible="{Binding HasExcludedFolders}"/>
+    </StackPanel>
+   </Border>
+   <Grid ColumnDefinitions="*,16,*" IsEnabled="{Binding !IsBusy}">
+    <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="16"><StackPanel Spacing="9">
+     <TextBlock Text="{loc:Tr FolderStatistics}" FontSize="15" FontWeight="SemiBold"/><TextBlock Text="{Binding ManifestStatus}" Foreground="{DynamicResource AccentBrush}"/>
+     <Grid ColumnDefinitions="*,Auto"><TextBlock Text="{loc:Tr TotalFolders}"/><TextBlock Grid.Column="1" Text="{Binding TotalFolders}"/></Grid>
+     <Grid ColumnDefinitions="*,Auto"><TextBlock Text="{loc:Tr ProtectedFolders}"/><TextBlock Grid.Column="1" Text="{Binding ProtectedFolders}"/></Grid>
+     <Grid ColumnDefinitions="*,Auto"><TextBlock Text="{loc:Tr ClearFolders}"/><TextBlock Grid.Column="1" Text="{Binding ClearFolders}"/></Grid>
+     <Grid ColumnDefinitions="*,Auto"><TextBlock Text="{loc:Tr NewFolders}"/><TextBlock Grid.Column="1" Text="{Binding NewFolders}"/></Grid>
+     <Grid ColumnDefinitions="*,Auto"><TextBlock Text="{loc:Tr ConflictingFolders}"/><TextBlock Grid.Column="1" Text="{Binding ConflictingFolders}" Foreground="#E53935"/></Grid>
+    </StackPanel></Border>
+    <Border Grid.Column="2" Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="16"><StackPanel Spacing="8">
+     <TextBlock Text="{loc:Tr FolderNameSecurity}" FontSize="15" FontWeight="SemiBold"/><TextBlock Text="{loc:Tr Password}"/>
+     <Grid ColumnDefinitions="*,Auto"><TextBox Text="{Binding Password}" PasswordChar="{Binding PasswordChar}"/><Button Grid.Column="1" Margin="6,0,0,0" Width="38" Theme="{StaticResource OutlinedButtonTheme}" Command="{Binding TogglePasswordVisibilityCommand}"><PathIcon Data="{StaticResource EyeIcon}" Width="17"/></Button></Grid>
+     <TextBlock Text="{loc:Tr ConfirmPassword}" IsVisible="{Binding IsPasswordConfirmationRequired}"/><Grid ColumnDefinitions="*,Auto" IsVisible="{Binding IsPasswordConfirmationRequired}"><TextBox Text="{Binding ConfirmPassword}" PasswordChar="{Binding ConfirmPasswordChar}"/><Button Grid.Column="1" Margin="6,0,0,0" Width="38" Theme="{StaticResource OutlinedButtonTheme}" Command="{Binding ToggleConfirmPasswordVisibilityCommand}"><PathIcon Data="{StaticResource EyeIcon}" Width="17"/></Button></Grid>
+     <Button Theme="{StaticResource OutlinedButtonTheme}" Command="{Binding CheckManifestCommand}" IsEnabled="{Binding CanCheckManifest}" Content="{loc:Tr CheckManifest}"/>
+     <TextBlock Text="{loc:Tr FolderNameMethod}" FontWeight="Medium"/><StackPanel Orientation="Horizontal" Spacing="16" IsEnabled="{Binding !IsModeLocked}"><RadioButton Content="MD5" IsChecked="{Binding IsMd5Mode}" GroupName="FolderNameMode"/><RadioButton Content="SHA-256" IsChecked="{Binding IsShaMode}" GroupName="FolderNameMode"/><RadioButton Content="AES" IsChecked="{Binding IsAesMode}" GroupName="FolderNameMode"/></StackPanel>
+     <TextBlock Text="{loc:Tr FolderModeLocked}" FontSize="11" Foreground="{DynamicResource SecondaryTextBrush}" IsVisible="{Binding IsModeLocked}"/>
+    </StackPanel></Border>
+   </Grid>
+   <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="16"><Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto">
+    <TextBlock Text="{Binding StatusMessage}" VerticalAlignment="Center" TextWrapping="Wrap"/>
+    <Button Grid.Column="1" Margin="8,0" Theme="{StaticResource OutlinedButtonTheme}" Command="{Binding ResetCommand}"><StackPanel Orientation="Horizontal" Spacing="6"><PathIcon Data="{StaticResource RefreshIcon}" Width="15" Height="15"/><TextBlock Text="{loc:Tr Reset}" VerticalAlignment="Center"/></StackPanel></Button>
+    <Button Grid.Column="2" Margin="0,0,8,0" Theme="{StaticResource OutlinedButtonTheme}" Command="{Binding OpenFolderCommand}" IsEnabled="{Binding HasFolder}"><StackPanel Orientation="Horizontal" Spacing="6"><PathIcon Data="{StaticResource FolderIcon}" Width="15" Height="15"/><TextBlock Text="{loc:Tr OpenOutputFolder}" VerticalAlignment="Center"/></StackPanel></Button>
+    <Button Grid.Column="3" Margin="0,0,8,0" Theme="{StaticResource OutlinedButtonTheme}" Command="{Binding DecryptCommand}" IsEnabled="{Binding CanDecrypt}"><StackPanel Orientation="Horizontal" Spacing="7"><PathIcon Data="{StaticResource LockOpenIcon}" Width="15" Height="15"/><TextBlock Text="{loc:Tr DecryptFolderNames}" VerticalAlignment="Center"/></StackPanel></Button>
+   <Button Grid.Column="4" Theme="{StaticResource PrimaryButtonTheme}" Command="{Binding EncryptCommand}" IsEnabled="{Binding CanEncrypt}"><StackPanel Orientation="Horizontal" Spacing="7"><PathIcon Data="{StaticResource LockIcon}" Width="15" Height="15"/><TextBlock Text="{loc:Tr EncryptFolderNames}" VerticalAlignment="Center"/></StackPanel></Button>
+   </Grid></Border>
    <Border Background="{DynamicResource WarningSubtleBrush}"
            CornerRadius="8" Padding="14,11"
            IsVisible="{Binding HasManifest}">
@@ -38,31 +75,6 @@
      </StackPanel>
     </Grid>
    </Border>
-   <Grid ColumnDefinitions="*,16,*" IsEnabled="{Binding !IsBusy}">
-    <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="16"><StackPanel Spacing="9">
-     <TextBlock Text="{loc:Tr FolderStatistics}" FontSize="15" FontWeight="SemiBold"/><TextBlock Text="{Binding ManifestStatus}" Foreground="{DynamicResource AccentBrush}"/>
-     <Grid ColumnDefinitions="*,Auto"><TextBlock Text="{loc:Tr TotalFolders}"/><TextBlock Grid.Column="1" Text="{Binding TotalFolders}"/></Grid>
-     <Grid ColumnDefinitions="*,Auto"><TextBlock Text="{loc:Tr ProtectedFolders}"/><TextBlock Grid.Column="1" Text="{Binding ProtectedFolders}"/></Grid>
-     <Grid ColumnDefinitions="*,Auto"><TextBlock Text="{loc:Tr ClearFolders}"/><TextBlock Grid.Column="1" Text="{Binding ClearFolders}"/></Grid>
-     <Grid ColumnDefinitions="*,Auto"><TextBlock Text="{loc:Tr NewFolders}"/><TextBlock Grid.Column="1" Text="{Binding NewFolders}"/></Grid>
-     <Grid ColumnDefinitions="*,Auto"><TextBlock Text="{loc:Tr ConflictingFolders}"/><TextBlock Grid.Column="1" Text="{Binding ConflictingFolders}" Foreground="#E53935"/></Grid>
-    </StackPanel></Border>
-    <Border Grid.Column="2" Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="16"><StackPanel Spacing="8">
-     <TextBlock Text="{loc:Tr FolderNameSecurity}" FontSize="15" FontWeight="SemiBold"/><TextBlock Text="{loc:Tr Password}"/>
-     <Grid ColumnDefinitions="*,Auto"><TextBox Text="{Binding Password}" PasswordChar="{Binding PasswordChar}"/><Button Grid.Column="1" Margin="6,0,0,0" Width="38" Theme="{StaticResource OutlinedButtonTheme}" Command="{Binding TogglePasswordVisibilityCommand}"><PathIcon Data="{StaticResource EyeIcon}" Width="17"/></Button></Grid>
-     <TextBlock Text="{loc:Tr ConfirmPassword}" IsVisible="{Binding IsPasswordConfirmationRequired}"/><Grid ColumnDefinitions="*,Auto" IsVisible="{Binding IsPasswordConfirmationRequired}"><TextBox Text="{Binding ConfirmPassword}" PasswordChar="{Binding ConfirmPasswordChar}"/><Button Grid.Column="1" Margin="6,0,0,0" Width="38" Theme="{StaticResource OutlinedButtonTheme}" Command="{Binding ToggleConfirmPasswordVisibilityCommand}"><PathIcon Data="{StaticResource EyeIcon}" Width="17"/></Button></Grid>
-     <Button Theme="{StaticResource OutlinedButtonTheme}" Command="{Binding CheckManifestCommand}" IsEnabled="{Binding CanCheckManifest}" Content="{loc:Tr CheckManifest}"/>
-     <TextBlock Text="{loc:Tr FolderNameMethod}" FontWeight="Medium"/><StackPanel Orientation="Horizontal" Spacing="16" IsEnabled="{Binding !IsModeLocked}"><RadioButton Content="AES" IsChecked="{Binding IsAesMode}" GroupName="FolderNameMode"/><RadioButton Content="SHA-256" IsChecked="{Binding IsShaMode}" GroupName="FolderNameMode"/></StackPanel>
-     <TextBlock Text="{loc:Tr FolderModeLocked}" FontSize="11" Foreground="{DynamicResource SecondaryTextBrush}" IsVisible="{Binding IsModeLocked}"/>
-    </StackPanel></Border>
-   </Grid>
-   <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="16"><Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto">
-    <TextBlock Text="{Binding StatusMessage}" VerticalAlignment="Center" TextWrapping="Wrap"/>
-    <Button Grid.Column="1" Margin="8,0" Theme="{StaticResource OutlinedButtonTheme}" Command="{Binding ResetCommand}"><StackPanel Orientation="Horizontal" Spacing="6"><PathIcon Data="{StaticResource RefreshIcon}" Width="15" Height="15"/><TextBlock Text="{loc:Tr Reset}" VerticalAlignment="Center"/></StackPanel></Button>
-    <Button Grid.Column="2" Margin="0,0,8,0" Theme="{StaticResource OutlinedButtonTheme}" Command="{Binding OpenFolderCommand}" IsEnabled="{Binding HasFolder}"><StackPanel Orientation="Horizontal" Spacing="6"><PathIcon Data="{StaticResource FolderIcon}" Width="15" Height="15"/><TextBlock Text="{loc:Tr OpenOutputFolder}" VerticalAlignment="Center"/></StackPanel></Button>
-    <Button Grid.Column="3" Margin="0,0,8,0" Theme="{StaticResource OutlinedButtonTheme}" Command="{Binding DecryptCommand}" IsEnabled="{Binding CanDecrypt}"><StackPanel Orientation="Horizontal" Spacing="7"><PathIcon Data="{StaticResource LockOpenIcon}" Width="15" Height="15"/><TextBlock Text="{loc:Tr DecryptFolderNames}" VerticalAlignment="Center"/></StackPanel></Button>
-    <Button Grid.Column="4" Theme="{StaticResource PrimaryButtonTheme}" Command="{Binding EncryptCommand}" IsEnabled="{Binding CanEncrypt}"><StackPanel Orientation="Horizontal" Spacing="7"><PathIcon Data="{StaticResource LockIcon}" Width="15" Height="15"/><TextBlock Text="{loc:Tr EncryptFolderNames}" VerticalAlignment="Center"/></StackPanel></Button>
-   </Grid></Border>
   </StackPanel></ScrollViewer>
   <Border Grid.Row="1" IsVisible="{Binding IsStatusBarVisible}" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="20,10">
    <Grid ColumnDefinitions="300,*"><StackPanel Spacing="3"><TextBlock Text="{Binding StatusAction}" FontWeight="SemiBold"/><TextBlock Text="{Binding StatusDetails}" FontSize="11" Foreground="{DynamicResource SecondaryTextBrush}"/></StackPanel>

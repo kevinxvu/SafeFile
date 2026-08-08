@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -13,6 +14,7 @@ using SafeFile.Core.Format;
 using SafeFile.Core.IO;
 using SafeFile.Core.Models;
 using SafeFile.Core.Services;
+using SafeFile.Models;
 using SafeFile.Services;
 using Serilog;
 
@@ -30,6 +32,9 @@ public sealed partial class EncryptViewModel : ViewModelBase
     private CancellationTokenSource? _activeCts;
     private CancellationTokenSource? _sourceInfoCts;
     private IReadOnlyList<string> _sourcePaths = [];
+
+    public ObservableCollection<ExcludedFolderItem> ExcludedFolders { get; } = [];
+    public bool HasExcludedFolders => ExcludedFolders.Count > 0;
 
     // ── Source ────────────────────────────────────────────────────
     [ObservableProperty]
@@ -117,6 +122,7 @@ public sealed partial class EncryptViewModel : ViewModelBase
         SourceTypeText = L(selectedPaths.Length > 1 ? "Files" : isFile ? "File" : "Folder");
         SourceSizeText = L("CalculatingSourceInfo");
         SourceFileCountText = L("CalculatingSourceInfo");
+        var excludedPaths = ExcludedFolders.Select(item => item.FullPath).ToArray();
 
         try
         {
@@ -130,14 +136,8 @@ public sealed partial class EncryptViewModel : ViewModelBase
 
                 long size = 0;
                 var fileCount = 0;
-                var options = new EnumerationOptions
-                {
-                    RecurseSubdirectories = true,
-                    IgnoreInaccessible = true,
-                    AttributesToSkip = FileAttributes.ReparsePoint
-                };
-
-                foreach (var file in new DirectoryInfo(path).EnumerateFiles("*", options))
+                foreach (var file in EnumerateRegularFiles(
+                             new DirectoryInfo(path), excludedPaths))
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     size += file.Length;
@@ -236,8 +236,9 @@ public sealed partial class EncryptViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsAesOutputFileNameMode))]
     [NotifyPropertyChangedFor(nameof(IsSha256OutputFileNameMode))]
+    [NotifyPropertyChangedFor(nameof(IsMd5OutputFileNameMode))]
     [NotifyPropertyChangedFor(nameof(EstimatedOutputName))]
-    private OutputFileNameMode _selectedOutputFileNameMode = OutputFileNameMode.Aes;
+    private OutputFileNameMode _selectedOutputFileNameMode = OutputFileNameMode.Md5;
 
     public bool IsAesOutputFileNameMode
     {
@@ -256,6 +257,16 @@ public sealed partial class EncryptViewModel : ViewModelBase
         {
             if (value)
                 SelectedOutputFileNameMode = OutputFileNameMode.Sha256;
+        }
+    }
+
+    public bool IsMd5OutputFileNameMode
+    {
+        get => SelectedOutputFileNameMode == OutputFileNameMode.Md5;
+        set
+        {
+            if (value)
+                SelectedOutputFileNameMode = OutputFileNameMode.Md5;
         }
     }
 
@@ -300,11 +311,14 @@ public sealed partial class EncryptViewModel : ViewModelBase
             }
 
             return EncryptFileNames
-                ? SelectedOutputFileNameMode == OutputFileNameMode.Sha256
-                    ? L("Sha256FileNamePlaceholder")
-                    : IsFileSource
+                ? SelectedOutputFileNameMode switch
+                {
+                    OutputFileNameMode.Sha256 => L("Sha256FileNamePlaceholder"),
+                    OutputFileNameMode.Md5 => L("Md5FileNamePlaceholder"),
+                    _ => IsFileSource
                         ? L("EncryptedFileNamePlaceholder")
                         : L("EncryptedFolderNamePlaceholder")
+                }
                 : sourceName + ".safe";
         }
     }
@@ -361,6 +375,8 @@ public sealed partial class EncryptViewModel : ViewModelBase
     // ── Commands ──────────────────────────────────────────────────
     public IAsyncRelayCommand BrowseSourceCommand { get; }
     public IAsyncRelayCommand BrowseSourceFolderCommand { get; }
+    public IAsyncRelayCommand BrowseExcludedFoldersCommand { get; }
+    public IRelayCommand ClearExcludedFoldersCommand { get; }
     public IAsyncRelayCommand EncryptCommand { get; }
     public IRelayCommand ResetCommand { get; }
     public IRelayCommand OpenOutputFolderCommand { get; }
@@ -383,6 +399,8 @@ public sealed partial class EncryptViewModel : ViewModelBase
 
         BrowseSourceCommand = new AsyncRelayCommand(BrowseFileAsync);
         BrowseSourceFolderCommand = new AsyncRelayCommand(BrowseFolderAsync);
+        BrowseExcludedFoldersCommand = new AsyncRelayCommand(BrowseExcludedFoldersAsync);
+        ClearExcludedFoldersCommand = new RelayCommand(ClearExcludedFolders);
         EncryptCommand = new AsyncRelayCommand(EncryptAsync);
         ResetCommand = new RelayCommand(Reset);
         OpenOutputFolderCommand = new RelayCommand(OpenOutputFolder);
@@ -416,6 +434,7 @@ public sealed partial class EncryptViewModel : ViewModelBase
         if (files.Length == 0)
             return;
 
+        ClearExcludedFolders();
         IsFileSource = true;
         _sourcePaths = files;
         SourcePath = files[0];
@@ -430,6 +449,7 @@ public sealed partial class EncryptViewModel : ViewModelBase
         if (!Directory.Exists(path))
             return;
 
+        ClearExcludedFolders();
         IsFileSource = false;
         _sourcePaths = [path];
         SourcePath = path;
@@ -445,6 +465,60 @@ public sealed partial class EncryptViewModel : ViewModelBase
         {
             SelectSourceFolder(path);
         }
+    }
+
+    private async Task BrowseExcludedFoldersAsync()
+    {
+        if (!IsFolderSource || !Directory.Exists(SourcePath))
+            return;
+        var paths = await _filePicker.PickFoldersAsync(L("SelectExcludedFolders"));
+        if (paths.Count == 0)
+            return;
+        try
+        {
+            var merged = ExcludedFolderPathValidator.MergeAndValidate(
+                paths, [SourcePath], ExcludedFolders.Select(item => item.FullPath));
+            ReplaceExcludedFolders(merged);
+        }
+        catch (Exception ex)
+        {
+            var message = ex is ExcludedFolderValidationException validation
+                ? L(validation.ResourceKey)
+                : ex.Message;
+            await _errorDialog.ShowErrorAsync(message, L("CannotAddExcludedFolders"));
+        }
+    }
+
+    private void RemoveExcludedFolder(ExcludedFolderItem item)
+    {
+        if (IsEncrypting || !ExcludedFolders.Remove(item))
+            return;
+        RefreshExcludedState();
+    }
+
+    private void ClearExcludedFolders()
+    {
+        if (ExcludedFolders.Count == 0)
+            return;
+        ExcludedFolders.Clear();
+        RefreshExcludedState();
+    }
+
+    private void ReplaceExcludedFolders(IEnumerable<string> paths)
+    {
+        ExcludedFolders.Clear();
+        foreach (var path in paths)
+            ExcludedFolders.Add(new ExcludedFolderItem(path, RemoveExcludedFolder));
+        RefreshExcludedState();
+    }
+
+    private void RefreshExcludedState()
+    {
+        OnPropertyChanged(nameof(HasExcludedFolders));
+        _sourceInfoCts?.Cancel();
+        _sourceInfoCts?.Dispose();
+        _sourceInfoCts = new CancellationTokenSource();
+        _ = RefreshSourceInfoAsync(SourcePath, _sourceInfoCts.Token);
     }
 
     private async Task EncryptAsync()
@@ -673,7 +747,8 @@ public sealed partial class EncryptViewModel : ViewModelBase
                     chunkSizeBytes, kdfParams,
                     outputFileNameMode: EffectiveOutputFileNameMode,
                     cancellationToken: cts.Token,
-                    overwriteExisting: OverwriteExisting);
+                    overwriteExisting: OverwriteExisting,
+                    excludedFolderPaths: ExcludedFolders.Select(item => item.FullPath).ToArray());
             }
             else
             {
@@ -686,7 +761,8 @@ public sealed partial class EncryptViewModel : ViewModelBase
                     chunkSizeBytes, kdfParams,
                     outputFileNameMode: EffectiveOutputFileNameMode,
                     cancellationToken: cts.Token,
-                    overwriteExisting: OverwriteExisting);
+                    overwriteExisting: OverwriteExisting,
+                    excludedFolderPaths: ExcludedFolders.Select(item => item.FullPath).ToArray());
                 actualOutputPath = destFolder;
             }
 
@@ -803,13 +879,14 @@ public sealed partial class EncryptViewModel : ViewModelBase
     {
         SourcePath = "";
         _sourcePaths = [];
+        ClearExcludedFolders();
         Password = "";
         ConfirmPassword = "";
         StatusMessage = "";
         HasError = false;
         IsFileSource = true;
         EncryptFileNames = false;
-        SelectedOutputFileNameMode = OutputFileNameMode.Aes;
+        SelectedOutputFileNameMode = OutputFileNameMode.Md5;
         OverwriteExisting = false;
         IsFolderModeZip = true;
     }
@@ -842,7 +919,9 @@ public sealed partial class EncryptViewModel : ViewModelBase
             if (IsFileSource && File.Exists(SourcePath))
                 return _sourcePaths.Sum(path => new FileInfo(path).Length);
             if (!IsFileSource && Directory.Exists(SourcePath))
-                return EnumerateRegularFiles(new DirectoryInfo(SourcePath))
+                return EnumerateRegularFiles(
+                        new DirectoryInfo(SourcePath),
+                        ExcludedFolders.Select(item => item.FullPath).ToArray())
                     .Sum(file => file.Length);
         }
         catch { }
@@ -854,7 +933,9 @@ public sealed partial class EncryptViewModel : ViewModelBase
         try
         {
             return Directory.Exists(SourcePath)
-                ? EnumerateRegularFiles(new DirectoryInfo(SourcePath)).Count()
+                ? EnumerateRegularFiles(
+                    new DirectoryInfo(SourcePath),
+                    ExcludedFolders.Select(item => item.FullPath).ToArray()).Count()
                 : 0;
         }
         catch
@@ -875,7 +956,9 @@ public sealed partial class EncryptViewModel : ViewModelBase
         }
     }
 
-    private static IEnumerable<FileInfo> EnumerateRegularFiles(DirectoryInfo directory)
+    private static IEnumerable<FileInfo> EnumerateRegularFiles(
+        DirectoryInfo directory,
+        IReadOnlyCollection<string>? excludedFolderPaths = null)
     {
         foreach (var file in directory.EnumerateFiles())
         {
@@ -887,8 +970,13 @@ public sealed partial class EncryptViewModel : ViewModelBase
         {
             if ((subdirectory.Attributes & FileAttributes.ReparsePoint) != 0)
                 continue;
+            if (excludedFolderPaths?.Any(path =>
+                    ExcludedFolderPathValidator.IsSameOrDescendant(
+                        path, subdirectory.FullName)) == true)
+                continue;
 
-            foreach (var file in EnumerateRegularFiles(subdirectory))
+            foreach (var file in EnumerateRegularFiles(
+                         subdirectory, excludedFolderPaths))
                 yield return file;
         }
     }

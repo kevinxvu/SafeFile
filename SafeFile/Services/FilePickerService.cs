@@ -61,6 +61,23 @@ public sealed class FilePickerService : IFilePickerService
         return results.FirstOrDefault()?.TryGetLocalPath();
     }
 
+    public async Task<IReadOnlyList<string>> PickFoldersAsync(string title)
+    {
+        var window = GetMainWindow();
+        if (window is null)
+            return [];
+        var results = await window.StorageProvider.OpenFolderPickerAsync(
+            new FolderPickerOpenOptions
+            {
+                Title = title,
+                AllowMultiple = true
+            });
+        return results
+            .Select(folder => folder.TryGetLocalPath())
+            .OfType<string>()
+            .ToArray();
+    }
+
     public async Task<string?> PickSaveFileAsync(
         string title,
         string suggestedFileName,

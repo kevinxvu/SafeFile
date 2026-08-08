@@ -15,6 +15,7 @@ using SafeFile.Core.Format;
 using SafeFile.Core.IO;
 using SafeFile.Core.Models;
 using SafeFile.Core.Services;
+using SafeFile.Models;
 using SafeFile.Services;
 using Serilog;
 
@@ -38,9 +39,16 @@ public sealed partial class DecryptViewModel : ViewModelBase
         OperatingSystem.IsWindows()
             ? StringComparer.OrdinalIgnoreCase
             : StringComparer.Ordinal);
+    private readonly HashSet<string> _folderSourceRoots = new(
+        OperatingSystem.IsWindows()
+            ? StringComparer.OrdinalIgnoreCase
+            : StringComparer.Ordinal);
     private CancellationTokenSource? _activeCts;
 
     public ObservableCollection<DecryptQueueItem> Items { get; } = [];
+    public ObservableCollection<ExcludedFolderItem> ExcludedFolders { get; } = [];
+    public bool HasExcludedFolders => ExcludedFolders.Count > 0;
+    public bool HasFolderSources => _folderSourceRoots.Count > 0;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSelectedItem))]
@@ -144,6 +152,8 @@ public sealed partial class DecryptViewModel : ViewModelBase
 
     public IAsyncRelayCommand BrowseSourceCommand { get; }
     public IAsyncRelayCommand BrowseSourceFolderCommand { get; }
+    public IAsyncRelayCommand BrowseExcludedFoldersCommand { get; }
+    public IRelayCommand ClearExcludedFoldersCommand { get; }
     public IAsyncRelayCommand CheckPasswordCommand { get; }
     public IAsyncRelayCommand DecryptCommand { get; }
     public IRelayCommand ClearItemsCommand { get; }
@@ -166,6 +176,8 @@ public sealed partial class DecryptViewModel : ViewModelBase
 
         BrowseSourceCommand = new AsyncRelayCommand(BrowseSourceAsync);
         BrowseSourceFolderCommand = new AsyncRelayCommand(BrowseSourceFolderAsync);
+        BrowseExcludedFoldersCommand = new AsyncRelayCommand(BrowseExcludedFoldersAsync);
+        ClearExcludedFoldersCommand = new RelayCommand(ClearExcludedFolders);
         CheckPasswordCommand = new AsyncRelayCommand(CheckPasswordAsync);
         DecryptCommand = new AsyncRelayCommand(DecryptAsync);
         ClearItemsCommand = new RelayCommand(ClearItems);
@@ -226,6 +238,75 @@ public sealed partial class DecryptViewModel : ViewModelBase
             await AddDroppedSourcesAsync([path]);
     }
 
+    private async Task BrowseExcludedFoldersAsync()
+    {
+        if (_folderSourceRoots.Count == 0)
+            return;
+        var paths = await _filePicker.PickFoldersAsync(L("SelectExcludedFolders"));
+        if (paths.Count == 0)
+            return;
+        try
+        {
+            var merged = ExcludedFolderPathValidator.MergeAndValidate(
+                paths, _folderSourceRoots,
+                ExcludedFolders.Select(item => item.FullPath));
+            ReplaceExcludedFolders(merged);
+            RemoveExcludedQueueItems();
+        }
+        catch (Exception ex)
+        {
+            var message = ex is ExcludedFolderValidationException validation
+                ? L(validation.ResourceKey)
+                : ex.Message;
+            await _errorDialog.ShowErrorAsync(message, L("CannotAddExcludedFolders"));
+        }
+    }
+
+    private void RemoveExcludedFolder(ExcludedFolderItem item)
+    {
+        if (IsDecrypting || !ExcludedFolders.Remove(item))
+            return;
+        OnPropertyChanged(nameof(HasExcludedFolders));
+        RescanFolderSources();
+    }
+
+    private void ClearExcludedFolders()
+    {
+        if (IsDecrypting || ExcludedFolders.Count == 0)
+            return;
+        ExcludedFolders.Clear();
+        OnPropertyChanged(nameof(HasExcludedFolders));
+        RescanFolderSources();
+    }
+
+    private void ReplaceExcludedFolders(IEnumerable<string> paths)
+    {
+        ExcludedFolders.Clear();
+        foreach (var path in paths)
+            ExcludedFolders.Add(new ExcludedFolderItem(path, RemoveExcludedFolder));
+        OnPropertyChanged(nameof(HasExcludedFolders));
+    }
+
+    private void RemoveExcludedQueueItems()
+    {
+        foreach (var item in Items.Where(item => IsExcluded(item.SourcePath)).ToArray())
+            RemoveItem(item);
+    }
+
+    private void RescanFolderSources()
+    {
+        if (_folderSourceRoots.Count == 0)
+            return;
+        try
+        {
+            AddSources(_folderSourceRoots.ToArray());
+        }
+        catch (InvalidDataException)
+        {
+            NotifySummaries();
+        }
+    }
+
     private void AddSources(IEnumerable<string> paths)
     {
         var hadExistingItems = Items.Count > 0;
@@ -235,8 +316,8 @@ public sealed partial class DecryptViewModel : ViewModelBase
             var fullPath = Path.GetFullPath(inputPath);
             if (Directory.Exists(fullPath))
             {
-                foreach (var file in Directory.EnumerateFiles(
-                             fullPath, "*.safe", SearchOption.AllDirectories))
+                _folderSourceRoots.Add(Path.TrimEndingDirectorySeparator(fullPath));
+                foreach (var file in EnumerateVaultFiles(new DirectoryInfo(fullPath)))
                 {
                     foundVault = true;
                     AddVault(
@@ -251,6 +332,8 @@ public sealed partial class DecryptViewModel : ViewModelBase
                          ".safe",
                          StringComparison.OrdinalIgnoreCase))
             {
+                if (IsExcluded(fullPath))
+                    continue;
                 foundVault = true;
                 AddVault(
                     fullPath,
@@ -266,10 +349,33 @@ public sealed partial class DecryptViewModel : ViewModelBase
         SelectedItem ??= Items.FirstOrDefault();
         PasswordCheckMessage = "";
         NotifySummaries();
+        OnPropertyChanged(nameof(HasFolderSources));
         Logger.Information(
             "Added decryption sources; queue now contains {VaultCount} vaults",
             Items.Count);
     }
+
+    private IEnumerable<string> EnumerateVaultFiles(DirectoryInfo directory)
+    {
+        foreach (var file in directory.EnumerateFiles("*.safe"))
+        {
+            if ((file.Attributes & FileAttributes.ReparsePoint) == 0 &&
+                !IsExcluded(file.FullName))
+                yield return file.FullName;
+        }
+
+        foreach (var child in directory.EnumerateDirectories())
+        {
+            if ((child.Attributes & FileAttributes.ReparsePoint) != 0 ||
+                IsExcluded(child.FullName))
+                continue;
+            foreach (var file in EnumerateVaultFiles(child))
+                yield return file;
+        }
+    }
+
+    private bool IsExcluded(string path) => ExcludedFolders.Any(item =>
+        ExcludedFolderPathValidator.IsSameOrDescendant(item.FullPath, path));
 
     private void AddVault(
         string sourcePath,
@@ -724,10 +830,14 @@ public sealed partial class DecryptViewModel : ViewModelBase
             return;
         Items.Clear();
         _sourcePaths.Clear();
+        _folderSourceRoots.Clear();
+        ExcludedFolders.Clear();
         SelectedItem = null;
         PasswordCheckMessage = "";
         StatusMessage = "";
         NotifySummaries();
+        OnPropertyChanged(nameof(HasFolderSources));
+        OnPropertyChanged(nameof(HasExcludedFolders));
     }
 
     private void Reset()

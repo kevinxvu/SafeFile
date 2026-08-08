@@ -45,7 +45,8 @@ public sealed class FileEncryptor
         Argon2Parameters? kdfParams = null,
         OutputFileNameMode outputFileNameMode = OutputFileNameMode.None,
         CancellationToken cancellationToken = default,
-        bool overwriteExisting = false)
+        bool overwriteExisting = false,
+        IReadOnlyCollection<string>? excludedFolderPaths = null)
     {
         ArgumentNullException.ThrowIfNull(sourceFolderPath);
         ArgumentNullException.ThrowIfNull(destinationPath);
@@ -59,12 +60,14 @@ public sealed class FileEncryptor
         _pipeline.ValidateMemoryBudget(chunkSizeBytes);
         EnsureDestinationOutsideSourceFolder(sourceFolderPath, destinationPath);
         ValidateOutputFileNameMode(outputFileNameMode);
+        var excludedFolders = ExcludedFolderMatcher.Create(
+            sourceFolderPath, excludedFolderPaths);
         var actualDestinationPath = destinationPath;
         var destinationOpened = false;
 
         var folderName = Path.GetFileName(Path.TrimEndingDirectorySeparator(sourceFolderPath));
         var encryptedFileName = System.Text.Encoding.UTF8.GetBytes(folderName + ".zip");
-        var estimatedInputBytes = StreamZipper.GetInputSize(sourceFolderPath);
+        var estimatedInputBytes = StreamZipper.GetInputSize(sourceFolderPath, excludedFolders);
         long sourceBytesRead = 0;
         _progress?.Report(0);
         var masterKey = Array.Empty<byte>();
@@ -129,6 +132,7 @@ public sealed class FileEncryptor
                 var zipProducerTask = ProduceZipToPipeAsync(
                     sourceFolderPath,
                     pipe.Writer,
+                    excludedFolders,
                     bytesRead =>
                     {
                         var processedBytes = Interlocked.Add(ref sourceBytesRead, bytesRead);
@@ -468,10 +472,10 @@ public sealed class FileEncryptor
             throw new InvalidDataException("Encrypted output filename must end with .safe.");
 
         var encodedName = fileName[..^".safe".Length];
-        if (encodedName.Length == 64 && encodedName.All(Uri.IsHexDigit))
+        if ((encodedName.Length is 32 or 64) && encodedName.All(Uri.IsHexDigit))
         {
             throw new InvalidDataException(
-                "A SHA-256 output filename cannot be decrypted without reading its vault metadata.");
+                "A hashed output filename cannot be decrypted without reading its vault metadata.");
         }
 
         var base64Url = encodedName
@@ -557,7 +561,8 @@ public sealed class FileEncryptor
         Argon2Parameters? kdfParams = null,
         OutputFileNameMode outputFileNameMode = OutputFileNameMode.None,
         CancellationToken cancellationToken = default,
-        bool overwriteExisting = false)
+        bool overwriteExisting = false,
+        IReadOnlyCollection<string>? excludedFolderPaths = null)
     {
         ArgumentNullException.ThrowIfNull(sourceFolderPath);
         ArgumentNullException.ThrowIfNull(destinationFolderPath);
@@ -574,15 +579,18 @@ public sealed class FileEncryptor
         EnsureDestinationOutsideSourceFolder(sourceFolderPath, destinationFolderPath);
 
         var sourceRoot = Path.GetFullPath(sourceFolderPath);
+        var excludedFolders = ExcludedFolderMatcher.Create(
+            sourceFolderPath, excludedFolderPaths);
         ValidateOutputFileNameMode(outputFileNameMode);
         Directory.CreateDirectory(destinationFolderPath);
         var hasFailures = false;
 
-        // Collision fast-fail paths for None/SHA-256 can complete synchronously.
+        // Collision fast-fail paths for None and deterministic hashes can complete synchronously.
         // Move the batch loop off a caller UI context before processing them.
         await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
 
-        foreach (var sourceFile in EnumerateRegularFiles(new DirectoryInfo(sourceRoot)))
+        foreach (var sourceFile in EnumerateRegularFiles(
+                     new DirectoryInfo(sourceRoot), excludedFolders))
         {
             cancellationToken.ThrowIfCancellationRequested();
             var relativePath = Path.GetRelativePath(sourceRoot, sourceFile.FullName);
@@ -593,14 +601,18 @@ public sealed class FileEncryptor
                     Path.GetDirectoryName(relativePath) ?? string.Empty,
                     encryptedFileName);
                 var encryptedPath = Path.Combine(destinationFolderPath, encryptedRelativePath);
-                var expectedOutputPath = outputFileNameMode == OutputFileNameMode.Sha256
-                    ? GetSha256VaultPath(
-                        encryptedPath,
-                        System.Text.Encoding.UTF8.GetBytes(sourceFile.Name))
-                    : encryptedPath;
+                var sourceFileNameBytes = System.Text.Encoding.UTF8.GetBytes(sourceFile.Name);
+                var expectedOutputPath = outputFileNameMode switch
+                {
+                    OutputFileNameMode.Sha256 => GetSha256VaultPath(encryptedPath, sourceFileNameBytes),
+                    OutputFileNameMode.Md5 => GetMd5VaultPath(encryptedPath, sourceFileNameBytes),
+                    _ => encryptedPath
+                };
 
                 if (!overwriteExisting &&
-                    outputFileNameMode is OutputFileNameMode.None or OutputFileNameMode.Sha256 &&
+                    (outputFileNameMode == OutputFileNameMode.None ||
+                     outputFileNameMode == OutputFileNameMode.Sha256 ||
+                     outputFileNameMode == OutputFileNameMode.Md5) &&
                     File.Exists(expectedOutputPath))
                 {
                     hasFailures = true;
@@ -738,13 +750,18 @@ public sealed class FileEncryptor
         var fileInfo = new FileInfo(sourcePath);
         var originalFileName = fileInfo.Name;
         var encryptedFileName = System.Text.Encoding.UTF8.GetBytes(originalFileName);
-        var actualDestinationPath = outputFileNameMode == OutputFileNameMode.Sha256
-            ? GetSha256VaultPath(destinationPath, encryptedFileName)
-            : destinationPath;
+        var actualDestinationPath = outputFileNameMode switch
+        {
+            OutputFileNameMode.Sha256 => GetSha256VaultPath(destinationPath, encryptedFileName),
+            OutputFileNameMode.Md5 => GetMd5VaultPath(destinationPath, encryptedFileName),
+            _ => destinationPath
+        };
 
         EnsureDistinctPaths(sourcePath, actualDestinationPath);
         if (!overwriteExisting &&
-            outputFileNameMode is OutputFileNameMode.None or OutputFileNameMode.Sha256 &&
+            (outputFileNameMode == OutputFileNameMode.None ||
+             outputFileNameMode == OutputFileNameMode.Sha256 ||
+             outputFileNameMode == OutputFileNameMode.Md5) &&
             File.Exists(actualDestinationPath))
         {
             if (vaultMode == VaultMode.PerFile)
@@ -1139,6 +1156,7 @@ public sealed class FileEncryptor
         OutputFileNameMode.Aes => GetAesEncryptedVaultPath(
             requestedPath, fullFileName, masterKey, salt, kdfParameters),
         OutputFileNameMode.Sha256 => GetSha256VaultPath(requestedPath, fullFileName),
+        OutputFileNameMode.Md5 => GetMd5VaultPath(requestedPath, fullFileName),
         _ => throw new ArgumentOutOfRangeException(
             nameof(outputFileNameMode), outputFileNameMode, "Unsupported output filename mode.")
     };
@@ -1191,6 +1209,20 @@ public sealed class FileEncryptor
     {
         var parent = Path.GetDirectoryName(requestedPath) ?? string.Empty;
         var hash = SHA256.HashData(fullFileName);
+        try
+        {
+            return Path.Combine(parent, Convert.ToHexStringLower(hash) + ".safe");
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(hash);
+        }
+    }
+
+    private static string GetMd5VaultPath(string requestedPath, byte[] fullFileName)
+    {
+        var parent = Path.GetDirectoryName(requestedPath) ?? string.Empty;
+        var hash = MD5.HashData(fullFileName);
         try
         {
             return Path.Combine(parent, Convert.ToHexStringLower(hash) + ".safe");
@@ -1289,6 +1321,7 @@ public sealed class FileEncryptor
     private static async Task ProduceZipToPipeAsync(
         string sourceFolderPath,
         PipeWriter writer,
+        ExcludedFolderMatcher excludedFolders,
         Action<int> bytesRead,
         CancellationToken cancellationToken)
     {
@@ -1299,6 +1332,7 @@ public sealed class FileEncryptor
             await StreamZipper.WriteZipStreamAsync(
                 sourceFolderPath,
                 pipeStream,
+                excludedFolders,
                 cancellationToken,
                 bytesRead).ConfigureAwait(false);
             await pipeStream.FlushAsync(cancellationToken).ConfigureAwait(false);
@@ -1360,7 +1394,9 @@ public sealed class FileEncryptor
         }
     }
 
-    private static IEnumerable<FileInfo> EnumerateRegularFiles(DirectoryInfo directory)
+    private static IEnumerable<FileInfo> EnumerateRegularFiles(
+        DirectoryInfo directory,
+        ExcludedFolderMatcher? excludedFolders = null)
     {
         foreach (var file in directory.GetFiles())
         {
@@ -1370,10 +1406,11 @@ public sealed class FileEncryptor
 
         foreach (var subDirectory in directory.GetDirectories())
         {
-            if (IsReparsePoint(subDirectory))
+            if (IsReparsePoint(subDirectory) ||
+                excludedFolders?.IsExcluded(subDirectory) == true)
                 continue;
 
-            foreach (var file in EnumerateRegularFiles(subDirectory))
+            foreach (var file in EnumerateRegularFiles(subDirectory, excludedFolders))
                 yield return file;
         }
     }

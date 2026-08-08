@@ -256,8 +256,8 @@ public sealed partial class ToolsViewModel : ViewModelBase
         catch (ArgumentException) { fileName = input; }
         if (fileName.EndsWith(".safe", StringComparison.OrdinalIgnoreCase))
             fileName = fileName[..^5];
-        if (fileName.Length == 64 && fileName.All(Uri.IsHexDigit))
-            throw new InvalidDataException("A SHA-256 filename cannot be reversed.");
+        if ((fileName.Length is 32 or 64) && fileName.All(Uri.IsHexDigit))
+            throw new InvalidDataException("A hashed filename cannot be reversed.");
         return fileName + ".safe";
     }
 

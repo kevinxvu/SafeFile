@@ -4,5 +4,6 @@ public enum OutputFileNameMode
 {
     None,
     Aes,
-    Sha256
+    Sha256,
+    Md5
 }

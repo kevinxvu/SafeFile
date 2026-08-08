@@ -17,11 +17,30 @@ public sealed class StreamZipper
         if (!Directory.Exists(folderPath))
             throw new DirectoryNotFoundException($"Folder not found: {folderPath}");
 
+        await WriteZipStreamAsync(
+            folderPath, destination, excludedFolders: null,
+            cancellationToken, bytesRead).ConfigureAwait(false);
+    }
+
+    internal static async Task WriteZipStreamAsync(
+        string folderPath,
+        Stream destination,
+        ExcludedFolderMatcher? excludedFolders,
+        CancellationToken cancellationToken = default,
+        Action<int>? bytesRead = null)
+    {
+        ArgumentNullException.ThrowIfNull(folderPath);
+        ArgumentNullException.ThrowIfNull(destination);
+
+        if (!Directory.Exists(folderPath))
+            throw new DirectoryNotFoundException($"Folder not found: {folderPath}");
+
         var folderInfo = new DirectoryInfo(folderPath);
         using (var zipArchive = new ZipArchive(destination, ZipArchiveMode.Create, leaveOpen: true))
         {
             await AddDirectoryToZipAsync(
-                zipArchive, folderInfo, "", bytesRead, cancellationToken).ConfigureAwait(false);
+                zipArchive, folderInfo, "", excludedFolders,
+                bytesRead, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -31,13 +50,24 @@ public sealed class StreamZipper
         if (!Directory.Exists(folderPath))
             throw new DirectoryNotFoundException($"Folder not found: {folderPath}");
 
-        return GetDirectoryInputSize(new DirectoryInfo(folderPath));
+        return GetDirectoryInputSize(new DirectoryInfo(folderPath), excludedFolders: null);
+    }
+
+    internal static long GetInputSize(
+        string folderPath,
+        ExcludedFolderMatcher excludedFolders)
+    {
+        ArgumentNullException.ThrowIfNull(folderPath);
+        if (!Directory.Exists(folderPath))
+            throw new DirectoryNotFoundException($"Folder not found: {folderPath}");
+        return GetDirectoryInputSize(new DirectoryInfo(folderPath), excludedFolders);
     }
 
     private static async Task AddDirectoryToZipAsync(
         ZipArchive zipArchive,
         DirectoryInfo directory,
         string entryPrefix,
+        ExcludedFolderMatcher? excludedFolders,
         Action<int>? bytesRead,
         CancellationToken cancellationToken)
     {
@@ -74,7 +104,7 @@ public sealed class StreamZipper
         foreach (var subDir in subDirectories)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (IsReparsePoint(subDir))
+            if (IsReparsePoint(subDir) || excludedFolders?.IsExcluded(subDir) == true)
                 continue;
 
             var newPrefix = string.IsNullOrEmpty(entryPrefix)
@@ -82,11 +112,14 @@ public sealed class StreamZipper
                 : $"{entryPrefix}/{subDir.Name}";
 
             await AddDirectoryToZipAsync(
-                zipArchive, subDir, newPrefix, bytesRead, cancellationToken).ConfigureAwait(false);
+                zipArchive, subDir, newPrefix, excludedFolders,
+                bytesRead, cancellationToken).ConfigureAwait(false);
         }
     }
 
-    private static long GetDirectoryInputSize(DirectoryInfo directory)
+    private static long GetDirectoryInputSize(
+        DirectoryInfo directory,
+        ExcludedFolderMatcher? excludedFolders)
     {
         long totalBytes = 0;
 
@@ -98,8 +131,12 @@ public sealed class StreamZipper
 
         foreach (var subDirectory in directory.GetDirectories())
         {
-            if (!IsReparsePoint(subDirectory))
-                totalBytes = checked(totalBytes + GetDirectoryInputSize(subDirectory));
+            if (!IsReparsePoint(subDirectory) &&
+                excludedFolders?.IsExcluded(subDirectory) != true)
+            {
+                totalBytes = checked(totalBytes +
+                    GetDirectoryInputSize(subDirectory, excludedFolders));
+            }
         }
 
         return totalBytes;

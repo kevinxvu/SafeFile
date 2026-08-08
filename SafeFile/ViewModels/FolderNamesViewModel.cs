@@ -1,5 +1,8 @@
 using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.IO;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
@@ -8,6 +11,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SafeFile.Core.Models;
 using SafeFile.Core.Services;
+using SafeFile.Models;
 using SafeFile.Services;
 using Serilog;
 
@@ -24,6 +28,9 @@ public sealed partial class FolderNamesViewModel : ViewModelBase
     private FolderNameSession? _session;
     private CancellationTokenSource? _operationCts;
 
+    public ObservableCollection<ExcludedFolderItem> ExcludedFolders { get; } = [];
+    public bool HasExcludedFolders => ExcludedFolders.Count > 0;
+
     [ObservableProperty] private string _rootPath = "";
     [ObservableProperty] private bool _hasFolder;
     [ObservableProperty] private bool _hasManifest;
@@ -33,7 +40,7 @@ public sealed partial class FolderNamesViewModel : ViewModelBase
     [ObservableProperty] private string _confirmPassword = "";
     [ObservableProperty] private bool _showPassword;
     [ObservableProperty] private bool _showConfirmPassword;
-    [ObservableProperty] private FolderNameProtectionMode _selectedMode = FolderNameProtectionMode.Aes;
+    [ObservableProperty] private FolderNameProtectionMode _selectedMode = FolderNameProtectionMode.Md5;
     [ObservableProperty] private int _totalFolders;
     [ObservableProperty] private int _protectedFolders;
     [ObservableProperty] private int _clearFolders;
@@ -61,13 +68,17 @@ public sealed partial class FolderNamesViewModel : ViewModelBase
     public bool IsModeLocked => HasManifest;
     public bool IsAesMode { get => SelectedMode == FolderNameProtectionMode.Aes; set { if (value && !IsModeLocked) SelectedMode = FolderNameProtectionMode.Aes; } }
     public bool IsShaMode { get => SelectedMode == FolderNameProtectionMode.Sha256; set { if (value && !IsModeLocked) SelectedMode = FolderNameProtectionMode.Sha256; } }
+    public bool IsMd5Mode { get => SelectedMode == FolderNameProtectionMode.Md5; set { if (value && !IsModeLocked) SelectedMode = FolderNameProtectionMode.Md5; } }
     public bool CanEncrypt => HasFolder && !IsBusy && ConflictingFolders == 0 && (!HasManifest || IsManifestVerified);
-    public bool CanDecrypt => HasFolder && HasManifest && IsManifestVerified && !IsBusy && ConflictingFolders == 0;
+    public bool CanDecrypt => HasFolder && HasManifest && IsManifestVerified && !IsBusy &&
+                              ConflictingFolders == 0 && !HasExcludedFolders;
     public bool CanCheckManifest => HasManifest && HasFolder && !IsBusy && !string.IsNullOrEmpty(Password);
 
     public IAsyncRelayCommand BrowseCommand { get; }
     public IAsyncRelayCommand RefreshCommand { get; }
     public IAsyncRelayCommand CheckManifestCommand { get; }
+    public IAsyncRelayCommand BrowseExcludedFoldersCommand { get; }
+    public IRelayCommand ClearExcludedFoldersCommand { get; }
     public IAsyncRelayCommand EncryptCommand { get; }
     public IAsyncRelayCommand DecryptCommand { get; }
     public IRelayCommand ResetCommand { get; }
@@ -84,6 +95,8 @@ public sealed partial class FolderNamesViewModel : ViewModelBase
         BrowseCommand = new AsyncRelayCommand(BrowseAsync);
         RefreshCommand = new AsyncRelayCommand(RefreshAsync);
         CheckManifestCommand = new AsyncRelayCommand(CheckManifestAsync);
+        BrowseExcludedFoldersCommand = new AsyncRelayCommand(BrowseExcludedFoldersAsync);
+        ClearExcludedFoldersCommand = new RelayCommand(ClearExcludedFolders);
         EncryptCommand = new AsyncRelayCommand(() => RunAsync(true));
         DecryptCommand = new AsyncRelayCommand(() => RunAsync(false));
         ResetCommand = new RelayCommand(Reset);
@@ -97,7 +110,7 @@ public sealed partial class FolderNamesViewModel : ViewModelBase
     partial void OnRootPathChanged(string value) => NotifyState();
     partial void OnShowPasswordChanged(bool value) => OnPropertyChanged(nameof(PasswordChar));
     partial void OnShowConfirmPasswordChanged(bool value) => OnPropertyChanged(nameof(ConfirmPasswordChar));
-    partial void OnSelectedModeChanged(FolderNameProtectionMode value) { OnPropertyChanged(nameof(IsAesMode)); OnPropertyChanged(nameof(IsShaMode)); }
+    partial void OnSelectedModeChanged(FolderNameProtectionMode value) { OnPropertyChanged(nameof(IsAesMode)); OnPropertyChanged(nameof(IsShaMode)); OnPropertyChanged(nameof(IsMd5Mode)); }
     partial void OnPasswordChanged(string value)
     {
         if (HasManifest && IsManifestVerified) { IsManifestVerified = false; _session = null; ManifestStatus = L("FolderManifestDetected"); }
@@ -116,9 +129,73 @@ public sealed partial class FolderNamesViewModel : ViewModelBase
         if (path is not null) await SelectFolderAsync(path);
     }
 
+    private async Task BrowseExcludedFoldersAsync()
+    {
+        if (!HasFolder || !Directory.Exists(RootPath))
+            return;
+        var paths = await _picker.PickFoldersAsync(L("SelectExcludedFolders"));
+        if (paths.Count == 0)
+            return;
+        try
+        {
+            var merged = ExcludedFolderPathValidator.MergeAndValidate(
+                paths, [RootPath], ExcludedFolders.Select(item => item.FullPath));
+            ReplaceExcludedFolders(merged);
+            await RefreshAfterExcludedChangeAsync();
+        }
+        catch (Exception ex)
+        {
+            var message = ex is ExcludedFolderValidationException validation
+                ? L(validation.ResourceKey)
+                : ex.Message;
+            await _errors.ShowErrorAsync(message, L("CannotAddExcludedFolders"));
+        }
+    }
+
+    private void RemoveExcludedFolder(ExcludedFolderItem item)
+    {
+        if (IsBusy || !ExcludedFolders.Remove(item))
+            return;
+        NotifyExcludedState();
+        _ = RefreshAfterExcludedChangeAsync();
+    }
+
+    private void ClearExcludedFolders()
+    {
+        if (IsBusy || ExcludedFolders.Count == 0)
+            return;
+        ExcludedFolders.Clear();
+        NotifyExcludedState();
+        if (HasFolder)
+            _ = RefreshAfterExcludedChangeAsync();
+    }
+
+    private void ReplaceExcludedFolders(IEnumerable<string> paths)
+    {
+        ExcludedFolders.Clear();
+        foreach (var path in paths)
+            ExcludedFolders.Add(new ExcludedFolderItem(path, RemoveExcludedFolder));
+        NotifyExcludedState();
+    }
+
+    private void NotifyExcludedState()
+    {
+        OnPropertyChanged(nameof(HasExcludedFolders));
+        NotifyState();
+    }
+
+    private async Task RefreshAfterExcludedChangeAsync()
+    {
+        IsManifestVerified = false;
+        _session = null;
+        await RefreshAsync();
+    }
+
     public async Task SelectFolderAsync(string path)
     {
         if (!Directory.Exists(path) || IsBusy) return;
+        ExcludedFolders.Clear();
+        NotifyExcludedState();
         RootPath = Path.GetFullPath(path);
         Password = ConfirmPassword = "";
         _session = null;
@@ -130,8 +207,11 @@ public sealed partial class FolderNamesViewModel : ViewModelBase
         if (!Directory.Exists(RootPath)) return;
         try
         {
-            var scan = await _service.ScanAsync(RootPath);
+            var scan = await _service.ScanAsync(
+                RootPath,
+                excludedFolderPaths: ExcludedFolders.Select(item => item.FullPath).ToArray());
             HasFolder = true; HasManifest = scan.HasManifest; TotalFolders = scan.PhysicalFolderCount;
+            if (!HasManifest) SelectedMode = FolderNameProtectionMode.Md5;
             ProtectedFolders = ClearFolders = NewFolders = ConflictingFolders = 0;
             IsManifestVerified = false; _session = null;
             ManifestStatus = HasManifest ? L("FolderManifestDetected") : L("FolderManifestNone");
@@ -147,7 +227,10 @@ public sealed partial class FolderNamesViewModel : ViewModelBase
         try
         {
             bytes = Encoding.UTF8.GetBytes(Password);
-            _session = await _service.VerifyManifestAsync(RootPath, bytes);
+            _session = await _service.VerifyManifestAsync(
+                RootPath,
+                bytes,
+                excludedFolderPaths: ExcludedFolders.Select(item => item.FullPath).ToArray());
             IsManifestVerified = true; SelectedMode = _session.Mode;
             ApplySession(_session); ManifestStatus = L("FolderManifestVerified");
         }
@@ -157,6 +240,7 @@ public sealed partial class FolderNamesViewModel : ViewModelBase
 
     private async Task RunAsync(bool encrypt)
     {
+        if (!encrypt && HasExcludedFolders) { await _errors.ShowErrorAsync(L("FolderNamesClearExclusionsBeforeDecrypt")); return; }
         if (string.IsNullOrEmpty(Password)) { await _errors.ShowErrorAsync(L("PasswordRequired")); return; }
         if (encrypt && !HasManifest && Password.Length < _settings.MinPasswordLength) { await _errors.ShowErrorAsync(F("PasswordTooShort", _settings.MinPasswordLength)); return; }
         if (encrypt && IsPasswordConfirmationRequired && Password != ConfirmPassword) { await _errors.ShowErrorAsync(L("PasswordsDoNotMatch")); return; }
@@ -168,7 +252,11 @@ public sealed partial class FolderNamesViewModel : ViewModelBase
             StatusAction = L(encrypt ? "FolderNamesEncrypting" : "FolderNamesDecrypting");
             _operationCts = new CancellationTokenSource();
             bytes = Encoding.UTF8.GetBytes(Password);
-            var session = _session ?? await _service.CreateSessionAsync(RootPath, SelectedMode, _operationCts.Token);
+            var session = _session ?? await _service.CreateSessionAsync(
+                RootPath,
+                SelectedMode,
+                _operationCts.Token,
+                ExcludedFolders.Select(item => item.FullPath).ToArray());
             ApplySession(session);
             Logger.Information("Folder-name {Operation} started using {Mode} for {FolderCount} folders",
                 encrypt ? "encryption" : "decryption", session.Mode,
@@ -192,13 +280,40 @@ public sealed partial class FolderNamesViewModel : ViewModelBase
     {
         var password = Password;
         await RefreshAsync();
-        if (HasManifest && !string.IsNullOrEmpty(password)) { Password = password; await CheckManifestAsync(); }
+        if (!HasManifest || string.IsNullOrEmpty(password))
+            return;
+
+        byte[]? bytes = null;
+        try
+        {
+            bytes = Encoding.UTF8.GetBytes(password);
+            _session = await _service.VerifyManifestAsync(
+                RootPath,
+                bytes,
+                excludedFolderPaths: ExcludedFolders.Select(item => item.FullPath).ToArray());
+            IsManifestVerified = true;
+            SelectedMode = _session.Mode;
+            ApplySession(_session);
+            ManifestStatus = L("FolderManifestVerified");
+        }
+        catch (Exception ex)
+        {
+            IsManifestVerified = false;
+            _session = null;
+            Logger.Error(ex, "Failed to refresh folder-name manifest after operation");
+            await _errors.ShowErrorAsync(ex.Message, L("FolderManifestInvalid"));
+        }
+        finally
+        {
+            if (bytes is not null)
+                CryptographicOperations.ZeroMemory(bytes);
+        }
     }
 
     private void ApplySession(FolderNameSession s)
     { TotalFolders = s.TotalCount; ProtectedFolders = s.ProtectedCount; ClearFolders = s.ClearCount; NewFolders = s.NewCount; ConflictingFolders = s.ConflictCount; }
 
-    private void Reset() { if (IsBusy) return; RootPath = Password = ConfirmPassword = ""; HasFolder = HasManifest = IsManifestVerified = false; _session = null; TotalFolders = ProtectedFolders = ClearFolders = NewFolders = ConflictingFolders = 0; ManifestStatus = L("FolderManifestNone"); StatusMessage = ""; }
+    private void Reset() { if (IsBusy) return; RootPath = Password = ConfirmPassword = ""; HasFolder = HasManifest = IsManifestVerified = false; SelectedMode = FolderNameProtectionMode.Md5; ExcludedFolders.Clear(); NotifyExcludedState(); _session = null; TotalFolders = ProtectedFolders = ClearFolders = NewFolders = ConflictingFolders = 0; ManifestStatus = L("FolderManifestNone"); StatusMessage = ""; }
     private void OpenFolder()
     {
         if (!Directory.Exists(RootPath)) return;

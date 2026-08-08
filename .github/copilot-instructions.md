@@ -16,7 +16,7 @@
   - Nonce: 4-byte random vault prefix + 8-byte little-endian chunk index.
   - Filename uses index `0`; data starts at index `1`. Never reuse a nonce.
   - AAD contains chunk index and `IsLastChunk`.
-- Vault header v1 is 47 bytes. In its flags byte, bit 0 means the output filename is protected and bit 1 selects SHA-256; values are `0` for none, `1` for AES, and `3` for SHA-256. Bit 1 without bit 0 and unknown high bits are invalid.
+- Vault header v1 is 47 bytes. In its flags byte, bit 0 means the output filename is protected, bit 1 selects SHA-256, and bit 2 selects MD5; values are `0` for none, `1` for AES, `3` for SHA-256, and `5` for MD5. Selector bits without bit 0, combined selectors, and unknown high bits are invalid.
 - Chunk size must be 1–16 MiB.
 - Bound total in-flight chunks across channels/reordering. Require estimated resident chunk buffers, including active consumers, to use at most half of GC available memory.
 - Enforce encryption password length from `AppSettings.MinPasswordLength`; decryption remains compatible with older vaults.
@@ -35,21 +35,28 @@
 ## I/O modes
 
 - `EncryptFileAsync` / `DecryptFileAsync`: one file, `VaultMode.File`; for standalone output-name encryption, shorten the plaintext stem on UTF-8 boundaries when necessary, preserve its extension, then encrypt and Base64URL-encode it. Keep the complete authenticated original name inside the vault. These APIs return the actual output path.
-- `EncryptFolderZipAsync`: `ZipArchive → bounded Pipe → crypto pipeline → one .safe`; AES uses the reversible filename ciphertext and SHA-256 uses the direct unsalted UTF-8 filename hash. Encrypt returns the actual vault path.
+- `EncryptFolderZipAsync`: `ZipArchive → bounded Pipe → crypto pipeline → one .safe`; AES uses the reversible filename ciphertext while SHA-256 and MD5 use direct unsalted UTF-8 filename hashes. Encrypt returns the actual vault path.
+- ZIP and PerFile folder encryption accept operation-scoped excluded descendant
+  folders. Skip each excluded folder and its complete subtree, base progress and
+  source statistics only on included files, and reject the source root, outside
+  paths, and reparse points. Keep the optional API parameters at the end.
+- Exclusion lists are not settings. Normalize absolute paths with the platform
+  path comparer, deduplicate them, collapse child selections beneath a selected
+  parent, and clear them on Reset or when the primary source changes.
 - `DecryptFolderZipAsync`: decrypt to a temporary ZIP and extract directly to
   the requested destination while preserving partial output on failure.
 - ZIP decryption progress uses two monotonic phases: decrypting the vault to
   the temporary ZIP reports 0–60%, and extracting the ZIP reports 60–100% by
   uncompressed bytes written. Throttle callbacks to 0.1% increments and report
   100% only after extraction completes.
-- `EncryptFolderPerFileAsync` / `DecryptFolderPerFileAsync`: one `VaultMode.PerFile` vault per regular file while preserving relative paths. AES or SHA-256 protects each visible vault name; decrypt reads the header and restores the authenticated AES-encrypted name stored inside each vault.
+- `EncryptFolderPerFileAsync` / `DecryptFolderPerFileAsync`: one `VaultMode.PerFile` vault per regular file while preserving relative paths. AES, SHA-256, or MD5 protects each visible vault name; decrypt reads the header and restores the authenticated AES-encrypted name stored inside each vault.
 - A failed or cancelled decrypt must not delete files or directories from the
   configured output folder. Preserve completed outputs and any partial output
   produced before the failure so the UI can report each vault independently.
 - `PerFileProgress` reports the source path, per-file percentage, and a
   structured `PerFileResult`: `InProgress`, `Succeeded`,
   `DestinationExists`, or `Failed`.
-- `DecryptOutputFileNameAsync` decrypts only standalone AES Base64URL output names with the password and runs Argon2 off the caller thread; SHA-256 names require vault metadata because they are not reversible.
+- `DecryptOutputFileNameAsync` decrypts only standalone AES Base64URL output names with the password and runs Argon2 off the caller thread; SHA-256 and MD5 names require vault metadata because they are not reversible.
 - `ReadVaultMetadataAsync` validates the password and decrypts only the
   authenticated filename chunk, not the file contents. It returns the complete
   original filename, vault filesystem metadata, format/mode, output-filename mode,
@@ -60,7 +67,7 @@
   and restored encrypted filenames. Only use create semantics after explicit
   overwrite confirmation.
 - Derive the vault key and final encrypted output path before opening the destination; never create a clear-name staging vault or truncate the requested placeholder path when filename encryption is enabled.
-- For `None` and `Sha256`, check a known existing output before Argon2id. In
+- For `None`, `Sha256`, and `Md5`, check a known existing output before Argon2id. In
   PerFile mode treat expected collisions as normal control flow: report
   `DestinationExists` and continue without throwing per file. Retain
   `FileMode.CreateNew` handling for race conditions. AES keeps its current flow
@@ -75,7 +82,7 @@
 - Construct one `FileEncryptor` per active UI operation; shared instances do not provide independent concurrent progress state.
 - Convert passwords to UTF-8 bytes, pass the byte array to Core, and zero the caller-owned array in UI `finally` blocks.
 - Pass `AppSettings.GetChunkSizeBytes()` and `GetKdfParameters()` to encrypt operations.
-- Filename protection is not stored in `AppSettings`. Read `OutputFileNameMode` from the encryption form and pass it explicitly to the relevant Core method; it defaults to `None`, while the enabled UI defaults to `Aes`.
+- Filename protection is not stored in `AppSettings`. Read `OutputFileNameMode` from the encryption form and pass it explicitly to the relevant Core method; it defaults to `None`, while the enabled UI defaults to `Md5`.
 - Build encrypted destinations under `AppSettings.DefaultOutputPath` and
   decrypted destinations under `AppSettings.DefaultDecryptOutputPath`, creating
   the configured root when necessary. Keep these two output roots visually and
@@ -102,6 +109,39 @@
   `AppSettings.MinPasswordLength`; Tools text and standalone-filename decryption
   require only a non-empty password for compatibility.
 
+## App-side folder-name protection
+
+- Implement folder-name protection in
+  `SafeFile/Services/FolderNameProtectionService`, outside production Core. It
+  may reuse Core's `TextCryptoService` to encrypt its manifest.
+- Never rename the selected root. Change only descendant directory names;
+  regular filenames and file contents remain untouched.
+- Store the SFTX-encrypted manifest as `.safefile-names` inside the selected
+  root. Do not recognize `.safefile-folders.map`. While the manifest exists,
+  show a prominent warning not to delete, rename, edit, or move it.
+- Manifest format is `SafeFileFolderMap`, version 1. Its `/`-separated
+  `originalPath` and `protectedPath` values start with the selected root
+  basename and are never absolute. Never log plaintext manifests or mappings.
+- AES directory names are random unpadded Base64URL tokens. SHA-256 and MD5 names are
+  lowercase hashes of full logical original paths. Tokens have no `d_` prefix,
+  and existing mappings always retain their token.
+- Flush and atomically replace the encrypted manifest before renaming folders
+  deepest first. Encrypt discovers new clear folders below both clear and
+  protected parents. Decrypt restores mapped folders and leaves new unmapped
+  clear folders unchanged.
+- Cancellation/crash does not roll back. The manifest preserves resumable
+  desired state; rerunning either direction converges and completed reruns are
+  idempotent.
+- Original-only mappings are pending Encrypt, protected-only mappings are
+  pending Decrypt, both paths are a conflict, and neither path is stale. Never
+  guess a manually renamed token. Skip symlinks, junctions, and reparse points.
+- Existing manifests lock password and AES/SHA-256/MD5 mode. Password edits invalidate
+  verification without running Argon2; use explicit **Check manifest**. Zero
+  UI-owned password bytes in `finally`.
+- Route operation, mode, counts, cancellation, cleanup, and failure logs through
+  the Serilog-backed `Microsoft.Extensions.Logging` pipeline without sensitive
+  manifest or password data.
+
 ## Current Avalonia UI behavior
 
 - The main window opens centered at 1280×720.
@@ -115,8 +155,9 @@
   tooltips list every selected item on numbered lines.
 - Do not add algorithm, chunk-size, or worker-count controls back to the encryption form. Those operational values come from Settings.
 - Keep filename protection on the encryption form only; it is intentionally
-  absent from Settings. When enabled, show AES and SHA-256 choices with AES as
-  the default and put their explanations in tooltips.
+  absent from Settings. When enabled, show MD5, SHA-256, and AES in that order with
+  MD5 as the default and put their explanations in tooltips. Describe MD5 as shorter name
+  obfuscation, not cryptographic security.
 - The encryption form includes an overwrite checkbox for file, ZIP, and
   PerFile output. PerFile may reuse an existing destination directory.
 - `ConfirmPasswordToggle` controls whether the confirmation label/input are visible and whether matching-password validation runs.
@@ -126,12 +167,20 @@
 - Show the Folder processing controls only when the selected encryption source
   is a folder. Collapse empty status-message rows so the output/action card
   sizes itself to its visible content.
+- Show the multi-folder exclusion picker only for folder encryption. Lock its
+  add/remove/clear controls while encryption is active, and calculate the source
+  size and file count after exclusions are applied.
 - The decryption view parses the unauthenticated header after file selection,
   but only verifies the password and reveals authenticated metadata when the
   user presses **Check password**.
 - The decryption view accepts one file, multiple `.safe` files, a folder, and
   drag-and-drop. Keep the picker/drop zone independent from the queue/detail
   region so long metadata does not change the source-selection layout.
+- Decryption exclusions filter physical folders while scanning vault queues;
+  they do not filter entries inside ZIP vaults. Removing an exclusion rescans
+  the selected folder sources and restores eligible queue items. Adding an
+  exclusion immediately removes matching queued vaults, including directly
+  selected vaults below that branch. Clear exclusions with Clear all and Reset.
 - Show each queued vault in a table with vault basename, authenticated original
   filename, size, per-item progress, and success/failure state. In the details
   panel, visually truncate the vault and authenticated original filename with
@@ -151,6 +200,8 @@
   destination folder must remain new. Do not re-add the removed automatic
   collision-renaming option.
 - All `ProgressBar` controls use the application-level primary blue `#2563EB`, matching the primary encryption button.
+- Floor incomplete percentage labels: 99.52% displays as 99%. Display 100% only
+  after the operation reports the exact completed value `1.0`.
 - PerFile encryption's overall progress is
   `(completed file count + current file progress) / total file count`; do not
   display the current file percentage as the overall percentage.
@@ -164,7 +215,8 @@
   the self-contained Base64URL text format. Decrypt auto-detects text through
   the decoded `SFTX` magic; otherwise it treats the input as a standalone AES
   encrypted filename. The `.safe` suffix is optional in this form. A 64-hex
-  SHA-256 filename is not reversible, and Tools does not offer vault selection.
+  SHA-256 filename or 32-hex MD5 filename is not reversible, and Tools does not
+  offer vault selection.
 - Encrypt text and decrypted plaintext can be copied or saved. Their suggested
   filename is `lowercase_hex(SHA256(UTF8(original content))) + ".txt"`.
   Decrypted standalone filenames can only be copied. SHA-256 Hash supports HEX
@@ -191,13 +243,28 @@
   `LocalizationService` for runtime strings. Both resource files must have
   identical keys. Language changes refresh the live resource bindings; do not
   recreate the Settings page.
-- Main navigation includes Encrypt, Decrypt, Tools, Logs, Settings, and About. About
+- Main navigation includes Encrypt, Decrypt, Folder Names, Tools, Logs,
+  Settings, and About. Cache the Folder Names ViewModel. Its manifest warning
+  belongs below the action card at the bottom of its scrollable content. About
   shows product/security/privacy information, runtime details, MIT licensing,
   copyable system information, and access to the log folder.
 - Serilog is the only application logging pipeline. Write structured events to
   the daily rolling file sink and `UiLogSink`; technical log messages remain in
   English. The Logs page can filter/search, clear its in-memory display, export,
   auto-scroll, and open the log directory.
+- Folder Names follows the Encrypt/Decrypt card layout. It always shows Encrypt
+  and Decrypt, provides Open folder, uses icons on all action buttons, and locks
+  conflicting controls while running. Decrypt requires a verified manifest.
+- Folder Names encryption skips excluded physical branches without creating new
+  mappings and preserves every existing mapping below an excluded branch.
+  Disable Folder Names decryption until all exclusions are cleared.
+- After a Folder Names operation, refresh the scan and directly re-verify any
+  remaining manifest with the current password. Do not route this automatic
+  refresh through the guarded **Check manifest** command. Restore the session,
+  mode, counts, and `IsManifestVerified` so Encrypt and Decrypt are enabled
+  immediately when their normal conditions are satisfied.
+  Its status bar shows the current folder above progress, full path in a
+  tooltip, and Cancel aligned with the progress bar.
 
 ## Pipeline and safety
 
@@ -227,6 +294,11 @@
   enabled, and never delete a collision after `FileMode.CreateNew` fails.
 - Retain coverage for `ReadVaultMetadataAsync`, including wrong-password
   rejection and full long-filename recovery.
+- Retain app-side folder-name tests for AES/SHA-256/MD5 round trips, incremental folders
+  below protected parents, excluded-branch mapping preservation, root/file
+  preservation, manifest lifecycle, post-operation action enablement, and
+  resumable cancellation. Retain queue tests proving that decryption exclusions
+  remove matching vaults and Clear all restores them.
 - Run:
 
 ```powershell

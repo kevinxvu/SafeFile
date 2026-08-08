@@ -95,6 +95,41 @@
         </StackPanel>
       </Border>
 
+      <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="16"
+              IsVisible="{Binding IsFolderSource}" IsEnabled="{Binding !IsEncrypting}">
+        <StackPanel Spacing="10">
+          <Grid ColumnDefinitions="*,Auto,Auto">
+            <StackPanel Spacing="2">
+              <TextBlock Text="{loc:Tr ExcludedFolders}" FontSize="15" FontWeight="SemiBold"/>
+              <TextBlock Text="{loc:Tr ExcludedFoldersHint}" FontSize="11"
+                         Foreground="{DynamicResource SecondaryTextBrush}"/>
+            </StackPanel>
+            <Button Grid.Column="1" Margin="8,0" Theme="{StaticResource OutlinedButtonTheme}"
+                    Command="{Binding ClearExcludedFoldersCommand}"
+                    IsVisible="{Binding HasExcludedFolders}" Content="{loc:Tr ClearAll}"/>
+            <Button Grid.Column="2" Theme="{StaticResource OutlinedButtonTheme}"
+                    Command="{Binding BrowseExcludedFoldersCommand}" Content="{loc:Tr AddFolders}"/>
+          </Grid>
+          <ItemsControl ItemsSource="{Binding ExcludedFolders}" IsVisible="{Binding HasExcludedFolders}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Border Background="{DynamicResource SubtleSurfaceBrush}" CornerRadius="5" Padding="10,6" Margin="0,2">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel>
+                      <TextBlock Text="{Binding DisplayName}" FontWeight="Medium"/>
+                      <TextBlock Text="{Binding FullPath}" FontSize="10" TextTrimming="CharacterEllipsis"
+                                 ToolTip.Tip="{Binding FullPath}" Foreground="{DynamicResource SecondaryTextBrush}"/>
+                    </StackPanel>
+                    <Button Grid.Column="1" Command="{Binding RemoveCommand}"
+                            Theme="{StaticResource OutlinedButtonTheme}" Content="×"/>
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </Border>
+
       <Grid ColumnDefinitions="*,16,*" IsEnabled="{Binding !IsEncrypting}">
         <Border Grid.Column="0" Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="16">
           <StackPanel Spacing="8">
@@ -142,14 +177,18 @@
                          FontSize="12"
                          FontWeight="Medium"/>
               <StackPanel Orientation="Horizontal" Spacing="16">
-                <RadioButton Content="{loc:Tr OutputFileNameAes}"
-                             IsChecked="{Binding IsAesOutputFileNameMode}"
+                <RadioButton Content="{loc:Tr OutputFileNameMd5}"
+                             IsChecked="{Binding IsMd5OutputFileNameMode}"
                              GroupName="OutputFileNameMode"
-                             ToolTip.Tip="{loc:Tr AesOutputFileNameHint}"/>
+                             ToolTip.Tip="{loc:Tr Md5OutputFileNameHint}"/>
                 <RadioButton Content="{loc:Tr OutputFileNameSha256}"
                              IsChecked="{Binding IsSha256OutputFileNameMode}"
                              GroupName="OutputFileNameMode"
                              ToolTip.Tip="{loc:Tr Sha256OutputFileNameHint}"/>
+                <RadioButton Content="{loc:Tr OutputFileNameAes}"
+                             IsChecked="{Binding IsAesOutputFileNameMode}"
+                             GroupName="OutputFileNameMode"
+                             ToolTip.Tip="{loc:Tr AesOutputFileNameHint}"/>
               </StackPanel>
             </StackPanel>
             <CheckBox Content="{loc:Tr OverwriteSafe}"

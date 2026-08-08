@@ -13,6 +13,7 @@ public sealed class FolderNameProtectionServiceTests : IDisposable
     [Theory]
     [InlineData(FolderNameProtectionMode.Aes)]
     [InlineData(FolderNameProtectionMode.Sha256)]
+    [InlineData(FolderNameProtectionMode.Md5)]
     public async Task EncryptDecrypt_RoundTrip_KeepsRootAndFiles(FolderNameProtectionMode mode)
     {
         Directory.CreateDirectory(Path.Combine(_root, "2025", "Trips"));
@@ -52,6 +53,53 @@ public sealed class FolderNameProtectionServiceTests : IDisposable
         await service.DecryptAsync(await service.VerifyManifestAsync(_root, _password), _password);
 
         Assert.True(Directory.Exists(Path.Combine(_root, "2025", "NewAlbum")));
+    }
+
+    [Fact]
+    public async Task Encrypt_ExcludedBranch_RemainsUnchangedAndUnmapped()
+    {
+        var excluded = Directory.CreateDirectory(
+            Path.Combine(_root, "Excluded", "Nested")).Parent!.FullName;
+        Directory.CreateDirectory(Path.Combine(_root, "Included"));
+        var service = CreateService();
+
+        var session = await service.CreateSessionAsync(
+            _root,
+            FolderNameProtectionMode.Md5,
+            excludedFolderPaths: [excluded]);
+        Assert.Equal(1, session.TotalCount);
+        await service.EncryptAsync(session, _password);
+
+        Assert.True(Directory.Exists(excluded));
+        Assert.True(Directory.Exists(Path.Combine(excluded, "Nested")));
+        Assert.False(Directory.Exists(Path.Combine(_root, "Included")));
+
+        var filtered = await service.VerifyManifestAsync(
+            _root, _password, excludedFolderPaths: [excluded]);
+        Assert.Equal(0, filtered.ClearCount);
+        await service.DecryptAsync(
+            await service.VerifyManifestAsync(_root, _password), _password);
+        Assert.True(Directory.Exists(Path.Combine(_root, "Included")));
+        Assert.True(Directory.Exists(Path.Combine(_root, "Excluded", "Nested")));
+    }
+
+    [Fact]
+    public async Task IncrementalEncrypt_ExcludedProtectedBranch_PreservesManifestMappings()
+    {
+        Directory.CreateDirectory(Path.Combine(_root, "Mapped", "Child"));
+        var service = CreateService();
+        await service.EncryptAsync(
+            await service.CreateSessionAsync(_root, FolderNameProtectionMode.Md5), _password);
+        var protectedRoot = Directory.EnumerateDirectories(_root).Single();
+
+        var filtered = await service.VerifyManifestAsync(
+            _root, _password, excludedFolderPaths: [protectedRoot]);
+        await service.EncryptAsync(filtered, _password);
+
+        var complete = await service.VerifyManifestAsync(_root, _password);
+        Assert.Equal(2, complete.ProtectedCount);
+        await service.DecryptAsync(complete, _password);
+        Assert.True(Directory.Exists(Path.Combine(_root, "Mapped", "Child")));
     }
 
     private static FolderNameProtectionService CreateService() => new(
