@@ -55,12 +55,16 @@ namespace SafeFile
                 var folderNameProtectionService = new FolderNameProtectionService(
                     new TextCryptoService(),
                     Program.LoggerFactory.CreateLogger<FolderNameProtectionService>());
-                desktop.MainWindow = new MainWindow
+                var taskbarProgress = new WindowsTaskbarProgressService();
+                var mainWindow = new MainWindow
                 {
                     DataContext = new MainWindowViewModel(
                         filePicker, settingsService, errorDialog, logService,
-                        clipboard, fileEncryptorLogger, folderNameProtectionService),
+                        clipboard, fileEncryptorLogger,
+                        folderNameProtectionService, taskbarProgress),
                 };
+                taskbarProgress.Attach(mainWindow);
+                desktop.MainWindow = mainWindow;
             }
 
             base.OnFrameworkInitializationCompleted();

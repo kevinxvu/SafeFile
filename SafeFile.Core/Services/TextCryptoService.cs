@@ -26,12 +26,58 @@ public sealed class TextCryptoService
         ValidateCharacterCount(plaintext);
 
         byte[]? plaintextBytes = null;
+        try
+        {
+            plaintextBytes = StrictUtf8.GetBytes(plaintext);
+            return await EncryptBytesCoreAsync(
+                plaintextBytes,
+                passwordBytes,
+                cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (plaintextBytes is not null)
+                CryptographicOperations.ZeroMemory(plaintextBytes);
+        }
+    }
+
+    public async Task<string> EncryptBytesAsync(
+        ReadOnlyMemory<byte> plaintextBytes,
+        byte[] passwordBytes,
+        int maximumPlaintextBytes,
+        CancellationToken cancellationToken = default)
+    {
+        ValidatePassword(passwordBytes);
+        ValidateMaximumPlaintextBytes(maximumPlaintextBytes);
+        if (plaintextBytes.Length > maximumPlaintextBytes)
+            throw new ArgumentException(
+                $"Content cannot exceed {maximumPlaintextBytes:N0} UTF-8 bytes.",
+                nameof(plaintextBytes));
+
+        var plaintextCopy = plaintextBytes.ToArray();
+        try
+        {
+            return await EncryptBytesCoreAsync(
+                plaintextCopy,
+                passwordBytes,
+                cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(plaintextCopy);
+        }
+    }
+
+    private static async Task<string> EncryptBytesCoreAsync(
+        byte[] plaintextBytes,
+        byte[] passwordBytes,
+        CancellationToken cancellationToken)
+    {
         byte[]? salt = null;
         byte[]? noncePrefix = null;
         byte[]? masterKey = null;
         try
         {
-            plaintextBytes = StrictUtf8.GetBytes(plaintext);
             salt = Argon2Kdf.GenerateSalt();
             noncePrefix = RandomNumberGenerator.GetBytes(AesGcmEngine.NoncePrefixSize);
             masterKey = await KdfDerivation.DeriveKeyAsync(
@@ -60,8 +106,6 @@ public sealed class TextCryptoService
         }
         finally
         {
-            if (plaintextBytes is not null)
-                CryptographicOperations.ZeroMemory(plaintextBytes);
             if (masterKey is not null)
                 CryptographicOperations.ZeroMemory(masterKey);
         }
@@ -74,59 +118,93 @@ public sealed class TextCryptoService
     {
         ArgumentNullException.ThrowIfNull(encryptedText);
         ValidatePassword(passwordBytes);
-        var encodedPayload = encryptedText.StartsWith(Prefix, StringComparison.Ordinal)
-            ? encryptedText[Prefix.Length..]
-            : encryptedText;
-
-        var maximumPayloadBytes = checked(MaximumTextCharacters * 4L + FixedPayloadOverhead);
-        var maximumEncodedCharacters = checked((maximumPayloadBytes + 2) / 3 * 4);
-        if (encodedPayload.Length > maximumEncodedCharacters)
-            throw new InvalidDataException("Encrypted text exceeds the maximum safe length.");
-
-        var payload = FromBase64Url(encodedPayload);
-        if (payload.Length < FixedPayloadOverhead ||
-            !payload.AsSpan(0, Magic.Length).SequenceEqual(Magic) ||
-            payload[4] != 1)
-        {
-            throw new InvalidDataException("Encrypted text has an invalid format or unsupported version.");
-        }
-
-        var ciphertextLength = BinaryPrimitives.ReadInt64LittleEndian(payload.AsSpan(25, 8));
-        var maximumUtf8Bytes = checked(MaximumTextCharacters * 4L);
-        if (ciphertextLength < 0 || ciphertextLength > maximumUtf8Bytes ||
-            ciphertextLength != payload.LongLength - FixedPayloadOverhead)
-        {
-            throw new InvalidDataException("Encrypted text contains an invalid or unsafe content length.");
-        }
-
-        var salt = payload.AsSpan(5, Argon2Kdf.SaltSize).ToArray();
-        var noncePrefix = payload.AsSpan(21, AesGcmEngine.NoncePrefixSize).ToArray();
-        var ciphertext = payload.AsSpan(HeaderSize, (int)ciphertextLength).ToArray();
-        var tag = payload.AsSpan(HeaderSize + (int)ciphertextLength, AesGcmEngine.TagSize).ToArray();
-        byte[]? masterKey = null;
         byte[]? plaintextBytes = null;
         try
         {
-            masterKey = await KdfDerivation.DeriveKeyAsync(
+            plaintextBytes = await DecryptBytesAsync(
+                encryptedText,
                 passwordBytes,
-                salt,
-                Argon2Kdf.DefaultParameters,
+                checked(MaximumTextCharacters * 4),
                 cancellationToken).ConfigureAwait(false);
-            plaintextBytes = new AesGcmEngine().DecryptChunk(
-                new EncryptedChunk(ChunkIndex, noncePrefix, ciphertext, tag, true),
-                masterKey);
             var plaintext = StrictUtf8.GetString(plaintextBytes);
             ValidateCharacterCount(plaintext);
             return plaintext;
         }
         finally
         {
-            CryptographicOperations.ZeroMemory(ciphertext);
-            if (masterKey is not null)
-                CryptographicOperations.ZeroMemory(masterKey);
             if (plaintextBytes is not null)
                 CryptographicOperations.ZeroMemory(plaintextBytes);
         }
+    }
+
+    public async Task<byte[]> DecryptBytesAsync(
+        string encryptedText,
+        byte[] passwordBytes,
+        int maximumPlaintextBytes,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(encryptedText);
+        ValidatePassword(passwordBytes);
+        ValidateMaximumPlaintextBytes(maximumPlaintextBytes);
+        var encodedPayload = encryptedText.StartsWith(Prefix, StringComparison.Ordinal)
+            ? encryptedText[Prefix.Length..]
+            : encryptedText;
+
+        var maximumEncodedCharacters = GetMaximumEncodedCharacters(maximumPlaintextBytes);
+        if (encodedPayload.Length > maximumEncodedCharacters)
+            throw new InvalidDataException("Encrypted text exceeds the maximum safe length.");
+
+        var payload = FromBase64Url(encodedPayload);
+        try
+        {
+            if (payload.Length < FixedPayloadOverhead ||
+                !payload.AsSpan(0, Magic.Length).SequenceEqual(Magic) ||
+                payload[4] != 1)
+            {
+                throw new InvalidDataException("Encrypted text has an invalid format or unsupported version.");
+            }
+
+            var ciphertextLength = BinaryPrimitives.ReadInt64LittleEndian(payload.AsSpan(25, 8));
+            if (ciphertextLength < 0 || ciphertextLength > maximumPlaintextBytes ||
+                ciphertextLength != payload.LongLength - FixedPayloadOverhead)
+            {
+                throw new InvalidDataException("Encrypted text contains an invalid or unsafe content length.");
+            }
+
+            var salt = payload.AsSpan(5, Argon2Kdf.SaltSize).ToArray();
+            var noncePrefix = payload.AsSpan(21, AesGcmEngine.NoncePrefixSize).ToArray();
+            var ciphertext = payload.AsSpan(HeaderSize, (int)ciphertextLength).ToArray();
+            var tag = payload.AsSpan(HeaderSize + (int)ciphertextLength, AesGcmEngine.TagSize).ToArray();
+            byte[]? masterKey = null;
+            try
+            {
+                masterKey = await KdfDerivation.DeriveKeyAsync(
+                    passwordBytes,
+                    salt,
+                    Argon2Kdf.DefaultParameters,
+                    cancellationToken).ConfigureAwait(false);
+                return new AesGcmEngine().DecryptChunk(
+                    new EncryptedChunk(ChunkIndex, noncePrefix, ciphertext, tag, true),
+                    masterKey);
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(ciphertext);
+                if (masterKey is not null)
+                    CryptographicOperations.ZeroMemory(masterKey);
+            }
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(payload);
+        }
+    }
+
+    public static long GetMaximumEncodedCharacters(int maximumPlaintextBytes)
+    {
+        ValidateMaximumPlaintextBytes(maximumPlaintextBytes);
+        var maximumPayloadBytes = checked((long)maximumPlaintextBytes + FixedPayloadOverhead);
+        return checked((maximumPayloadBytes + 2) / 3 * 4);
     }
 
     public static string ComputeSha256Hex(string content)
@@ -185,6 +263,14 @@ public sealed class TextCryptoService
     {
         if (text.Length > MaximumTextCharacters)
             throw new ArgumentException($"Text cannot exceed {MaximumTextCharacters:N0} characters.");
+    }
+
+    private static void ValidateMaximumPlaintextBytes(int maximumPlaintextBytes)
+    {
+        if (maximumPlaintextBytes <= 0)
+            throw new ArgumentOutOfRangeException(
+                nameof(maximumPlaintextBytes),
+                "The maximum plaintext size must be positive.");
     }
 
     private static void ValidatePassword(byte[] passwordBytes)

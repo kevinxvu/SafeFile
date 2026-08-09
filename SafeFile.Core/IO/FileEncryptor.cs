@@ -947,6 +947,7 @@ public sealed class FileEncryptor
         if (!File.Exists(sourcePath))
             throw new FileNotFoundException($"Source file not found: {sourcePath}");
         EnsureDistinctPaths(sourcePath, destinationPath);
+        _progress?.Report(0);
 
         var actualDestinationPath = destinationPath;
         try
@@ -999,6 +1000,7 @@ public sealed class FileEncryptor
 
                 long expectedChunkIndex = 1;  // Data chunks start at index 1
                 var sawLastChunk = false;
+                double lastReportedProgress = 0;
                 while (true)
                 {
                     var encryptedChunk = ReadEncryptedChunk(sourceStream, header);
@@ -1021,10 +1023,20 @@ public sealed class FileEncryptor
 
                     if (cancellationToken.IsCancellationRequested)
                         throw new OperationCanceledException();
+
+                    var currentProgress = Math.Min(
+                        (double)sourceStream.Position / sourceStream.Length,
+                        0.999);
+                    if (currentProgress - lastReportedProgress >= 0.001)
+                    {
+                        _progress?.Report(currentProgress);
+                        lastReportedProgress = currentProgress;
+                    }
                 }
 
                 if (!sawLastChunk)
                     throw new InvalidDataException("Vault is truncated or has no final data chunk.");
+                _progress?.Report(1);
             }
             finally
             {

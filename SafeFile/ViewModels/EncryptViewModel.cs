@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
@@ -28,6 +27,7 @@ public sealed partial class EncryptViewModel : ViewModelBase
     private readonly IErrorDialogService _errorDialog;
     private readonly SettingsService _settingsService;
     private readonly Microsoft.Extensions.Logging.ILogger<FileEncryptor> _fileEncryptorLogger;
+    private readonly TaskbarProgressTracker _taskbarProgress;
     private AppSettings _settings;
     private CancellationTokenSource? _activeCts;
     private CancellationTokenSource? _sourceInfoCts;
@@ -388,12 +388,16 @@ public sealed partial class EncryptViewModel : ViewModelBase
         IFilePickerService filePicker,
         IErrorDialogService errorDialog,
         SettingsService settingsService,
-        Microsoft.Extensions.Logging.ILogger<FileEncryptor> fileEncryptorLogger)
+        Microsoft.Extensions.Logging.ILogger<FileEncryptor> fileEncryptorLogger,
+        ITaskbarProgressService? taskbarProgress = null)
     {
         _filePicker = filePicker;
         _errorDialog = errorDialog;
         _settingsService = settingsService;
         _fileEncryptorLogger = fileEncryptorLogger;
+        _taskbarProgress = new TaskbarProgressTracker(
+            taskbarProgress ?? NullTaskbarProgressService.Instance,
+            Logger);
         _settings = _settingsService.Load();
         _encryptFileNames = false;
 
@@ -410,6 +414,17 @@ public sealed partial class EncryptViewModel : ViewModelBase
         ToggleConfirmPasswordVisibilityCommand = new RelayCommand(
             () => ShowConfirmPassword = !ShowConfirmPassword);
     }
+
+    partial void OnIsEncryptingChanged(bool value)
+    {
+        if (value)
+            _taskbarProgress.Begin();
+        else
+            _taskbarProgress.End();
+    }
+
+    partial void OnStatusProgressChanged(double value) =>
+        _taskbarProgress.Report(value);
 
     public void RefreshSettings()
     {
@@ -582,9 +597,11 @@ public sealed partial class EncryptViewModel : ViewModelBase
         var failedFileCount = 0;
         var collisionFileCount = 0;
         var otherFailedFileCount = 0;
-        var etaEstimator = new EtaEstimator();
-        var completedPerFileBytes = 0L;
+        var etaEstimator = new TransferMetricsEstimator();
+        var transferredPerFileBytes = 0L;
+        var resolvedPerFileBytes = 0L;
         var completedPerFilePaths = new HashSet<string>(PathComparer);
+        var perFileProgressByPath = new Dictionary<string, double>(PathComparer);
 
         if (sourceSize is > 0)
             StatusEta = L("CalculatingEta");
@@ -602,7 +619,10 @@ public sealed partial class EncryptViewModel : ViewModelBase
             if (sourceSize is > 0)
             {
                 var bytesProcessed = (long)(sourceSize.Value * overallProgress);
-                var estimate = etaEstimator.Update(bytesProcessed, sourceSize.Value);
+                var estimate = etaEstimator.Update(
+                    bytesProcessed,
+                    sourceSize.Value,
+                    bytesProcessed);
                 StatusBytes = IsMultipleFileSource
                     ? F(
                         "BatchSummary",
@@ -660,17 +680,31 @@ public sealed partial class EncryptViewModel : ViewModelBase
             if (sourceSize is > 0)
             {
                 var fileSize = TryGetFileSize(p.SourceFilePath);
+                var observedProgress = Math.Clamp(p.Progress, 0, 1);
+                if (p.Result == PerFileResult.InProgress)
+                    perFileProgressByPath[p.SourceFilePath] = Math.Max(
+                        perFileProgressByPath.GetValueOrDefault(p.SourceFilePath),
+                        observedProgress);
+
+                var lastObservedProgress = perFileProgressByPath.GetValueOrDefault(
+                    p.SourceFilePath);
                 if (p.Result != PerFileResult.InProgress &&
                     completedPerFilePaths.Add(p.SourceFilePath))
-                    completedPerFileBytes += fileSize;
+                {
+                    resolvedPerFileBytes += fileSize;
+                    transferredPerFileBytes += p.Result == PerFileResult.Succeeded
+                        ? fileSize
+                        : (long)(fileSize * lastObservedProgress);
+                }
 
-                var processedBytes = p.Result == PerFileResult.InProgress
-                    ? completedPerFileBytes + (long)(fileSize * p.Progress)
-                    : completedPerFileBytes;
+                var currentTransferredBytes = p.Result == PerFileResult.InProgress
+                    ? (long)(fileSize * lastObservedProgress)
+                    : 0;
                 var estimate = etaEstimator.Update(
-                    processedBytes,
+                    transferredPerFileBytes + currentTransferredBytes,
                     sourceSize.Value,
-                    includeSample: p.Result == PerFileResult.InProgress);
+                    resolvedPerFileBytes + currentTransferredBytes,
+                    includeSample: p.Result != PerFileResult.DestinationExists);
                 StatusSpeed = estimate.BytesPerSecond is > 0
                     ? FormatSpeed(estimate.BytesPerSecond.Value)
                     : "";
@@ -868,6 +902,8 @@ public sealed partial class EncryptViewModel : ViewModelBase
     {
         if (IsEncrypting)
         {
+            StatusAction = L("CancellationRequested");
+            StatusMessage = L("CancellationRequested");
             _activeCts?.Cancel();
             return;
         }
@@ -1006,65 +1042,6 @@ public sealed partial class EncryptViewModel : ViewModelBase
             ? $"{(int)ts.TotalHours:D2}:{ts.Minutes:D2}:{ts.Seconds:D2}"
             : $"{ts.Minutes:D2}:{ts.Seconds:D2}";
     }
-
-    private sealed class EtaEstimator
-    {
-        private static readonly TimeSpan MinimumSampleInterval =
-            TimeSpan.FromMilliseconds(250);
-        private static readonly TimeSpan WarmupDuration =
-            TimeSpan.FromSeconds(1.5);
-        private const double SmoothingFactor = 0.2;
-
-        private readonly Stopwatch _stopwatch = Stopwatch.StartNew();
-        private TimeSpan _lastSampleTime;
-        private long _lastProcessedBytes;
-        private double? _smoothedBytesPerSecond;
-        private int _sampleCount;
-
-        public EtaEstimate Update(
-            long processedBytes,
-            long totalBytes,
-            bool includeSample = true)
-        {
-            processedBytes = Math.Clamp(processedBytes, 0, totalBytes);
-            var now = _stopwatch.Elapsed;
-            var elapsed = now - _lastSampleTime;
-            var deltaBytes = processedBytes - _lastProcessedBytes;
-
-            if (!includeSample)
-            {
-                _lastSampleTime = now;
-                _lastProcessedBytes = processedBytes;
-            }
-            else if (elapsed >= MinimumSampleInterval && deltaBytes > 0)
-            {
-                var instantaneousSpeed = deltaBytes / elapsed.TotalSeconds;
-                _smoothedBytesPerSecond = _smoothedBytesPerSecond is { } previous
-                    ? SmoothingFactor * instantaneousSpeed +
-                      (1 - SmoothingFactor) * previous
-                    : instantaneousSpeed;
-                _sampleCount++;
-                _lastSampleTime = now;
-                _lastProcessedBytes = processedBytes;
-            }
-
-            var isReady = _stopwatch.Elapsed >= WarmupDuration &&
-                          _sampleCount >= 2 &&
-                          _smoothedBytesPerSecond is > 0;
-            double? remainingSeconds = isReady
-                ? Math.Max(
-                    0,
-                    (totalBytes - processedBytes) /
-                    _smoothedBytesPerSecond!.Value)
-                : null;
-
-            return new EtaEstimate(_smoothedBytesPerSecond, remainingSeconds);
-        }
-    }
-
-    private readonly record struct EtaEstimate(
-        double? BytesPerSecond,
-        double? RemainingSeconds);
 
     private static string L(string key) => LocalizationService.Instance.Get(key);
     private static string F(string key, params object?[] args) =>

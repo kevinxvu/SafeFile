@@ -220,6 +220,13 @@ Return value:
 - vault flag on: ignores the destination basename, restores the complete authenticated filename from the vault, writes it under `Path.GetDirectoryName(destinationPath)`, and returns that actual path.
 
 The UI must use the returned path. Do not assume the basename selected before decrypt is the basename Core used.
+
+File and individual PerFile-vault decryption report progress from encrypted
+vault bytes consumed. The sequence starts at `0`, advances after authenticated
+chunks are written, throttles callbacks to changes of at least 0.1%, and keeps
+intermediate values below `1`. Core reports exactly `1` only after validating
+the final chunk. A failed, truncated, or cancelled operation does not report
+successful completion.
 For both naming modes, an existing destination is rejected unless
 `overwriteExisting` is explicitly set to `true`.
 
@@ -579,6 +586,9 @@ they are not absolute. AES produces a random unpadded Base64URL token. SHA-256
 and MD5 produce deterministic lowercase hashes of the complete logical original path.
 Neither form uses a `d_` prefix. Existing manifest mappings preserve their
 token and lock the password and AES/SHA-256/MD5 mode for incremental runs.
+Manifest JSON is serialized directly as UTF-8 Unicode without unnecessary
+`\uXXXX` escaping and has an independent 64 MiB plaintext byte limit. This does
+not change the 1,000,000-character limit of the user-facing text tools.
 
 Folder-name encryption may exclude operation-scoped descendant directories.
 Excluded branches are not renamed or added as new mappings, while mappings
@@ -626,6 +636,24 @@ The desktop floors incomplete percentage labels, so 99.52% displays as 99%.
 It displays 100% only when the operation reports exactly `1.0`. PerFile status
 also reports succeeded, failed, and remaining counts plus byte-based speed and
 ETA.
+The desktop decryption status bar places the current vault name above progress,
+shows its complete path in a tooltip, retains aggregate batch counts, and uses
+the queued vault sizes to estimate smoothed transfer speed and remaining time.
+
+Encrypt and Decrypt share `TransferMetricsEstimator`. Speed samples use bytes
+actually transferred, while ETA uses resolved workload. A successful file
+contributes its complete size; a failed file contributes only its last observed
+progress; an existing destination or other immediate skip contributes no fake
+throughput. Failed and skipped files are nevertheless removed from remaining
+work, while cancellation leaves the active item unresolved. This separation
+keeps speed meaningful without preventing ETA from converging.
+
+When the desktop receives a decryption folder, filesystem enumeration and
+unauthenticated header parsing run off the Avalonia UI thread. Scan results are
+collected before queue mutation, then applied to the observable queue in UI
+batches and renumbered once. Exclusion rescans use the same asynchronous path;
+do not move recursive enumeration or per-vault header I/O back onto the UI
+thread.
 
 Progress callbacks may be marshalled by `Progress<T>` to the UI synchronization context. The UI should treat progress as display-only and not use it for correctness decisions.
 
@@ -784,7 +812,7 @@ dotnet.exe restore SafeFile.slnx
 dotnet.exe build SafeFile/SafeFile.csproj
 ```
 
-Tests live in `SafeFile.Core.Tests` and cover File, ZIP, PerFile, filename encryption, long-name restoration, empty files, cancellation before KDF, truncation, Zip Slip, progress (including both ZIP-decryption phases), and ordered multi-consumer output.
+Tests live in `SafeFile.Core.Tests` and cover File, ZIP, PerFile, filename encryption, long-name restoration, empty files, cancellation before KDF, truncation, Zip Slip, incremental file-decryption progress, both ZIP-decryption phases, and ordered multi-consumer output.
 Run Core tests only when the current task explicitly requires them.
 
 ## 13. Format-change rules

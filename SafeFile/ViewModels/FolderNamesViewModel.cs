@@ -24,6 +24,7 @@ public sealed partial class FolderNamesViewModel : ViewModelBase
     private readonly IErrorDialogService _errors;
     private readonly SettingsService _settingsService;
     private readonly FolderNameProtectionService _service;
+    private readonly TaskbarProgressTracker _taskbarProgress;
     private AppSettings _settings;
     private FolderNameSession? _session;
     private CancellationTokenSource? _operationCts;
@@ -88,9 +89,13 @@ public sealed partial class FolderNamesViewModel : ViewModelBase
     public IRelayCommand CloseStatusCommand { get; }
 
     public FolderNamesViewModel(IFilePickerService picker, IErrorDialogService errors,
-        SettingsService settingsService, FolderNameProtectionService service)
+        SettingsService settingsService, FolderNameProtectionService service,
+        ITaskbarProgressService? taskbarProgress = null)
     {
         _picker = picker; _errors = errors; _settingsService = settingsService; _service = service;
+        _taskbarProgress = new TaskbarProgressTracker(
+            taskbarProgress ?? NullTaskbarProgressService.Instance,
+            Logger);
         _settings = settingsService.Load();
         BrowseCommand = new AsyncRelayCommand(BrowseAsync);
         RefreshCommand = new AsyncRelayCommand(RefreshAsync);
@@ -118,7 +123,17 @@ public sealed partial class FolderNamesViewModel : ViewModelBase
     }
     partial void OnHasManifestChanged(bool value) { OnPropertyChanged(nameof(IsModeLocked)); OnPropertyChanged(nameof(IsPasswordConfirmationRequired)); NotifyState(); }
     partial void OnIsManifestVerifiedChanged(bool value) => NotifyState();
-    partial void OnIsBusyChanged(bool value) => NotifyState();
+    partial void OnIsBusyChanged(bool value)
+    {
+        if (value)
+            _taskbarProgress.Begin();
+        else
+            _taskbarProgress.End();
+
+        NotifyState();
+    }
+    partial void OnStatusProgressChanged(double value) =>
+        _taskbarProgress.Report(value);
     partial void OnConflictingFoldersChanged(int value) => NotifyState();
 
     public void RefreshSettings() { if (!IsBusy) { _settings = _settingsService.Load(); OnPropertyChanged(nameof(IsPasswordConfirmationRequired)); } }

@@ -62,16 +62,20 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         LogService logService,
         IClipboardService clipboard,
         Microsoft.Extensions.Logging.ILogger<FileEncryptor> fileEncryptorLogger,
-        FolderNameProtectionService folderNameProtectionService)
+        FolderNameProtectionService folderNameProtectionService,
+        ITaskbarProgressService? taskbarProgress = null)
     {
         _settingsService = settingsService;
         _errorDialog = errorDialog;
         _encryptPage = new EncryptViewModel(
-            filePicker, errorDialog, settingsService, fileEncryptorLogger);
+            filePicker, errorDialog, settingsService, fileEncryptorLogger,
+            taskbarProgress);
         _decryptPage = new DecryptViewModel(
-            filePicker, errorDialog, settingsService, fileEncryptorLogger);
+            filePicker, errorDialog, settingsService, fileEncryptorLogger,
+            taskbarProgress);
         _folderNamesPage = new FolderNamesViewModel(
-            filePicker, errorDialog, settingsService, folderNameProtectionService);
+            filePicker, errorDialog, settingsService,
+            folderNameProtectionService, taskbarProgress);
         _toolsPage = new ToolsViewModel(
             filePicker, clipboard, errorDialog, settingsService,
             fileEncryptorLogger);

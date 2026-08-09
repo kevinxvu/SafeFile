@@ -50,7 +50,7 @@ public sealed class DecryptViewModelTests
             item => item.SourcePath.StartsWith(excludedVaultRoot, StringComparison.Ordinal));
         Assert.Empty(errors.Messages);
 
-        viewModel.ClearExcludedFoldersCommand.Execute(null);
+        await viewModel.ClearExcludedFoldersCommand.ExecuteAsync(null);
         Assert.Equal(2, viewModel.Items.Count);
     }
 

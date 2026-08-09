@@ -35,6 +35,10 @@
 ## I/O modes
 
 - `EncryptFileAsync` / `DecryptFileAsync`: one file, `VaultMode.File`; for standalone output-name encryption, shorten the plaintext stem on UTF-8 boundaries when necessary, preserve its extension, then encrypt and Base64URL-encode it. Keep the complete authenticated original name inside the vault. These APIs return the actual output path.
+- File and individual PerFile-vault decryption report monotonic `IProgress<double>`
+  values from vault bytes consumed. Report 0 before expensive work, throttle
+  intermediate callbacks to 0.1% increments, keep them below 100%, and report
+  exactly 1 only after the final authenticated chunk has been validated.
 - `EncryptFolderZipAsync`: `ZipArchive → bounded Pipe → crypto pipeline → one .safe`; AES uses the reversible filename ciphertext while SHA-256 and MD5 use direct unsalted UTF-8 filename hashes. Encrypt returns the actual vault path.
 - ZIP and PerFile folder encryption accept operation-scoped excluded descendant
   folders. Skip each excluded folder and its complete subtree, base progress and
@@ -122,6 +126,9 @@
 - Manifest format is `SafeFileFolderMap`, version 1. Its `/`-separated
   `originalPath` and `protectedPath` values start with the selected root
   basename and are never absolute. Never log plaintext manifests or mappings.
+- Serialize manifest JSON as direct UTF-8 Unicode without unnecessary
+  `\uXXXX` escaping. Enforce a manifest-specific 64 MiB plaintext byte limit;
+  do not apply or relax the Tools text limit of 1,000,000 .NET characters.
 - AES directory names are random unpadded Base64URL tokens. SHA-256 and MD5 names are
   lowercase hashes of full logical original paths. Tokens have no `d_` prefix,
   and existing mappings always retain their token.
@@ -176,6 +183,10 @@
 - The decryption view accepts one file, multiple `.safe` files, a folder, and
   drag-and-drop. Keep the picker/drop zone independent from the queue/detail
   region so long metadata does not change the source-selection layout.
+- Scan decryption folders and parse vault headers off the Avalonia UI thread.
+  Collect immutable scan results, then add queue rows on the UI thread in small
+  batches and renumber only once. Use the same asynchronous path for exclusion
+  rescans so folders containing thousands of vaults do not freeze the window.
 - Decryption exclusions filter physical folders while scanning vault queues;
   they do not filter entries inside ZIP vaults. Removing an exclusion rescans
   the selected folder sources and restores eligible queue items. Adding an
@@ -195,6 +206,15 @@
   batch results belong in the bottom progress/status bar. Reset previous item
   progress and result states when a new decrypt batch starts while retaining
   already verified metadata.
+- Match the decryption status-bar layout to encryption: show the current vault
+  name above the progress bar, expose its full path in a tooltip, and show
+  smoothed byte-based speed and ETA beside the aggregate batch result.
+- Use the shared `TransferMetricsEstimator` for Encrypt and Decrypt. Keep bytes
+  actually transferred separate from workload resolved: success contributes
+  the complete file, failure contributes only observed progress, a skipped or
+  existing destination contributes no artificial throughput, and cancellation
+  does not resolve the active file. Resolved failed/skipped work must still be
+  removed from the ETA denominator.
 - The decryption view offers overwrite and open-folder options. Overwrite
   applies only to `File` and individual `PerFile` vault outputs; a ZIP
   destination folder must remain new. Do not re-add the removed automatic
@@ -289,6 +309,9 @@
 - Also retain regression coverage for empty files, truncation, Zip Slip, progress, and ordered multi-consumer output.
 - Retain ZIP-decryption progress coverage proving that it starts at 0, reports
   intermediate values in both decrypt and extraction phases, and ends at 1.
+- Retain file-decryption progress coverage proving that it starts at 0, reports
+  monotonic intermediate chunk values, and reaches 1 only after successful
+  completion.
 - Retain regression tests proving that file/ZIP encryption and file decryption
   preserve existing destinations by default, overwrite only when explicitly
   enabled, and never delete a collision after `FileMode.CreateNew` fails.

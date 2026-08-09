@@ -34,6 +34,7 @@ public sealed partial class DecryptViewModel : ViewModelBase
     private readonly IErrorDialogService _errorDialog;
     private readonly SettingsService _settingsService;
     private readonly Microsoft.Extensions.Logging.ILogger<FileEncryptor> _fileEncryptorLogger;
+    private readonly TaskbarProgressTracker _taskbarProgress;
     private AppSettings _settings;
     private readonly HashSet<string> _sourcePaths = new(
         OperatingSystem.IsWindows()
@@ -81,6 +82,7 @@ public sealed partial class DecryptViewModel : ViewModelBase
     [ObservableProperty] private bool _isStatusBarVisible;
     [ObservableProperty] private string _statusAction = "";
     [ObservableProperty] private string _statusCurrentFile = "";
+    [ObservableProperty] private string _statusCurrentFilePath = "";
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StatusProgressPercent))]
     private double _statusProgress;
@@ -89,6 +91,16 @@ public sealed partial class DecryptViewModel : ViewModelBase
         ? 100
         : (int)Math.Floor(Math.Clamp(StatusProgress, 0, 1) * 100);
     [ObservableProperty] private string _statusDetails = "";
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StatusTiming))]
+    private string _statusSpeed = "";
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StatusTiming))]
+    private string _statusEta = "";
+    public string StatusTiming => string.Join(
+        " \u2022 ",
+        new[] { StatusSpeed, StatusEta }
+            .Where(value => !string.IsNullOrEmpty(value)));
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasStatusMessage))]
     private string _statusMessage = "";
@@ -153,7 +165,7 @@ public sealed partial class DecryptViewModel : ViewModelBase
     public IAsyncRelayCommand BrowseSourceCommand { get; }
     public IAsyncRelayCommand BrowseSourceFolderCommand { get; }
     public IAsyncRelayCommand BrowseExcludedFoldersCommand { get; }
-    public IRelayCommand ClearExcludedFoldersCommand { get; }
+    public IAsyncRelayCommand ClearExcludedFoldersCommand { get; }
     public IAsyncRelayCommand CheckPasswordCommand { get; }
     public IAsyncRelayCommand DecryptCommand { get; }
     public IRelayCommand ClearItemsCommand { get; }
@@ -166,18 +178,22 @@ public sealed partial class DecryptViewModel : ViewModelBase
         IFilePickerService filePicker,
         IErrorDialogService errorDialog,
         SettingsService settingsService,
-        Microsoft.Extensions.Logging.ILogger<FileEncryptor> fileEncryptorLogger)
+        Microsoft.Extensions.Logging.ILogger<FileEncryptor> fileEncryptorLogger,
+        ITaskbarProgressService? taskbarProgress = null)
     {
         _filePicker = filePicker;
         _errorDialog = errorDialog;
         _settingsService = settingsService;
         _fileEncryptorLogger = fileEncryptorLogger;
+        _taskbarProgress = new TaskbarProgressTracker(
+            taskbarProgress ?? NullTaskbarProgressService.Instance,
+            Logger);
         _settings = _settingsService.Load();
 
         BrowseSourceCommand = new AsyncRelayCommand(BrowseSourceAsync);
         BrowseSourceFolderCommand = new AsyncRelayCommand(BrowseSourceFolderAsync);
         BrowseExcludedFoldersCommand = new AsyncRelayCommand(BrowseExcludedFoldersAsync);
-        ClearExcludedFoldersCommand = new RelayCommand(ClearExcludedFolders);
+        ClearExcludedFoldersCommand = new AsyncRelayCommand(ClearExcludedFoldersAsync);
         CheckPasswordCommand = new AsyncRelayCommand(CheckPasswordAsync);
         DecryptCommand = new AsyncRelayCommand(DecryptAsync);
         ClearItemsCommand = new RelayCommand(ClearItems);
@@ -187,6 +203,17 @@ public sealed partial class DecryptViewModel : ViewModelBase
         OpenOutputFolderCommand = new RelayCommand(OpenOutputFolder);
         CloseStatusCommand = new RelayCommand(CloseOrCancelStatus);
     }
+
+    partial void OnIsDecryptingChanged(bool value)
+    {
+        if (value)
+            _taskbarProgress.Begin();
+        else
+            _taskbarProgress.End();
+    }
+
+    partial void OnStatusProgressChanged(double value) =>
+        _taskbarProgress.Report(value);
 
     public void RefreshSettings()
     {
@@ -214,7 +241,7 @@ public sealed partial class DecryptViewModel : ViewModelBase
 
         try
         {
-            AddSources(paths);
+            await AddSourcesAsync(paths);
         }
         catch (Exception ex)
         {
@@ -262,21 +289,21 @@ public sealed partial class DecryptViewModel : ViewModelBase
         }
     }
 
-    private void RemoveExcludedFolder(ExcludedFolderItem item)
+    private async void RemoveExcludedFolder(ExcludedFolderItem item)
     {
         if (IsDecrypting || !ExcludedFolders.Remove(item))
             return;
         OnPropertyChanged(nameof(HasExcludedFolders));
-        RescanFolderSources();
+        await RescanFolderSourcesAsync();
     }
 
-    private void ClearExcludedFolders()
+    private async Task ClearExcludedFoldersAsync()
     {
         if (IsDecrypting || ExcludedFolders.Count == 0)
             return;
         ExcludedFolders.Clear();
         OnPropertyChanged(nameof(HasExcludedFolders));
-        RescanFolderSources();
+        await RescanFolderSourcesAsync();
     }
 
     private void ReplaceExcludedFolders(IEnumerable<string> paths)
@@ -293,59 +320,76 @@ public sealed partial class DecryptViewModel : ViewModelBase
             RemoveItem(item);
     }
 
-    private void RescanFolderSources()
+    private async Task RescanFolderSourcesAsync()
     {
         if (_folderSourceRoots.Count == 0)
             return;
         try
         {
-            AddSources(_folderSourceRoots.ToArray());
+            await AddSourcesAsync(_folderSourceRoots.ToArray());
         }
         catch (InvalidDataException)
         {
             NotifySummaries();
         }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Failed to rescan decryption source folders");
+            await _errorDialog.ShowErrorAsync(
+                ex.Message,
+                L("CannotAddDecryptData"));
+        }
     }
 
-    private void AddSources(IEnumerable<string> paths)
+    private async Task AddSourcesAsync(IEnumerable<string> paths)
     {
         var hadExistingItems = Items.Count > 0;
-        var foundVault = false;
-        foreach (var inputPath in paths.Where(path => !string.IsNullOrWhiteSpace(path)))
+        var inputPaths = paths
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Select(Path.GetFullPath)
+            .ToArray();
+        var excludedPaths = ExcludedFolders
+            .Select(item => item.FullPath)
+            .ToArray();
+        var readyText = L("Ready");
+        var invalidText = L("Invalid");
+
+        var scanResult = await Task.Run(() => ScanSources(
+            inputPaths,
+            excludedPaths,
+            readyText,
+            invalidText));
+
+        foreach (var folderRoot in scanResult.FolderRoots)
+            _folderSourceRoots.Add(folderRoot);
+
+        const int UiBatchSize = 100;
+        for (var index = 0; index < scanResult.Vaults.Count; index++)
         {
-            var fullPath = Path.GetFullPath(inputPath);
-            if (Directory.Exists(fullPath))
+            var vault = scanResult.Vaults[index];
+            if (_sourcePaths.Add(vault.SourcePath))
             {
-                _folderSourceRoots.Add(Path.TrimEndingDirectorySeparator(fullPath));
-                foreach (var file in EnumerateVaultFiles(new DirectoryInfo(fullPath)))
-                {
-                    foundVault = true;
-                    AddVault(
-                        file,
-                        fullPath,
-                        GetRelativeDirectory(fullPath, file));
-                }
+                Items.Add(new DecryptQueueItem(
+                    vault.SourcePath,
+                    vault.SourceRoot,
+                    vault.RelativeDirectory,
+                    FormatBytes(vault.Length),
+                    vault.LastWriteTimeUtc,
+                    vault.Header,
+                    vault.InitialStatus,
+                    vault.InitialError,
+                    RemoveItem));
             }
-            else if (File.Exists(fullPath) &&
-                     string.Equals(
-                         Path.GetExtension(fullPath),
-                         ".safe",
-                         StringComparison.OrdinalIgnoreCase))
-            {
-                if (IsExcluded(fullPath))
-                    continue;
-                foundVault = true;
-                AddVault(
-                    fullPath,
-                    Path.GetDirectoryName(fullPath) ?? "",
-                    "");
-            }
+
+            if ((index + 1) % UiBatchSize == 0)
+                await Task.Yield();
         }
 
-        if (!foundVault && !hadExistingItems)
+        if (scanResult.Vaults.Count == 0 && !hadExistingItems)
             throw new InvalidDataException(
                 L("NoSafeFilesFound"));
 
+        RenumberItems();
         SelectedItem ??= Items.FirstOrDefault();
         PasswordCheckMessage = "";
         NotifySummaries();
@@ -355,21 +399,63 @@ public sealed partial class DecryptViewModel : ViewModelBase
             Items.Count);
     }
 
-    private IEnumerable<string> EnumerateVaultFiles(DirectoryInfo directory)
+    private static SourceScanResult ScanSources(
+        IReadOnlyCollection<string> inputPaths,
+        IReadOnlyCollection<string> excludedPaths,
+        string readyText,
+        string invalidText)
+    {
+        var folderRoots = new List<string>();
+        var vaults = new List<ScannedVault>();
+        foreach (var fullPath in inputPaths)
+        {
+            if (Directory.Exists(fullPath))
+            {
+                var folderRoot = Path.TrimEndingDirectorySeparator(fullPath);
+                folderRoots.Add(folderRoot);
+                foreach (var file in EnumerateVaultFiles(
+                             new DirectoryInfo(folderRoot), excludedPaths))
+                    vaults.Add(ReadVaultForQueue(
+                        file,
+                        folderRoot,
+                        GetRelativeDirectory(folderRoot, file),
+                        readyText,
+                        invalidText));
+            }
+            else if (File.Exists(fullPath) &&
+                     string.Equals(Path.GetExtension(fullPath), ".safe",
+                         StringComparison.OrdinalIgnoreCase) &&
+                     !IsExcluded(fullPath, excludedPaths))
+            {
+                vaults.Add(ReadVaultForQueue(
+                    fullPath,
+                    Path.GetDirectoryName(fullPath) ?? "",
+                    "",
+                    readyText,
+                    invalidText));
+            }
+        }
+
+        return new SourceScanResult(folderRoots, vaults);
+    }
+
+    private static IEnumerable<string> EnumerateVaultFiles(
+        DirectoryInfo directory,
+        IReadOnlyCollection<string> excludedPaths)
     {
         foreach (var file in directory.EnumerateFiles("*.safe"))
         {
             if ((file.Attributes & FileAttributes.ReparsePoint) == 0 &&
-                !IsExcluded(file.FullName))
+                !IsExcluded(file.FullName, excludedPaths))
                 yield return file.FullName;
         }
 
         foreach (var child in directory.EnumerateDirectories())
         {
             if ((child.Attributes & FileAttributes.ReparsePoint) != 0 ||
-                IsExcluded(child.FullName))
+                IsExcluded(child.FullName, excludedPaths))
                 continue;
-            foreach (var file in EnumerateVaultFiles(child))
+            foreach (var file in EnumerateVaultFiles(child, excludedPaths))
                 yield return file;
         }
     }
@@ -377,17 +463,23 @@ public sealed partial class DecryptViewModel : ViewModelBase
     private bool IsExcluded(string path) => ExcludedFolders.Any(item =>
         ExcludedFolderPathValidator.IsSameOrDescendant(item.FullPath, path));
 
-    private void AddVault(
+    private static bool IsExcluded(
+        string path,
+        IReadOnlyCollection<string> excludedPaths) => excludedPaths.Any(
+        excludedPath => ExcludedFolderPathValidator.IsSameOrDescendant(
+            excludedPath,
+            path));
+
+    private static ScannedVault ReadVaultForQueue(
         string sourcePath,
         string sourceRoot,
-        string relativeDirectory)
+        string relativeDirectory,
+        string readyText,
+        string invalidText)
     {
         sourcePath = Path.GetFullPath(sourcePath);
-        if (!_sourcePaths.Add(sourcePath))
-            return;
-
         VaultHeader? header = null;
-        var initialStatus = L("Ready");
+        var initialStatus = readyText;
         var initialError = "";
         try
         {
@@ -397,23 +489,35 @@ public sealed partial class DecryptViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            initialStatus = L("Invalid");
+            initialStatus = invalidText;
             initialError = ex.Message;
         }
 
         var fileInfo = new FileInfo(sourcePath);
-        Items.Add(new DecryptQueueItem(
+        return new ScannedVault(
             sourcePath,
             sourceRoot,
             relativeDirectory,
-            FormatBytes(fileInfo.Length),
+            fileInfo.Length,
             fileInfo.LastWriteTimeUtc,
             header,
             initialStatus,
-            initialError,
-            RemoveItem));
-        RenumberItems();
+            initialError);
     }
+
+    private sealed record SourceScanResult(
+        IReadOnlyList<string> FolderRoots,
+        IReadOnlyList<ScannedVault> Vaults);
+
+    private sealed record ScannedVault(
+        string SourcePath,
+        string SourceRoot,
+        string RelativeDirectory,
+        long Length,
+        DateTime LastWriteTimeUtc,
+        VaultHeader? Header,
+        string InitialStatus,
+        string InitialError);
 
     private async Task CheckPasswordAsync()
     {
@@ -431,7 +535,11 @@ public sealed partial class DecryptViewModel : ViewModelBase
         SetQueueLocked(true);
         IsStatusBarVisible = true;
         StatusAction = L("CheckingPassword");
+        StatusCurrentFile = "";
+        StatusCurrentFilePath = "";
         StatusProgress = 0;
+        StatusSpeed = "";
+        StatusEta = "";
         var cts = new CancellationTokenSource();
         _activeCts = cts;
         byte[]? passwordBytes = null;
@@ -446,6 +554,7 @@ public sealed partial class DecryptViewModel : ViewModelBase
                 cts.Token.ThrowIfCancellationRequested();
                 var item = validItems[index];
                 StatusCurrentFile = item.VaultName;
+                StatusCurrentFilePath = item.SourcePath;
                 item.Status = L("Verifying");
                 item.StatusForeground = "#2563EB";
                 item.ErrorMessage = "";
@@ -473,6 +582,7 @@ public sealed partial class DecryptViewModel : ViewModelBase
         {
             StatusAction = L("VerificationCancelled");
             PasswordCheckMessage = L("OperationCancelled");
+            StatusMessage = L("OperationCancelled");
             Logger.Warning("Password verification cancelled");
         }
         finally
@@ -557,7 +667,11 @@ public sealed partial class DecryptViewModel : ViewModelBase
         SetQueueLocked(true);
         IsStatusBarVisible = true;
         StatusAction = L("Decrypting");
+        StatusCurrentFile = "";
+        StatusCurrentFilePath = "";
         StatusProgress = 0;
+        StatusSpeed = "";
+        StatusEta = "";
         StatusMessage = "";
         foreach (var item in Items.Where(item => item.IsValid))
         {
@@ -578,6 +692,14 @@ public sealed partial class DecryptViewModel : ViewModelBase
         byte[]? passwordBytes = null;
         var success = 0;
         var failed = Items.Count(item => !item.IsValid);
+        var totalBytes = Items.Sum(item => TryGetLength(item.SourcePath));
+        var resolvedBytes = Items
+            .Where(item => !item.IsValid)
+            .Sum(item => TryGetLength(item.SourcePath));
+        var transferredBytes = 0L;
+        var etaEstimator = new TransferMetricsEstimator();
+        if (totalBytes > 0)
+            StatusEta = L("CalculatingEta");
 
         try
         {
@@ -593,7 +715,9 @@ public sealed partial class DecryptViewModel : ViewModelBase
             {
                 cts.Token.ThrowIfCancellationRequested();
                 var item = validItems[index];
+                var currentItemBytes = TryGetLength(item.SourcePath);
                 StatusCurrentFile = item.VaultName;
+                StatusCurrentFilePath = item.SourcePath;
 
                 if (!item.HasVerifiedMetadata &&
                     !await VerifyItemAsync(item, passwordBytes, cts.Token))
@@ -601,7 +725,14 @@ public sealed partial class DecryptViewModel : ViewModelBase
                     item.Status = L("Failed");
                     failed++;
                     completedItems++;
+                    resolvedBytes += currentItemBytes;
                     UpdateOverallProgress(completedItems, Items.Count, 0);
+                    UpdateTransferMetrics(
+                        transferredBytes,
+                        resolvedBytes,
+                        totalBytes,
+                        etaEstimator,
+                        includeSample: false);
                     NotifySummaries();
                     continue;
                 }
@@ -614,6 +745,9 @@ public sealed partial class DecryptViewModel : ViewModelBase
                 NotifySummaries();
                 StatusDetails = ResultSummary;
 
+                var lastObservedProgress = 0d;
+                var itemSucceeded = false;
+                var itemCancelled = false;
                 try
                 {
                     await DecryptItemAsync(
@@ -623,19 +757,31 @@ public sealed partial class DecryptViewModel : ViewModelBase
                         new Progress<double>(value =>
                         {
                             item.Progress = value;
+                            lastObservedProgress = Math.Max(
+                                lastObservedProgress,
+                                Math.Clamp(value, 0, 1));
                             UpdateOverallProgress(
                                 completedItems, Items.Count, value);
+                            UpdateTransferMetrics(
+                                transferredBytes +
+                                    (long)(currentItemBytes * lastObservedProgress),
+                                resolvedBytes +
+                                    (long)(currentItemBytes * lastObservedProgress),
+                                totalBytes,
+                                etaEstimator);
                         }));
                     item.Progress = 1;
                     item.Status = L("Succeeded");
                     item.StatusForeground = "#16A34A";
                     success++;
+                    itemSucceeded = true;
                     Logger.Information(
                         "Vault decrypted successfully: {VaultPath}",
                         item.SourcePath);
                 }
                 catch (OperationCanceledException)
                 {
+                    itemCancelled = true;
                     item.Status = L("Cancelled");
                     item.StatusForeground = "#6B7280";
                     Logger.Warning(
@@ -657,8 +803,21 @@ public sealed partial class DecryptViewModel : ViewModelBase
                 finally
                 {
                     item.IsProcessing = false;
-                    completedItems++;
-                    UpdateOverallProgress(completedItems, Items.Count, 0);
+                    if (!itemCancelled)
+                    {
+                        completedItems++;
+                        transferredBytes += itemSucceeded
+                            ? currentItemBytes
+                            : (long)(currentItemBytes * lastObservedProgress);
+                        resolvedBytes += currentItemBytes;
+                        UpdateOverallProgress(completedItems, Items.Count, 0);
+                        UpdateTransferMetrics(
+                            transferredBytes,
+                            resolvedBytes,
+                            totalBytes,
+                            etaEstimator,
+                            includeSample: itemSucceeded || lastObservedProgress > 0);
+                    }
                     RefreshSelectionDetails();
                     NotifySummaries();
                 }
@@ -668,6 +827,8 @@ public sealed partial class DecryptViewModel : ViewModelBase
                 ? L("DecryptCompleted")
                 : L("DecryptCompletedWithErrors");
             StatusDetails = F("SuccessFailureSummary", success, failed);
+            StatusSpeed = "";
+            StatusEta = "";
             StatusMessage = F(
                 "CompletionSummary", success,
                 failed > 0 ? F("FailureSuffix", failed) : "");
@@ -688,6 +849,7 @@ public sealed partial class DecryptViewModel : ViewModelBase
         catch (OperationCanceledException)
         {
             StatusAction = L("DecryptCancelled");
+            StatusEta = "";
             StatusMessage = L("OperationCancelled");
             Logger.Warning(
                 "Batch decryption cancelled after {SuccessCount} successful and {FailedCount} failed vaults",
@@ -855,8 +1017,11 @@ public sealed partial class DecryptViewModel : ViewModelBase
         IsStatusBarVisible = false;
         StatusAction = "";
         StatusCurrentFile = "";
+        StatusCurrentFilePath = "";
         StatusProgress = 0;
         StatusDetails = "";
+        StatusSpeed = "";
+        StatusEta = "";
         StatusMessage = "";
     }
 
@@ -881,7 +1046,11 @@ public sealed partial class DecryptViewModel : ViewModelBase
     private void CloseOrCancelStatus()
     {
         if (IsDecrypting)
+        {
+            StatusAction = L("CancellationRequested");
+            StatusMessage = L("CancellationRequested");
             _activeCts?.Cancel();
+        }
         else
             IsStatusBarVisible = false;
     }
@@ -898,6 +1067,35 @@ public sealed partial class DecryptViewModel : ViewModelBase
                 0,
                 1);
         StatusDetails = ResultSummary;
+    }
+
+    private void UpdateTransferMetrics(
+        long transferredBytes,
+        long resolvedBytes,
+        long totalBytes,
+        TransferMetricsEstimator estimator,
+        bool includeSample = true)
+    {
+        if (totalBytes <= 0)
+        {
+            StatusSpeed = "";
+            StatusEta = "";
+            return;
+        }
+
+        var estimate = estimator.Update(
+            transferredBytes,
+            totalBytes,
+            resolvedBytes,
+            includeSample);
+        StatusSpeed = estimate.BytesPerSecond is > 0
+            ? FormatSpeed(estimate.BytesPerSecond.Value)
+            : "";
+        StatusEta = estimate.RemainingSeconds is { } remaining
+            ? F("EstimatedTimeRemaining", FormatEta(remaining))
+            : resolvedBytes < totalBytes
+                ? L("CalculatingEta")
+                : "";
     }
 
     private void NotifySummaries()
@@ -967,6 +1165,24 @@ public sealed partial class DecryptViewModel : ViewModelBase
             unit++;
         }
         return $"{value:0.##} {units[unit]}";
+    }
+
+    private static string FormatSpeed(double bytesPerSecond) =>
+        bytesPerSecond switch
+        {
+            >= 1_000_000 => $"{bytesPerSecond / 1_000_000:F0} MB/s",
+            >= 1_000 => $"{bytesPerSecond / 1_000:F0} KB/s",
+            _ => $"{bytesPerSecond:F0} B/s"
+        };
+
+    private static string FormatEta(double seconds)
+    {
+        if (seconds < 0)
+            return "";
+        var duration = TimeSpan.FromSeconds(seconds);
+        return duration.TotalHours >= 1
+            ? $"{(int)duration.TotalHours:D2}:{duration.Minutes:D2}:{duration.Seconds:D2}"
+            : $"{duration.Minutes:D2}:{duration.Seconds:D2}";
     }
 
     private static string L(string key) => LocalizationService.Instance.Get(key);

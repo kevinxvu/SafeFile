@@ -102,6 +102,37 @@ public sealed class FolderNameProtectionServiceTests : IDisposable
         Assert.True(Directory.Exists(Path.Combine(_root, "Mapped", "Child")));
     }
 
+    [Fact]
+    public async Task ManifestJson_PreservesUnicodeWithoutEscaping()
+    {
+        const string folderName = "Tài liệu tiếng Việt";
+        Directory.CreateDirectory(Path.Combine(_root, folderName));
+        var service = CreateService();
+        await service.EncryptAsync(
+            await service.CreateSessionAsync(
+                _root,
+                FolderNameProtectionMode.Md5),
+            _password);
+
+        var encrypted = await File.ReadAllTextAsync(
+            Path.Combine(_root, FolderNameProtectionService.ManifestFileName));
+        var textCrypto = new TextCryptoService();
+        var jsonBytes = await textCrypto.DecryptBytesAsync(
+            encrypted,
+            _password,
+            FolderNameProtectionService.MaximumManifestBytes);
+        try
+        {
+            var json = Encoding.UTF8.GetString(jsonBytes);
+            Assert.Contains(folderName, json, StringComparison.Ordinal);
+            Assert.DoesNotContain("\\u", json, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            Array.Clear(jsonBytes);
+        }
+    }
+
     private static FolderNameProtectionService CreateService() => new(
         new TextCryptoService(), NullLogger<FolderNameProtectionService>.Instance);
 

@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -68,13 +69,15 @@ public sealed class FolderNameSession
 public sealed class FolderNameProtectionService
 {
     public const string ManifestFileName = ".safefile-names";
+    public const int MaximumManifestBytes = 64 * 1024 * 1024;
     private const string ManifestFormat = "SafeFileFolderMap";
     private const int ManifestVersion = 1;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        PropertyNameCaseInsensitive = true
+        PropertyNameCaseInsensitive = true,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
 
     private readonly TextCryptoService _textCryptoService;
@@ -138,22 +141,55 @@ public sealed class FolderNameProtectionService
         if (!File.Exists(manifestPath))
             throw new FileNotFoundException("The folder-name manifest was not found.", manifestPath);
 
-        var encrypted = await File.ReadAllTextAsync(manifestPath, cancellationToken)
-            .ConfigureAwait(false);
-        var json = await _textCryptoService.DecryptAsync(
+        var maximumEncryptedCharacters =
+            TextCryptoService.GetMaximumEncodedCharacters(MaximumManifestBytes);
+        var maximumManifestFileBytes = checked(
+            maximumEncryptedCharacters + TextCryptoService.Prefix.Length);
+        string encrypted;
+        await using (var manifestStream = new FileStream(
+            manifestPath,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            4096,
+            FileOptions.Asynchronous | FileOptions.SequentialScan))
+        {
+            if (manifestStream.Length > maximumManifestFileBytes)
+                throw new InvalidDataException("The folder-name manifest is too large.");
+            using var reader = new StreamReader(
+                manifestStream,
+                Encoding.UTF8,
+                detectEncodingFromByteOrderMarks: true,
+                bufferSize: 4096,
+                leaveOpen: true);
+            encrypted = await reader.ReadToEndAsync(cancellationToken)
+                .ConfigureAwait(false);
+        }
+        byte[]? jsonBytes = null;
+        try
+        {
+            jsonBytes = await _textCryptoService.DecryptBytesAsync(
                 encrypted,
                 passwordBytes,
-                cancellationToken)
-            .ConfigureAwait(false);
-        var manifest = JsonSerializer.Deserialize<FolderNameManifest>(json, JsonOptions)
-            ?? throw new InvalidDataException("The folder-name manifest is empty.");
-        ValidateManifest(manifest);
+                MaximumManifestBytes,
+                cancellationToken).ConfigureAwait(false);
+            var manifest = JsonSerializer.Deserialize<FolderNameManifest>(
+                    jsonBytes,
+                    JsonOptions)
+                ?? throw new InvalidDataException("The folder-name manifest is empty.");
+            ValidateManifest(manifest);
 
-        return await Task.Run(
-            () => Analyze(
-                root, manifest, includeNewDirectories: true,
-                excludedPaths, cancellationToken),
-            cancellationToken).ConfigureAwait(false);
+            return await Task.Run(
+                () => Analyze(
+                    root, manifest, includeNewDirectories: true,
+                    excludedPaths, cancellationToken),
+                cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (jsonBytes is not null)
+                CryptographicOperations.ZeroMemory(jsonBytes);
+        }
     }
 
     public async Task EncryptAsync(
@@ -503,13 +539,26 @@ public sealed class FolderNameProtectionService
         byte[] passwordBytes,
         CancellationToken cancellationToken)
     {
-        var json = JsonSerializer.Serialize(manifest, JsonOptions);
-        if (json.Length > TextCryptoService.MaximumTextCharacters)
+        var jsonBytes = JsonSerializer.SerializeToUtf8Bytes(manifest, JsonOptions);
+        if (jsonBytes.Length > MaximumManifestBytes)
+        {
+            CryptographicOperations.ZeroMemory(jsonBytes);
             throw new InvalidDataException("The folder-name manifest is too large.");
-        var encrypted = await _textCryptoService.EncryptAsync(
-            json,
-            passwordBytes,
-            cancellationToken).ConfigureAwait(false);
+        }
+
+        string encrypted;
+        try
+        {
+            encrypted = await _textCryptoService.EncryptBytesAsync(
+                jsonBytes,
+                passwordBytes,
+                MaximumManifestBytes,
+                cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(jsonBytes);
+        }
         var manifestPath = GetManifestPath(rootPath);
         var tempPath = Path.Combine(
             rootPath,

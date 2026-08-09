@@ -33,6 +33,36 @@ public sealed class FileEncryptorTests
     }
 
     [Fact]
+    public async Task DecryptFile_ReportsIncrementalProgress()
+    {
+        using var temp = new TempDirectory();
+        var source = Path.Combine(temp.Path, "large-source.bin");
+        var vault = Path.Combine(temp.Path, "large-source.safe");
+        var destination = Path.Combine(temp.Path, "large-restored.bin");
+        var content = RandomNumberGenerator.GetBytes(3_200_000);
+        var password = "incremental-progress-password"u8.ToArray();
+        await File.WriteAllBytesAsync(source, content);
+
+        var encryptor = new FileEncryptor(consumerThreads: 2);
+        await encryptor.EncryptFileAsync(
+            source,
+            vault,
+            password,
+            1_048_576,
+            FastKdf);
+
+        var progress = new RecordingProgress();
+        var decryptor = new FileEncryptor(consumerThreads: 2, progress);
+        await decryptor.DecryptFileAsync(vault, destination, password);
+
+        Assert.Equal(0, progress.Values.First());
+        Assert.Equal(1, progress.Values.Last());
+        Assert.Contains(progress.Values, value => value is > 0 and < 1);
+        Assert.True(progress.Values.SequenceEqual(progress.Values.OrderBy(value => value)));
+        Assert.Equal(content, await File.ReadAllBytesAsync(destination));
+    }
+
+    [Fact]
     public async Task FileRoundTrip_EncryptedOutputName_IsHiddenAndRestoredFromHeader()
     {
         using var temp = new TempDirectory();
