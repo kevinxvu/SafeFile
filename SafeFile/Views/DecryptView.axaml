@@ -22,7 +22,7 @@
 
         <!-- Unified file/folder picker -->
         <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="16"
-                IsEnabled="{Binding !IsDecrypting}">
+                IsEnabled="{Binding !IsBusy}">
           <StackPanel Spacing="10">
             <Grid ColumnDefinitions="*,Auto">
               <StackPanel Spacing="2">
@@ -74,7 +74,7 @@
         </Border>
 
         <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="16"
-                IsVisible="{Binding HasFolderSources}" IsEnabled="{Binding !IsDecrypting}">
+                IsVisible="{Binding HasFolderSources}" IsEnabled="{Binding !IsBusy}">
           <StackPanel Spacing="10">
             <Grid ColumnDefinitions="*,Auto,Auto">
               <StackPanel Spacing="2">
@@ -127,7 +127,7 @@
               </StackPanel>
               <Button Grid.Column="1" Theme="{StaticResource OutlinedButtonTheme}"
                       Command="{Binding ClearItemsCommand}"
-                      IsEnabled="{Binding !IsDecrypting}"
+                      IsEnabled="{Binding !IsBusy}"
                       IsVisible="{Binding HasItems}">
                 <StackPanel Orientation="Horizontal" Spacing="6">
                   <PathIcon Data="{StaticResource CancelCircleIcon}"
@@ -244,7 +244,7 @@
         <Grid ColumnDefinitions="3*,16,2*">
           <Border Grid.Column="0" Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="16"
                   VerticalAlignment="Top"
-                  IsEnabled="{Binding !IsDecrypting}">
+                  IsEnabled="{Binding !IsBusy}">
             <StackPanel Spacing="14">
               <TextBlock Text="{loc:Tr SecurityAndOptions}"
                          FontSize="16" FontWeight="SemiBold"/>
@@ -262,7 +262,7 @@
               <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
                 <Button Theme="{StaticResource OutlinedButtonTheme}"
                         Command="{Binding CheckPasswordCommand}"
-                        IsEnabled="{Binding !IsDecrypting}">
+                        IsEnabled="{Binding !IsBusy}">
                   <StackPanel Orientation="Horizontal" Spacing="6">
                     <PathIcon Data="{StaticResource LockIcon}" Width="15" Height="15"/>
                     <TextBlock Text="{loc:Tr VerifyAll}"/>
@@ -315,7 +315,7 @@
                 <Button
                         Theme="{StaticResource PrimaryButtonTheme}"
                         Command="{Binding DecryptCommand}"
-                        IsEnabled="{Binding !IsDecrypting}">
+                        IsEnabled="{Binding !IsBusy}">
                   <StackPanel Orientation="Horizontal" Spacing="8">
                     <PathIcon Data="{StaticResource LockOpenIcon}"
                               Width="15" Height="15"/>
@@ -435,11 +435,13 @@
           <ProgressBar Grid.Column="0" Grid.Row="1"
                      Height="8" Margin="16,0"
                      Minimum="0" Maximum="1"
-                     Value="{Binding StatusProgress}" CornerRadius="4"/>
+                     Value="{Binding StatusProgress}"
+                     IsIndeterminate="{Binding IsScanning}" CornerRadius="4"/>
 
           <TextBlock Grid.Column="1" Grid.Row="1"
                      VerticalAlignment="Center" HorizontalAlignment="Center"
                      Text="{Binding StatusProgressPercent, StringFormat={}{0}%}"
+                     IsVisible="{Binding !IsScanning}"
                      FontSize="12" FontWeight="SemiBold"
                      Foreground="{DynamicResource TertiaryTextBrush}"/>
 

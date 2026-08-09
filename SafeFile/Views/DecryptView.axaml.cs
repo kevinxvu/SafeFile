@@ -22,7 +22,7 @@ public partial class DecryptView : UserControl
     private async void OnDrop(object? sender, DragEventArgs e)
     {
         ResetDragState();
-        if (DataContext is DecryptViewModel { IsDecrypting: true })
+        if (DataContext is DecryptViewModel { IsBusy: true })
         {
             e.DragEffects = DragDropEffects.None;
             e.Handled = true;
@@ -50,7 +50,7 @@ public partial class DecryptView : UserControl
 
     private void UpdateDragState(DragEventArgs e)
     {
-        if (DataContext is DecryptViewModel { IsDecrypting: true })
+        if (DataContext is DecryptViewModel { IsBusy: true })
         {
             e.DragEffects = DragDropEffects.None;
             ResetDragState();

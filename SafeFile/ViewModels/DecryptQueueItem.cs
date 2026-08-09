@@ -14,6 +14,7 @@ public sealed partial class DecryptQueueItem : ObservableObject
     public string SourceRoot { get; }
     public string RelativeDirectory { get; }
     public string VaultName { get; }
+    public long VaultSizeBytes { get; }
     public string VaultSizeText { get; }
     public DateTime LastModifiedUtc { get; }
     public VaultHeader? Header { get; }
@@ -37,6 +38,7 @@ public sealed partial class DecryptQueueItem : ObservableObject
         string sourcePath,
         string sourceRoot,
         string relativeDirectory,
+        long vaultSizeBytes,
         string vaultSizeText,
         DateTime lastModifiedUtc,
         VaultHeader? header,
@@ -49,6 +51,7 @@ public sealed partial class DecryptQueueItem : ObservableObject
             System.IO.Path.TrimEndingDirectorySeparator(sourcePath));
         SourceRoot = sourceRoot;
         RelativeDirectory = relativeDirectory;
+        VaultSizeBytes = vaultSizeBytes;
         VaultSizeText = vaultSizeText;
         LastModifiedUtc = lastModifiedUtc;
         Header = header;

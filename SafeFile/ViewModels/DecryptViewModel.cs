@@ -78,7 +78,12 @@ public sealed partial class DecryptViewModel : ViewModelBase
 
     [ObservableProperty] private bool _overwriteExisting;
     [ObservableProperty] private bool _openFolderWhenDone = true;
-    [ObservableProperty] private bool _isDecrypting;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsBusy))]
+    private bool _isDecrypting;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsBusy))]
+    private bool _isScanning;
     [ObservableProperty] private bool _isStatusBarVisible;
     [ObservableProperty] private string _statusAction = "";
     [ObservableProperty] private string _statusCurrentFile = "";
@@ -110,6 +115,7 @@ public sealed partial class DecryptViewModel : ViewModelBase
     private bool _isPasswordCheckError;
 
     public bool HasItems => Items.Count > 0;
+    public bool IsBusy => IsDecrypting || IsScanning;
     public bool HasSelectedItem => SelectedItem is not null;
     public char PasswordChar => ShowPassword ? '\0' : '•';
     public string OutputPath => _settings.DefaultDecryptOutputPath;
@@ -119,7 +125,7 @@ public sealed partial class DecryptViewModel : ViewModelBase
     public string SelectionSummary =>
         Items.Count == 0
             ? L("NoDataSelected")
-            : $"{Items.Count:N0} vault • {FormatBytes(Items.Sum(item => TryGetLength(item.SourcePath)))}";
+            : $"{Items.Count:N0} vault • {FormatBytes(Items.Sum(item => item.VaultSizeBytes))}";
     public string ResultSummary
     {
         get
@@ -217,7 +223,7 @@ public sealed partial class DecryptViewModel : ViewModelBase
 
     public void RefreshSettings()
     {
-        if (IsDecrypting)
+        if (IsBusy)
             return;
 
         _settings = _settingsService.Load();
@@ -236,7 +242,7 @@ public sealed partial class DecryptViewModel : ViewModelBase
 
     public async Task AddDroppedSourcesAsync(IEnumerable<string> paths)
     {
-        if (IsDecrypting)
+        if (IsBusy)
             return;
 
         try
@@ -291,7 +297,7 @@ public sealed partial class DecryptViewModel : ViewModelBase
 
     private async void RemoveExcludedFolder(ExcludedFolderItem item)
     {
-        if (IsDecrypting || !ExcludedFolders.Remove(item))
+        if (IsBusy || !ExcludedFolders.Remove(item))
             return;
         OnPropertyChanged(nameof(HasExcludedFolders));
         await RescanFolderSourcesAsync();
@@ -299,7 +305,7 @@ public sealed partial class DecryptViewModel : ViewModelBase
 
     private async Task ClearExcludedFoldersAsync()
     {
-        if (IsDecrypting || ExcludedFolders.Count == 0)
+        if (IsBusy || ExcludedFolders.Count == 0)
             return;
         ExcludedFolders.Clear();
         OnPropertyChanged(nameof(HasExcludedFolders));
@@ -354,73 +360,139 @@ public sealed partial class DecryptViewModel : ViewModelBase
         var readyText = L("Ready");
         var invalidText = L("Invalid");
 
-        var scanResult = await Task.Run(() => ScanSources(
-            inputPaths,
-            excludedPaths,
-            readyText,
-            invalidText));
-
-        foreach (var folderRoot in scanResult.FolderRoots)
-            _folderSourceRoots.Add(folderRoot);
-
-        const int UiBatchSize = 100;
-        for (var index = 0; index < scanResult.Vaults.Count; index++)
+        IsScanning = true;
+        SetQueueLocked(true);
+        IsStatusBarVisible = true;
+        StatusAction = L("ScanningVaults");
+        StatusDetails = F("VaultsFound", 0);
+        StatusCurrentFile = inputPaths.FirstOrDefault() ?? "";
+        StatusCurrentFilePath = StatusCurrentFile;
+        StatusProgress = 0;
+        StatusSpeed = "";
+        StatusEta = "";
+        var cts = new CancellationTokenSource();
+        _activeCts = cts;
+        var scanProgress = new Progress<SourceScanProgress>(value =>
         {
-            var vault = scanResult.Vaults[index];
-            if (_sourcePaths.Add(vault.SourcePath))
+            StatusDetails = F("VaultsFound", value.VaultCount);
+            StatusCurrentFile = Path.GetFileName(value.CurrentPath);
+            StatusCurrentFilePath = value.CurrentPath;
+        });
+
+        try
+        {
+            var scanResult = await Task.Run(() => ScanSources(
+                inputPaths,
+                excludedPaths,
+                readyText,
+                invalidText,
+                scanProgress,
+                cts.Token));
+
+            foreach (var folderRoot in scanResult.FolderRoots)
+                _folderSourceRoots.Add(folderRoot);
+
+            const int UiBatchSize = 100;
+            for (var index = 0; index < scanResult.Vaults.Count; index++)
             {
-                Items.Add(new DecryptQueueItem(
-                    vault.SourcePath,
-                    vault.SourceRoot,
-                    vault.RelativeDirectory,
-                    FormatBytes(vault.Length),
-                    vault.LastWriteTimeUtc,
-                    vault.Header,
-                    vault.InitialStatus,
-                    vault.InitialError,
-                    RemoveItem));
+                cts.Token.ThrowIfCancellationRequested();
+                var vault = scanResult.Vaults[index];
+                if (_sourcePaths.Add(vault.SourcePath))
+                {
+                    Items.Add(new DecryptQueueItem(
+                        vault.SourcePath,
+                        vault.SourceRoot,
+                        vault.RelativeDirectory,
+                        vault.Length,
+                        FormatBytes(vault.Length),
+                        vault.LastWriteTimeUtc,
+                        vault.Header,
+                        vault.InitialStatus,
+                        vault.InitialError,
+                        RemoveItem));
+                    if (Items.Count == 1)
+                        OnPropertyChanged(nameof(HasItems));
+                }
+
+                if ((index + 1) % UiBatchSize == 0)
+                    await Task.Yield();
             }
 
-            if ((index + 1) % UiBatchSize == 0)
-                await Task.Yield();
+            if (scanResult.Vaults.Count == 0 && !hadExistingItems)
+                throw new InvalidDataException(
+                    L("NoSafeFilesFound"));
+
+            StatusAction = L("ScanCompleted");
+            StatusDetails = F("VaultsFound", scanResult.Vaults.Count);
+            StatusCurrentFile = "";
+            StatusCurrentFilePath = "";
+            RenumberItems();
+            SelectedItem ??= Items.FirstOrDefault();
+            PasswordCheckMessage = "";
+            NotifySummaries();
+            OnPropertyChanged(nameof(HasFolderSources));
+            Logger.Information(
+                "Added decryption sources; queue now contains {VaultCount} vaults",
+                Items.Count);
         }
-
-        if (scanResult.Vaults.Count == 0 && !hadExistingItems)
-            throw new InvalidDataException(
-                L("NoSafeFilesFound"));
-
-        RenumberItems();
-        SelectedItem ??= Items.FirstOrDefault();
-        PasswordCheckMessage = "";
-        NotifySummaries();
-        OnPropertyChanged(nameof(HasFolderSources));
-        Logger.Information(
-            "Added decryption sources; queue now contains {VaultCount} vaults",
-            Items.Count);
+        catch (OperationCanceledException)
+        {
+            StatusAction = L("ScanCancelled");
+            StatusCurrentFile = "";
+            StatusCurrentFilePath = "";
+            RenumberItems();
+            SelectedItem ??= Items.FirstOrDefault();
+            NotifySummaries();
+            OnPropertyChanged(nameof(HasFolderSources));
+            Logger.Warning("Decryption source scan cancelled");
+        }
+        catch
+        {
+            StatusAction = L("ScanFailed");
+            StatusCurrentFile = "";
+            StatusCurrentFilePath = "";
+            throw;
+        }
+        finally
+        {
+            IsScanning = false;
+            SetQueueLocked(false);
+            _activeCts?.Dispose();
+            _activeCts = null;
+        }
     }
 
     private static SourceScanResult ScanSources(
         IReadOnlyCollection<string> inputPaths,
         IReadOnlyCollection<string> excludedPaths,
         string readyText,
-        string invalidText)
+        string invalidText,
+        IProgress<SourceScanProgress>? progress,
+        CancellationToken cancellationToken)
     {
         var folderRoots = new List<string>();
         var vaults = new List<ScannedVault>();
         foreach (var fullPath in inputPaths)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             if (Directory.Exists(fullPath))
             {
                 var folderRoot = Path.TrimEndingDirectorySeparator(fullPath);
                 folderRoots.Add(folderRoot);
                 foreach (var file in EnumerateVaultFiles(
-                             new DirectoryInfo(folderRoot), excludedPaths))
+                             new DirectoryInfo(folderRoot), excludedPaths,
+                             cancellationToken))
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
                     vaults.Add(ReadVaultForQueue(
                         file,
                         folderRoot,
                         GetRelativeDirectory(folderRoot, file),
                         readyText,
                         invalidText));
+                    if (vaults.Count == 1 || vaults.Count % 25 == 0)
+                        progress?.Report(new SourceScanProgress(file, vaults.Count));
+                }
             }
             else if (File.Exists(fullPath) &&
                      string.Equals(Path.GetExtension(fullPath), ".safe",
@@ -433,6 +505,7 @@ public sealed partial class DecryptViewModel : ViewModelBase
                     "",
                     readyText,
                     invalidText));
+                progress?.Report(new SourceScanProgress(fullPath, vaults.Count));
             }
         }
 
@@ -441,10 +514,13 @@ public sealed partial class DecryptViewModel : ViewModelBase
 
     private static IEnumerable<string> EnumerateVaultFiles(
         DirectoryInfo directory,
-        IReadOnlyCollection<string> excludedPaths)
+        IReadOnlyCollection<string> excludedPaths,
+        CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         foreach (var file in directory.EnumerateFiles("*.safe"))
         {
+            cancellationToken.ThrowIfCancellationRequested();
             if ((file.Attributes & FileAttributes.ReparsePoint) == 0 &&
                 !IsExcluded(file.FullName, excludedPaths))
                 yield return file.FullName;
@@ -452,10 +528,12 @@ public sealed partial class DecryptViewModel : ViewModelBase
 
         foreach (var child in directory.EnumerateDirectories())
         {
+            cancellationToken.ThrowIfCancellationRequested();
             if ((child.Attributes & FileAttributes.ReparsePoint) != 0 ||
                 IsExcluded(child.FullName, excludedPaths))
                 continue;
-            foreach (var file in EnumerateVaultFiles(child, excludedPaths))
+            foreach (var file in EnumerateVaultFiles(
+                         child, excludedPaths, cancellationToken))
                 yield return file;
         }
     }
@@ -509,6 +587,10 @@ public sealed partial class DecryptViewModel : ViewModelBase
         IReadOnlyList<string> FolderRoots,
         IReadOnlyList<ScannedVault> Vaults);
 
+    private sealed record SourceScanProgress(
+        string CurrentPath,
+        int VaultCount);
+
     private sealed record ScannedVault(
         string SourcePath,
         string SourceRoot,
@@ -521,6 +603,9 @@ public sealed partial class DecryptViewModel : ViewModelBase
 
     private async Task CheckPasswordAsync()
     {
+        if (IsBusy)
+            return;
+
         if (!ValidateSelectionAndPassword(out var validationError))
         {
             PasswordCheckMessage = validationError;
@@ -641,7 +726,7 @@ public sealed partial class DecryptViewModel : ViewModelBase
 
     private async Task DecryptAsync()
     {
-        if (IsDecrypting)
+        if (IsBusy)
             return;
 
         if (!ValidateSelectionAndPassword(out var validationError))
@@ -964,7 +1049,7 @@ public sealed partial class DecryptViewModel : ViewModelBase
 
     private void RemoveItem(DecryptQueueItem item)
     {
-        if (IsDecrypting)
+        if (IsBusy)
             return;
 
         var index = Items.IndexOf(item);
@@ -988,7 +1073,7 @@ public sealed partial class DecryptViewModel : ViewModelBase
 
     private void ClearItems()
     {
-        if (IsDecrypting)
+        if (IsBusy)
             return;
         Items.Clear();
         _sourcePaths.Clear();
@@ -1004,7 +1089,7 @@ public sealed partial class DecryptViewModel : ViewModelBase
 
     private void Reset()
     {
-        if (IsDecrypting)
+        if (IsBusy)
             return;
 
         ClearItems();
@@ -1045,10 +1130,11 @@ public sealed partial class DecryptViewModel : ViewModelBase
 
     private void CloseOrCancelStatus()
     {
-        if (IsDecrypting)
+        if (IsBusy)
         {
             StatusAction = L("CancellationRequested");
-            StatusMessage = L("CancellationRequested");
+            if (IsDecrypting)
+                StatusMessage = L("CancellationRequested");
             _activeCts?.Cancel();
         }
         else
