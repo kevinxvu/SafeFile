@@ -18,13 +18,13 @@ files and passwords are never sent to a remote service.
 
 </div>
 
-![SafeFile application overview](docs/images/safefile-overview.jpg)
+![SafeFile Encrypt screen shown in light and dark themes](docs/images/safefile-overview.jpg)
 
 ## Highlights
 
+- Run on Windows, Linux, and macOS.
 - Encrypt one file, multiple files, or a folder.
 - Store a folder as one ZIP vault or one vault per file (`PerFile`).
-- Batch decrypt without one failed vault stopping the rest.
 - Protect visible filenames with MD5, SHA-256, or AES while retaining the
   authenticated full original name inside the vault.
 - Protect descendant folder names through an encrypted, resumable manifest.
@@ -36,7 +36,7 @@ files and passwords are never sent to a remote service.
 - Stream data in bounded chunks instead of loading whole files into memory.
 - Preserve existing output unless overwrite is explicitly enabled.
 - Encrypt/decrypt text, calculate SHA-256, and generate secure passwords.
-- Use English or Vietnamese with Light and Dark themes.
+- Use Multi-language with Light and Dark themes.
 - Search, filter, and export structured application logs.
 
 ## Using SafeFile
@@ -68,11 +68,20 @@ The **Folder Names** page renames descendant directories without changing file
 names or file contents. Do not delete, edit, rename, or move `.safefile-names`
 while names are protected; this manifest is required to restore them.
 
-### Tools and settings
+![SafeFile folder-name protection screen](docs/images/folder-screen.png)
 
-**Tools** includes authenticated text encryption/decryption (up to 1,000,000
-characters), SHA-256, and a secure password generator. **Settings** controls
-appearance, performance, password policy, Argon2id, and separate output roots:
+### Tools
+
+The **Tools** page includes authenticated text encryption/decryption (up to
+1,000,000 characters), SHA-256 hashing, and a secure password generator.
+
+![SafeFile text encryption tool](docs/images/tools-screen.png)
+
+### Settings
+
+The **Settings** page controls language and theme, chunk size, worker threads,
+CPU priority, password policy, Argon2id parameters, and separate encrypted and
+decrypted output folders. The default output structure is:
 
 ```text
 Documents/SafeFile/
@@ -112,8 +121,6 @@ reused passwords.
 | 10 letters + digits | about 13,000 years |
 | 12 letters + digits | about 51 million years |
 | 16 letters + digits | about 756 trillion years |
-| 4 random Diceware words | about 58 years |
-| 6 random Diceware words | about 3.5 billion years |
 
 ### Limitations
 
