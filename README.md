@@ -137,6 +137,12 @@ pipeline details, read the
 [RFC 9106](https://www.rfc-editor.org/rfc/rfc9106.html) and the
 [OWASP Cryptographic Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Cryptographic_Storage_Cheat_Sheet.html).
 
+## Disclaimer
+
+SafeFile is provided for lawful purposes only. You are solely responsible for ensuring that your use of the application complies with all applicable laws and regulations. The developers and contributors do not endorse or accept responsibility for any illegal, unauthorized, or harmful use of SafeFile.
+
+The software is provided “as is,” without warranties of any kind. To the fullest extent permitted by law, the developers and contributors are not liable for data loss, corrupted files, failed encryption or decryption, forgotten passwords, hardware or software failures, incompatibilities, or any other direct or indirect damages resulting from the use of this application.
+
 ## Build from source
 
 Install the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0).
@@ -144,7 +150,7 @@ The project is currently built and validated primarily with the Windows
 toolchain.
 
 ```powershell
-git clone <your-repository-url>
+git clone https://github.com/kevinxvu/SafeFile
 cd SafeFile
 dotnet restore SafeFile.slnx
 dotnet build SafeFile.slnx
