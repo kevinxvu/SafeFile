@@ -1,7 +1,7 @@
 using System;
 using System.Diagnostics;
 
-namespace SafeFile.Services;
+namespace SafeFile.Core.Services;
 
 /// <summary>
 /// Estimates speed from bytes actually transferred and ETA from workload that

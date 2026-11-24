@@ -3,9 +3,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 
-namespace SafeFile.Services;
+namespace SafeFile.Core.Services;
 
-internal static class ExcludedFolderPathValidator
+public static class ExcludedFolderPathValidator
 {
     public static IReadOnlyList<string> MergeAndValidate(
         IEnumerable<string> selectedPaths,
@@ -78,7 +78,7 @@ internal static class ExcludedFolderPathValidator
         : StringComparison.Ordinal;
 }
 
-internal sealed class ExcludedFolderValidationException(string resourceKey) : IOException
+public sealed class ExcludedFolderValidationException(string resourceKey) : IOException
 {
     public string ResourceKey { get; } = resourceKey;
 }

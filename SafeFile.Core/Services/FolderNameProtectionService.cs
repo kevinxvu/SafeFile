@@ -9,9 +9,8 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
-using SafeFile.Core.Services;
 
-namespace SafeFile.Services;
+namespace SafeFile.Core.Services;
 
 public enum FolderNameProtectionMode
 {
