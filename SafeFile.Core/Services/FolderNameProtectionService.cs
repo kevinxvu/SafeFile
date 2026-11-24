@@ -37,6 +37,17 @@ public sealed record FolderNameProgress(
     int Completed,
     int Total);
 
+/// <summary>One folder entry of a decrypted folder-name manifest (paths use '/' and start with the root folder name).</summary>
+public sealed record FolderNameMapping(string OriginalPath, string ProtectedPath);
+
+/// <summary>Decrypted contents of a folder-name manifest, read without touching any folder.</summary>
+public sealed record FolderNameManifestContent(
+    string ManifestPath,
+    FolderNameProtectionMode Mode,
+    int Version,
+    IReadOnlyList<FolderNameMapping> Directories,
+    string Json);
+
 public sealed class FolderNameSession
 {
     internal FolderNameSession(
@@ -183,6 +194,59 @@ public sealed class FolderNameProtectionService
                     root, manifest, includeNewDirectories: true,
                     excludedPaths, cancellationToken),
                 cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (jsonBytes is not null)
+                CryptographicOperations.ZeroMemory(jsonBytes);
+        }
+    }
+
+    /// <summary>
+    /// Decrypts a <c>.safefile-names</c> manifest and returns its mapping. Read-only:
+    /// no folder is renamed and the manifest file is not modified.
+    /// </summary>
+    /// <param name="manifestPath">The manifest file, or the root folder that contains it.</param>
+    public async Task<FolderNameManifestContent> ReadManifestAsync(
+        string manifestPath,
+        byte[] passwordBytes,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(manifestPath);
+        ArgumentNullException.ThrowIfNull(passwordBytes);
+        var path = Path.GetFullPath(manifestPath);
+        if (Directory.Exists(path))
+            path = GetManifestPath(path);
+        if (!File.Exists(path))
+            throw new FileNotFoundException("The folder-name manifest was not found.", path);
+
+        var maximumManifestFileBytes = checked(
+            TextCryptoService.GetMaximumEncodedCharacters(MaximumManifestBytes) +
+            TextCryptoService.Prefix.Length);
+        if (new FileInfo(path).Length > maximumManifestFileBytes)
+            throw new InvalidDataException("The folder-name manifest is too large.");
+        var encrypted = await File.ReadAllTextAsync(path, Encoding.UTF8, cancellationToken)
+            .ConfigureAwait(false);
+
+        byte[]? jsonBytes = null;
+        try
+        {
+            jsonBytes = await _textCryptoService.DecryptBytesAsync(
+                encrypted,
+                passwordBytes,
+                MaximumManifestBytes,
+                cancellationToken).ConfigureAwait(false);
+            var manifest = JsonSerializer.Deserialize<FolderNameManifest>(jsonBytes, JsonOptions)
+                ?? throw new InvalidDataException("The folder-name manifest is empty.");
+            ValidateManifest(manifest);
+            return new FolderNameManifestContent(
+                path,
+                manifest.NameMode,
+                manifest.Version,
+                manifest.Directories
+                    .Select(entry => new FolderNameMapping(entry.OriginalPath, entry.ProtectedPath))
+                    .ToList(),
+                Encoding.UTF8.GetString(jsonBytes));
         }
         finally
         {

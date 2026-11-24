@@ -181,6 +181,7 @@ stored encrypted in `<root>/.safefile-names`.
 safefile folder-names status  <root> [--exclude DIR] [password options]
 safefile folder-names encrypt <root> [--mode md5|sha256|aes] [--exclude DIR] [password options]
 safefile folder-names decrypt <root> [password options]
+safefile folder-names show    <root | .safefile-names> [-o FILE [--overwrite]] [password options]
 ```
 
 | Subcommand | Behavior |
@@ -188,6 +189,15 @@ safefile folder-names decrypt <root> [password options]
 | `status` | Manifest present or not, physical folder count. With a password option, also verifies the manifest and shows protected/clear/new/conflict counts |
 | `encrypt` | New root: creates a manifest in `--mode` (default `md5`) and protects all sub-folders. Existing manifest: verifies it and protects only new folders; its mode is kept (a different `--mode` produces a `mode_ignored` warning) |
 | `decrypt` | Restores original names and removes the manifest when nothing is left protected. Exclusions are not accepted |
+| `show` | Read-only: decrypts the manifest and prints the map (protected name → original name). No folder is renamed and the manifest is not changed. `-o FILE` also saves the decrypted manifest as plain JSON (refuses to replace an existing file without `--overwrite`) |
+
+Example, read the map without renaming anything:
+
+```powershell
+safefile folder-names show D:\Private\.safefile-names -o D:\private-map.json
+```
+
+`-o` writes the folder map unencrypted; delete the file when you no longer need it.
 
 A new manifest requires a password of at least the configured minimum length
 (default 8). An interrupted run can be resumed by running the same command
@@ -271,7 +281,7 @@ Every event has:
 | --- | --- | --- |
 | `event` | string | Event name |
 | `time` | string | ISO 8601 UTC timestamp |
-| `operation` | string | `encrypt`, `decrypt`, `verify`, `info`, `folder-names.status`, `folder-names.encrypt`, `folder-names.decrypt`, `genpass` |
+| `operation` | string | `encrypt`, `decrypt`, `verify`, `info`, `folder-names.status`, `folder-names.encrypt`, `folder-names.decrypt`, `folder-names.show`, `genpass` |
 
 ### 7.1 Event sequence
 
@@ -383,7 +393,10 @@ Per-item failures are reported in `item` instead.
 Command-specific fields: `outputDirectory`, `totalBytes` (encrypt/decrypt);
 `renamed`, `mode`, `root` (folder-names); `hasManifest`, `manifestVerified`,
 `physicalFolderCount`, `protectedCount`, `clearCount`, `newCount`,
-`conflictCount` (status); `passwords` (genpass).
+`conflictCount` (status); `manifestPath`, `manifestVersion`, `folderCount`,
+`outputPath`, `directories` (show: array of `originalPath`, `protectedPath`,
+`currentPath`, where `currentPath` is the folder on disk now or `null` if
+missing); `passwords` (genpass).
 
 ### 7.7 Compatibility
 
