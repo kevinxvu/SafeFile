@@ -53,10 +53,139 @@ internal static class FolderNamesCommand
         decrypt.SetAction((parse, ct) => CommandRunner.RunAsync(parse, ct, "folder-names.decrypt",
             ctx => RunAsync(ctx, encrypt: false)));
 
+        var show = new Command(
+            "show",
+            "Decrypt the .safefile-names manifest and show the folder-name map, without renaming anything.")
+        {
+            ManifestTarget, ShowOutput, ShowOverwrite
+        };
+        PasswordOptions.AddTo(show);
+        show.SetAction((parse, ct) => CommandRunner.RunAsync(parse, ct, "folder-names.show", ShowAsync));
+
         command.Add(status);
         command.Add(encrypt);
         command.Add(decrypt);
+        command.Add(show);
         return command;
+    }
+
+    private static readonly Argument<string> ManifestTarget = new("path")
+    {
+        Description = "The .safefile-names file, or the root folder that contains it."
+    };
+
+    private static readonly Option<string?> ShowOutput = new("--output", "-o")
+    {
+        Description = "Also write the decrypted manifest (JSON, plain text) to this file.",
+        HelpName = "FILE"
+    };
+
+    private static readonly Option<bool> ShowOverwrite = new("--overwrite")
+    {
+        Description = "Replace the --output file if it exists."
+    };
+
+    private static async Task<int> ShowAsync(CliContext ctx)
+    {
+        const string operation = "folder-names.show";
+        var target = PathUtil.Normalize(ctx.Parse.GetValue(ManifestTarget)!);
+        if (!File.Exists(target) && !Directory.Exists(target))
+            throw new CliException("not_found", $"Path not found: {target}");
+        var outputPath = ctx.Parse.GetValue(ShowOutput) is { } output ? PathUtil.Normalize(output) : null;
+        if (outputPath is not null && File.Exists(outputPath) && !ctx.Parse.GetValue(ShowOverwrite))
+            throw new CliException(
+                "destination_exists",
+                $"Output file already exists: {outputPath} (use --overwrite).",
+                ExitCodes.InvalidUsage);
+
+        var passwordBytes = PasswordOptions.Resolve(ctx.Parse, ctx.Settings, confirm: false);
+        FolderNameManifestContent content;
+        try
+        {
+            content = await CreateService().ReadManifestAsync(target, passwordBytes, ctx.CancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is CryptographicException or InvalidOperationException)
+        {
+            var error = ErrorMapper.Map(ex, passwordContext: true);
+            throw new CliException(error.Code, error.Message, error.ExitCode);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(passwordBytes);
+        }
+
+        var rootFolder = Path.GetDirectoryName(content.ManifestPath)!;
+        var directories = content.Directories
+            .OrderBy(entry => entry.OriginalPath, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (outputPath is not null)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
+            using var document = System.Text.Json.JsonDocument.Parse(content.Json);
+            var pretty = System.Text.Json.JsonSerializer.Serialize(document.RootElement,
+                new System.Text.Json.JsonSerializerOptions
+                {
+                    WriteIndented = true,
+                    Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+                });
+            await File.WriteAllTextAsync(outputPath, pretty + Environment.NewLine,
+                new UTF8Encoding(false), ctx.CancellationToken).ConfigureAwait(false);
+        }
+
+        ctx.Reporter.Emit("result", Fields.Of(
+            ("operation", operation),
+            ("status", "succeeded"),
+            ("exitCode", ExitCodes.Success),
+            ("manifestPath", content.ManifestPath),
+            ("root", rootFolder),
+            ("mode", content.Mode.ToString().ToLowerInvariant()),
+            ("manifestVersion", content.Version),
+            ("folderCount", directories.Count),
+            ("outputPath", outputPath),
+            ("directories", directories.Select(entry => new
+            {
+                originalPath = entry.OriginalPath,
+                protectedPath = entry.ProtectedPath,
+                // Where the folder currently is on disk: the protected name if it exists, else the original.
+                currentPath = ResolveOnDisk(rootFolder, entry)
+            }).ToList())));
+
+        if (!ctx.Reporter.IsJson)
+        {
+            var lines = new List<string>
+            {
+                content.ManifestPath,
+                $"  Mode:        {content.Mode}",
+                $"  Folders:     {directories.Count:N0}",
+                ""
+            };
+            var width = directories.Count == 0 ? 0 : directories.Max(entry => entry.ProtectedPath.Length);
+            lines.AddRange(directories.Select(entry =>
+                $"  {entry.ProtectedPath.PadRight(width)}  ->  {entry.OriginalPath}"));
+            if (outputPath is not null)
+                lines.Add($"{Environment.NewLine}Decrypted manifest written to {outputPath}");
+            ctx.Reporter.Result(string.Join(Environment.NewLine, lines));
+        }
+        return ExitCodes.Success;
+    }
+
+    /// <summary>Maps a manifest path (rooted at the root folder's name) to the folder that exists on disk now.</summary>
+    private static string? ResolveOnDisk(string rootFolder, FolderNameMapping entry)
+    {
+        static string ToDisk(string rootFolder, string manifestPath)
+        {
+            var separator = manifestPath.IndexOf('/');
+            var relative = separator < 0 ? "" : manifestPath[(separator + 1)..];
+            return Path.Combine(rootFolder, relative.Replace('/', Path.DirectorySeparatorChar));
+        }
+
+        var protectedPath = ToDisk(rootFolder, entry.ProtectedPath);
+        if (Directory.Exists(protectedPath))
+            return protectedPath;
+        var originalPath = ToDisk(rootFolder, entry.OriginalPath);
+        return Directory.Exists(originalPath) ? originalPath : null;
     }
 
     private static FolderNameProtectionService CreateService() => new(

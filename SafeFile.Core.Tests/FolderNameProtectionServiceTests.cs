@@ -37,6 +37,38 @@ public sealed class FolderNameProtectionServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ReadManifest_ReturnsMapping_WithoutChangingFolders()
+    {
+        Directory.CreateDirectory(Path.Combine(_root, "2025", "Trips"));
+        var service = CreateService();
+        await service.EncryptAsync(
+            await service.CreateSessionAsync(_root, FolderNameProtectionMode.Sha256), _password);
+        var manifestPath = Path.Combine(_root, FolderNameProtectionService.ManifestFileName);
+        var manifestBefore = await File.ReadAllTextAsync(manifestPath);
+        var foldersBefore = Directory.EnumerateDirectories(_root, "*", SearchOption.AllDirectories).Order().ToList();
+
+        var fromFile = await service.ReadManifestAsync(manifestPath, _password);
+        var fromRoot = await service.ReadManifestAsync(_root, _password);
+
+        Assert.Equal(FolderNameProtectionMode.Sha256, fromFile.Mode);
+        Assert.Equal(
+            ["Photos/2025", "Photos/2025/Trips"],
+            fromFile.Directories.Select(entry => entry.OriginalPath).Order().ToArray());
+        foreach (var entry in fromFile.Directories)
+        {
+            var relative = entry.ProtectedPath[(entry.ProtectedPath.IndexOf('/') + 1)..];
+            Assert.True(Directory.Exists(Path.Combine(_root, relative)));
+        }
+        Assert.Equal(fromFile.Directories, fromRoot.Directories);
+        Assert.Contains("Photos/2025/Trips", fromFile.Json);
+        Assert.Equal(manifestBefore, await File.ReadAllTextAsync(manifestPath));
+        Assert.Equal(foldersBefore,
+            Directory.EnumerateDirectories(_root, "*", SearchOption.AllDirectories).Order().ToList());
+        await Assert.ThrowsAnyAsync<Exception>(() =>
+            service.ReadManifestAsync(_root, Encoding.UTF8.GetBytes("wrong-password")));
+    }
+
+    [Fact]
     public async Task IncrementalEncrypt_FindsFolderInsideProtectedParent()
     {
         Directory.CreateDirectory(Path.Combine(_root, "2025"));
