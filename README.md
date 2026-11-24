@@ -91,6 +91,18 @@ Documents/SafeFile/
 
 ![SafeFile Settings screen](docs/images/settings-screen.png)
 
+### Command line
+
+`safefile` (the `SafeFile.Cli` project) runs the same engine from a terminal or
+script: `encrypt`, `decrypt`, `verify`, `info`, `folder-names`, and `genpass`.
+It reports percent, speed, and ETA like the app, and `--json` emits NDJSON
+events for integrations. See the **[SafeFile CLI Guide](SafeFile.Cli/README.md)**.
+
+```powershell
+safefile encrypt photos -o D:\Vaults
+safefile decrypt D:\Vaults -o D:\Restored --json
+```
+
 ## Security
 
 - AES-256-GCM protects confidentiality and detects modification or corruption.
@@ -168,6 +180,7 @@ dotnet.exe build SafeFile.slnx
 ```text
 SafeFile.Core/          Cryptography and file-processing layer
 SafeFile/               Avalonia desktop application
+SafeFile.Cli/           Command-line interface (safefile)
 SafeFile.Core.Tests/    Regression tests
 SafeFile.slnx           Solution
 ```

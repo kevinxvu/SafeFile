@@ -34,10 +34,11 @@ Core also provides non-vault utilities:
 - `PasswordGenerator` creates cryptographically random passwords while
   guaranteeing that every selected character group occurs at least once.
 
-The desktop application also provides folder-name protection through the
-app-side `FolderNameProtectionService`. It is intentionally not a production
-Core API: it orchestrates directory renames and reuses Core's
+Core also hosts folder-name protection (`FolderNameProtectionService`), shared
+by the desktop app and the CLI. It orchestrates directory renames and reuses
 `TextCryptoService` only for its encrypted manifest. See section 6.3.
+`ExcludedFolderPathValidator` (exclusion validation) and
+`TransferMetricsEstimator` (speed/ETA smoothing) are likewise shared.
 
 ## 2. Package layout
 
@@ -61,7 +62,10 @@ SafeFile.Core/
 └── Services/
     ├── SettingsService.cs
     ├── TextCryptoService.cs
-    └── PasswordGenerator.cs
+    ├── PasswordGenerator.cs
+    ├── FolderNameProtectionService.cs   # Folder-name protection (app + CLI)
+    ├── ExcludedFolderPathValidator.cs   # Excluded-folder validation
+    └── TransferMetricsEstimator.cs      # Speed/ETA smoothing
 ```
 
 ## 3. UI setup
