@@ -17,7 +17,7 @@ internal static class PasswordOptions
 
     public static readonly Option<bool> PasswordStdin = new("--password-stdin")
     {
-        Description = "Read the password from the first line of standard input."
+        Description = "Read the password from the first line of standard input (UTF-8 when piped or redirected)."
     };
 
     public static readonly Option<string?> PasswordEnv = new("--password-env")
@@ -70,7 +70,7 @@ internal static class PasswordOptions
         }
         else if (parse.GetValue(PasswordStdin))
         {
-            password = Console.In.ReadLine();
+            password = StdinControl.ReadPasswordLine(StdinControl.Input);
         }
         else if (parse.GetValue(PasswordEnv) is { } variable)
         {

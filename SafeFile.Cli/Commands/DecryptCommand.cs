@@ -34,11 +34,17 @@ internal static class DecryptCommand
         Description = "Overwrite existing output files (folders from zip vaults are never overwritten)."
     };
 
+    private static readonly Option<bool> DeleteIncomplete = new("--delete-incomplete")
+    {
+        Description = "When a vault fails or is cancelled midway, delete its partial output " +
+            "(default: keep the partial file or partly extracted folder)."
+    };
+
     public static Command Create()
     {
         var command = new Command("decrypt", "Decrypt .safe vaults.")
         {
-            Sources, Output, Exclude, Overwrite
+            Sources, Output, Exclude, Overwrite, DeleteIncomplete
         };
         PasswordOptions.AddTo(command);
         command.SetAction((parse, ct) => CommandRunner.RunAsync(parse, ct, Operation, RunAsync));
@@ -198,7 +204,10 @@ internal static class DecryptCommand
             throw new CliException("destination_exists", $"Output already exists: {destination}");
         }
 
-        var encryptor = new FileEncryptor(settings.MaxThreads, progress, settings);
+        var encryptor = new FileEncryptor(settings.MaxThreads, progress, settings)
+        {
+            DeleteIncompleteDecryptionOutput = ctx.Parse.GetValue(DeleteIncomplete)
+        };
         switch (mode)
         {
             case VaultMode.File:

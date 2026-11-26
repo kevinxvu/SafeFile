@@ -38,6 +38,12 @@ internal static class GlobalOptions
         Recursive = true
     };
 
+    public static readonly Option<bool> CancelOnStdin = new("--cancel-on-stdin")
+    {
+        Description = "Cancel when a line 'cancel' is read from standard input or input ends (for GUI hosts). With --password-stdin the first line is still the password.",
+        Recursive = true
+    };
+
     public static void AddTo(RootCommand root)
     {
         root.Add(Json);
@@ -45,6 +51,7 @@ internal static class GlobalOptions
         root.Add(ProgressInterval);
         root.Add(IgnoreSettings);
         root.Add(Threads);
+        root.Add(CancelOnStdin);
     }
 }
 
@@ -73,15 +80,24 @@ internal static class CommandRunner
             !parse.GetValue(GlobalOptions.NoProgress),
             TimeSpan.FromMilliseconds(intervalMs));
 
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         CliContext? context = null;
         try
         {
+            if (parse.GetValue(GlobalOptions.CancelOnStdin))
+            {
+                // The password line must be consumed before the watcher reads stdin.
+                if (parse.GetValue(PasswordOptions.PasswordStdin))
+                    StdinControl.ReadPasswordLine(StdinControl.Input);
+                StdinControl.StartCancelWatcher(StdinControl.Input, cancellation);
+            }
+
             context = new CliContext
             {
                 Parse = parse,
                 Reporter = reporter,
                 Settings = LoadSettings(parse),
-                CancellationToken = cancellationToken
+                CancellationToken = cancellation.Token
             };
             return await body(context).ConfigureAwait(false);
         }

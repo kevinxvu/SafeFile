@@ -95,6 +95,7 @@ Global options, accepted by every command:
 | `--progress-interval MS` | Minimum milliseconds between progress updates (default 250, minimum 50) |
 | `--ignore-settings` | Use built-in defaults instead of the desktop app's saved settings |
 | `--threads N` | Worker threads for encryption/decryption (1-256) |
+| `--cancel-on-stdin` | Cancel when stdin delivers a `cancel` line or ends (for GUI hosts, see [section 9](#cancelling-from-a-gui-host)) |
 | `-h`, `--help` | Help for the command |
 | `--version` | CLI version |
 
@@ -146,6 +147,7 @@ under the output.
 | `-o`, `--output DIR` | current directory | Output root |
 | `--exclude DIR` | | Sub-folder of a source folder to skip; repeatable |
 | `--overwrite` | off | Overwrite existing output **files**. A zip vault never overwrites an existing folder |
+| `--delete-incomplete` | off | If a vault fails or is cancelled midway, delete its partial output. Without it the partial file (or partly extracted folder) is kept |
 | password options | prompt | |
 
 Each vault is first authenticated, so a wrong password fails fast with
@@ -222,7 +224,7 @@ hidden input.
 | Option | Example | Notes |
 | --- | --- | --- |
 | `-p`, `--password VALUE` | `-p "S3cret!pass"` | Inline. Easiest, but visible in shell history and process lists |
-| `--password-stdin` | `echo $pw \| safefile … --password-stdin` | First line of stdin |
+| `--password-stdin` | `echo $pw \| safefile … --password-stdin` | First line of stdin, UTF-8 (see below) |
 | `--password-env NAME` | `--password-env SAFEFILE_PASSWORD` | Environment variable |
 | `--password-file PATH` | `--password-file C:\keys\vault.txt` | File content; one trailing newline is ignored |
 | *(none)* | | Interactive hidden prompt |
@@ -234,6 +236,21 @@ hidden input.
 - Giving more than one source fails with `invalid_argument`.
 - For automation prefer `--password-env`, `--password-stdin`, or
   `--password-file` over `-p`.
+- With `--cancel-on-stdin`, `--password-stdin` still reads the first line;
+  the rest of stdin is the cancel channel.
+
+Piped or redirected stdin is always read as **UTF-8**, independent of the
+console code page; a leading byte order mark is ignored. Input that is not
+valid UTF-8 fails with `invalid_argument`. Version 1.0.0 used the console code
+page, so a vault it created from a non-ASCII password on stdin may need that
+misread password to open. For non-ASCII passwords in a shell:
+
+- Windows PowerShell 5.1 pipes ASCII to programs by default and replaces other
+  characters with `?` before the CLI sees them. Run
+  `$OutputEncoding = [Text.UTF8Encoding]::new($false)` first.
+- PowerShell 7 already pipes UTF-8.
+- `cmd.exe` pipes in the console code page: run `chcp 65001` first, or use
+  `--password-file`.
 
 ## 5. Settings
 
@@ -412,7 +429,7 @@ or renamed. Ignore unknown fields and events.
 | 2 | Invalid usage: bad arguments, missing or mismatched password, password too short, invalid exclusion |
 | 3 | Wrong password (or corrupted data that fails authentication) |
 | 4 | Completed with errors: some items succeeded, some failed |
-| 130 | Cancelled with Ctrl+C |
+| 130 | Cancelled (Ctrl+C, or `--cancel-on-stdin`) |
 
 For a batch where nothing succeeded, the exit code is that of the first
 failure, for example 3 when every vault had a wrong password.
@@ -432,7 +449,7 @@ failure, for example 3 when every vault had a wrong password.
 | `no_vaults` | No `.safe` files found in the sources |
 | `no_manifest` | `folder-names decrypt` on a root without a manifest |
 | `io_error`, `access_denied` | File-system errors |
-| `cancelled` | Ctrl+C |
+| `cancelled` | Cancelled by Ctrl+C or `--cancel-on-stdin` |
 | `error` | Anything else |
 
 ## 9. Integration examples
@@ -479,6 +496,39 @@ for line in proc.stdout:
 exit_code = proc.wait()
 ```
 
+### Cancelling from a GUI host
+
+A GUI app usually starts the CLI without a console, so it cannot send Ctrl+C.
+Pass `--cancel-on-stdin` and keep stdin open for the whole run:
+
+- write `cancel` and a newline to cancel (case and surrounding spaces are ignored);
+- closing stdin also cancels, so a host that crashes or exits does not leave
+  the CLI running;
+- any other line is ignored.
+
+The CLI then stops like it does on Ctrl+C: an `error` event with code
+`cancelled`, a final `result` with `"status": "cancelled"` and the counters so
+far, and exit code 130. Do not kill the process: killing skips the cleanup of
+the item in progress.
+
+```python
+import subprocess
+
+proc = subprocess.Popen(
+    ["safefile", "encrypt", r"D:\data", "-o", r"D:\Vaults",
+     "--password-stdin", "--cancel-on-stdin", "--json", "--ignore-settings"],
+    stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, encoding="utf-8")
+proc.stdin.write(password + "\n")
+proc.stdin.flush()          # keep stdin open: closing it would cancel
+
+# later, from the UI's Cancel button:
+proc.stdin.write("cancel\n")
+proc.stdin.flush()
+```
+
+Without `--cancel-on-stdin`, stdin is read only for the password and closing
+it has no effect.
+
 ### Node.js
 
 ```js
@@ -495,9 +545,14 @@ child.on("close", (code) => console.log("exit", code));
 
 ## 10. Behavior notes
 
-- **Cancellation:** Ctrl+C cancels the running operation. Core removes the
-  incomplete output of the item in progress, as in the desktop app; completed
-  items stay. The CLI waits up to 30 seconds for that cleanup.
+- **Cancellation:** Ctrl+C, or a `cancel` line / end of stdin with
+  `--cancel-on-stdin`, cancels the running operation. Completed items stay.
+  For the item in progress, `encrypt` removes the incomplete vault. `decrypt`
+  keeps what it has written so far (a truncated file, or a partly extracted
+  folder for zip vaults), as in the desktop app, unless `--delete-incomplete`
+  is given. With `--overwrite`, the file being replaced is already truncated
+  when decryption starts, so deleting the partial output does not bring the
+  old file back. After Ctrl+C the CLI waits up to 30 seconds for that cleanup.
 - **Memory hygiene:** password bytes are zeroed after use. An inline `-p`
   value is a .NET string and cannot be zeroed, which is another reason to
   prefer the other sources.

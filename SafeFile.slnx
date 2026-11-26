@@ -1,6 +1,7 @@
 <Solution>
   <Project Path="SafeFile.Core/SafeFile.Core.csproj" />
   <Project Path="SafeFile.Cli/SafeFile.Cli.csproj" />
+  <Project Path="SafeFile.Cli.Tests/SafeFile.Cli.Tests.csproj" />
   <Project Path="SafeFile.Core.Tests/SafeFile.Core.Tests.csproj" />
   <Project Path="SafeFile/SafeFile.csproj" />
 </Solution>
