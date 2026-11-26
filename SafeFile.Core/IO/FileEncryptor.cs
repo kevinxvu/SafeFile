@@ -37,6 +37,13 @@ public sealed class FileEncryptor
         _pipeline = new CryptoPipeline(consumerThreads, progress);
     }
 
+    /// <summary>
+    /// When true, a decryption that fails or is cancelled deletes the output it
+    /// was writing: the partial file, or the partly extracted folder of a zip
+    /// vault. When false (the default), that partial output is kept.
+    /// </summary>
+    public bool DeleteIncompleteDecryptionOutput { get; init; }
+
     public async Task<string> EncryptFolderZipAsync(
         string sourceFolderPath,
         string destinationPath,
@@ -259,6 +266,7 @@ public sealed class FileEncryptor
         EnsureDistinctPaths(sourcePath, destinationFolder);
         _progress?.Report(0);
 
+        var destinationCreated = false;
         try
         {
             using var sourceStream = new FileStream(sourcePath, FileMode.Open, FileAccess.Read, FileShare.Read);
@@ -333,6 +341,7 @@ public sealed class FileEncryptor
                         await ExtractFolderPreservingPartialOutputAsync(
                             tempZipStream,
                             destinationFolder,
+                            () => destinationCreated = true,
                             cancellationToken,
                             progress => _progress?.Report(0.6 + progress * 0.4))
                             .ConfigureAwait(false);
@@ -352,8 +361,10 @@ public sealed class FileEncryptor
                 CryptographicOperations.ZeroMemory(masterKey);
             }
         }
-        catch
+        catch (Exception ex)
         {
+            if (DeleteIncompleteDecryptionOutput && destinationCreated)
+                TryDeleteIncompleteFolder(destinationFolder, ex is OperationCanceledException);
             throw;
         }
     }
@@ -950,6 +961,7 @@ public sealed class FileEncryptor
         _progress?.Report(0);
 
         var actualDestinationPath = destinationPath;
+        var destinationOpened = false;
         try
         {
             using var sourceStream = new FileStream(sourcePath, FileMode.Open, FileAccess.Read, FileShare.Read);
@@ -997,6 +1009,7 @@ public sealed class FileEncryptor
                     : FileMode.CreateNew;
                 using var destStream = new FileStream(
                     actualDestinationPath, destinationMode, FileAccess.Write, FileShare.None);
+                destinationOpened = true;
 
                 long expectedChunkIndex = 1;  // Data chunks start at index 1
                 var sawLastChunk = false;
@@ -1043,8 +1056,14 @@ public sealed class FileEncryptor
                 CryptographicOperations.ZeroMemory(masterKey);
             }
         }
-        catch
+        catch (Exception ex)
         {
+            // The streams are disposed by now, so the file can be deleted.
+            if (DeleteIncompleteDecryptionOutput && destinationOpened)
+                TryDeleteFile(
+                    actualDestinationPath,
+                    FileCleanupKind.IncompleteDecryptionOutput,
+                    ex is OperationCanceledException);
             throw;
         }
 
@@ -1433,6 +1452,7 @@ public sealed class FileEncryptor
     private static async Task ExtractFolderPreservingPartialOutputAsync(
         Stream zipStream,
         string destinationFolder,
+        Action onDestinationCreated,
         CancellationToken cancellationToken,
         Action<double>? progressCallback = null)
     {
@@ -1440,6 +1460,7 @@ public sealed class FileEncryptor
             throw new IOException($"Destination already exists: {destinationFolder}");
 
         Directory.CreateDirectory(destinationFolder);
+        onDestinationCreated();
         await StreamZipper.ExtractZipStreamAsync(
             zipStream,
             destinationFolder,
@@ -1483,6 +1504,27 @@ public sealed class FileEncryptor
         }
     }
 
+    private void TryDeleteIncompleteFolder(string path, bool causedByCancellation)
+    {
+        try
+        {
+            if (Directory.Exists(path))
+                Directory.Delete(path, recursive: true);
+            _logger.LogInformation(
+                "Deleted incomplete decryption output folder {Path}; cancellation: {CausedByCancellation}",
+                path,
+                causedByCancellation);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Failed to delete incomplete decryption output folder {Path}; cancellation: {CausedByCancellation}",
+                path,
+                causedByCancellation);
+        }
+    }
+
     private static void TryDeleteDirectory(string path)
     {
         try
@@ -1504,6 +1546,7 @@ public sealed record PerFileProgress(
 internal enum FileCleanupKind
 {
     IncompleteEncryptionOutput,
+    IncompleteDecryptionOutput,
     TemporaryDecryptionFile
 }
 

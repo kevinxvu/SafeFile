@@ -182,6 +182,7 @@ SafeFile.Core/          Cryptography and file-processing layer
 SafeFile/               Avalonia desktop application
 SafeFile.Cli/           Command-line interface (safefile)
 SafeFile.Core.Tests/    Regression tests
+SafeFile.Cli.Tests/     CLI tests (runs the built safefile executable)
 SafeFile.slnx           Solution
 ```
 

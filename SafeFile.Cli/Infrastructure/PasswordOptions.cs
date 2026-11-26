@@ -70,7 +70,7 @@ internal static class PasswordOptions
         }
         else if (parse.GetValue(PasswordStdin))
         {
-            password = Console.In.ReadLine();
+            password = StdinControl.ReadPasswordLine(Console.In);
         }
         else if (parse.GetValue(PasswordEnv) is { } variable)
         {
