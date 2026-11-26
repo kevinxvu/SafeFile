@@ -224,7 +224,7 @@ hidden input.
 | Option | Example | Notes |
 | --- | --- | --- |
 | `-p`, `--password VALUE` | `-p "S3cret!pass"` | Inline. Easiest, but visible in shell history and process lists |
-| `--password-stdin` | `echo $pw \| safefile … --password-stdin` | First line of stdin |
+| `--password-stdin` | `echo $pw \| safefile … --password-stdin` | First line of stdin, UTF-8 (see below) |
 | `--password-env NAME` | `--password-env SAFEFILE_PASSWORD` | Environment variable |
 | `--password-file PATH` | `--password-file C:\keys\vault.txt` | File content; one trailing newline is ignored |
 | *(none)* | | Interactive hidden prompt |
@@ -238,6 +238,19 @@ hidden input.
   `--password-file` over `-p`.
 - With `--cancel-on-stdin`, `--password-stdin` still reads the first line;
   the rest of stdin is the cancel channel.
+
+Piped or redirected stdin is always read as **UTF-8**, independent of the
+console code page; a leading byte order mark is ignored. Input that is not
+valid UTF-8 fails with `invalid_argument`. Version 1.0.0 used the console code
+page, so a vault it created from a non-ASCII password on stdin may need that
+misread password to open. For non-ASCII passwords in a shell:
+
+- Windows PowerShell 5.1 pipes ASCII to programs by default and replaces other
+  characters with `?` before the CLI sees them. Run
+  `$OutputEncoding = [Text.UTF8Encoding]::new($false)` first.
+- PowerShell 7 already pipes UTF-8.
+- `cmd.exe` pipes in the console code page: run `chcp 65001` first, or use
+  `--password-file`.
 
 ## 5. Settings
 

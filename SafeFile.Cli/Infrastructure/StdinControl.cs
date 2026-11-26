@@ -1,3 +1,5 @@
+using System.Text;
+
 namespace SafeFile.Cli.Infrastructure;
 
 /// <summary>
@@ -11,8 +13,27 @@ internal static class StdinControl
     public const string CancelCommand = "cancel";
 
     private static readonly object Gate = new();
+    private static readonly Lazy<TextReader> Reader = new(() =>
+        Console.IsInputRedirected ? CreateReader(Console.OpenStandardInput()) : Console.In);
     private static bool passwordLineRead;
     private static string? passwordLine;
+
+    /// <summary>
+    /// The one reader of standard input; it buffers, so every consumer must
+    /// share it. Pipes and files are UTF-8: <see cref="Console.In"/> would
+    /// decode them with the console code page and silently change a non-ASCII
+    /// password. A terminal is still read through the console.
+    /// </summary>
+    public static TextReader Input => Reader.Value;
+
+    /// <summary>
+    /// A UTF-8 reader that fails on invalid bytes instead of replacing them,
+    /// which would turn different passwords into the same one.
+    /// </summary>
+    internal static TextReader CreateReader(Stream stream) => new StreamReader(
+        stream,
+        new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true),
+        detectEncodingFromByteOrderMarks: false);
 
     /// <summary>
     /// Reads the password line once. Later calls return the same value, so the
@@ -25,7 +46,19 @@ internal static class StdinControl
         {
             if (!passwordLineRead)
             {
-                passwordLine = input.ReadLine();
+                try
+                {
+                    // Some hosts, Windows PowerShell among them, start piped UTF-8 with a byte order mark.
+                    passwordLine = input.ReadLine()?.TrimStart('\uFEFF');
+                }
+                catch (DecoderFallbackException)
+                {
+                    // The exception message quotes the offending bytes, which are part of the password.
+                    throw new CliException(
+                        "invalid_argument",
+                        "Standard input is not valid UTF-8.",
+                        ExitCodes.InvalidUsage);
+                }
                 passwordLineRead = true;
             }
             return passwordLine;
@@ -57,9 +90,10 @@ internal static class StdinControl
                     break;
             }
         }
-        catch (Exception ex) when (ex is IOException or ObjectDisposedException)
+        catch (Exception ex) when (ex is IOException or ObjectDisposedException or DecoderFallbackException)
         {
-            // A broken pipe means the host is gone; treat it like end of input.
+            // A broken pipe means the host is gone, and undecodable input leaves
+            // no way to receive a later cancel; treat both like end of input.
         }
 
         try

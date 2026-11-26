@@ -8,7 +8,7 @@
     <AssemblyName>safefile</AssemblyName>
     <RootNamespace>SafeFile.Cli</RootNamespace>
     <InvariantGlobalization>true</InvariantGlobalization>
-    <Version>1.0.0</Version>
+    <Version>1.0.1</Version>
     <Product>SafeFile CLI</Product>
   </PropertyGroup>
 

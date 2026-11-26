@@ -88,8 +88,8 @@ internal static class CommandRunner
             {
                 // The password line must be consumed before the watcher reads stdin.
                 if (parse.GetValue(PasswordOptions.PasswordStdin))
-                    StdinControl.ReadPasswordLine(Console.In);
-                StdinControl.StartCancelWatcher(Console.In, cancellation);
+                    StdinControl.ReadPasswordLine(StdinControl.Input);
+                StdinControl.StartCancelWatcher(StdinControl.Input, cancellation);
             }
 
             context = new CliContext

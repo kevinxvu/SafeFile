@@ -9,7 +9,8 @@ internal static class CliRunner
     public static async Task<CliRun> RunAsync(
         string[] args,
         Action<StreamWriter> writeStdin,
-        bool cancelOnStdin = true)
+        bool cancelOnStdin = true,
+        bool passwordStdin = true)
     {
         var start = new ProcessStartInfo(CliPath())
         {
@@ -20,7 +21,8 @@ internal static class CliRunner
         };
         foreach (var arg in args)
             start.ArgumentList.Add(arg);
-        start.ArgumentList.Add("--password-stdin");
+        if (passwordStdin)
+            start.ArgumentList.Add("--password-stdin");
         start.ArgumentList.Add("--json");
         start.ArgumentList.Add("--ignore-settings");
         if (cancelOnStdin)
